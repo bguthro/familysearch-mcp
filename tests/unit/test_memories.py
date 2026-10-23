@@ -45,6 +45,7 @@ def test_upload_posts_multipart_and_returns_id():
     assert mid == "MEM-1"
     req = responses.calls[0].request
     assert req.headers["Content-Type"].startswith("multipart/form-data; boundary=")
+    assert "x-fs-v1" not in req.headers["Content-Type"]
     assert b'name="artifact"; filename="a.png"' in req.body
     assert b"image/png" in req.body and b"\x89PNGdata" in req.body
     assert "flag=fsh" in req.url and "filename=a.png" in req.url and "title=Birth+cert" in req.url

@@ -41,6 +41,7 @@ def test_create_person_posts_envelope_and_returns_id():
     req = responses.calls[0].request
     assert req.method == "POST" and req.url == PERSONS + Q
     assert _body(0) == {"persons": [person]}
+    assert req.headers["Content-Type"] == "application/x-fs-v1+json"
     assert req.headers["X-Reason"] == "r1"
 
 
@@ -56,6 +57,7 @@ def test_add_fact_posts_fact_envelope():
     fact = {"type": "http://gedcomx.org/Birth"}
     assert _writer().add_fact("P1", fact, reason="why") is None
     assert _body(0)["persons"][0]["facts"][0] == fact
+    assert responses.calls[0].request.headers["Content-Type"] == "application/x-fs-v1+json"
     assert responses.calls[0].request.headers["X-Reason"] == "why"
 
 

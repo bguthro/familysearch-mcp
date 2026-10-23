@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json as _json
 import time
 from urllib.parse import urlsplit
 
@@ -14,7 +15,8 @@ DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
-DEFAULT_ACCEPT = "application/x-fs-v1+json"
+FS_JSON = "application/x-fs-v1+json"
+DEFAULT_ACCEPT = FS_JSON
 DEFAULT_TIMEOUT = 30
 
 
@@ -92,8 +94,13 @@ class FSClient:
         if write:
             headers["X-Reason"] = reason
             self._throttle()
+        data = None
+        if json is not None:
+            # requests' json= forces application/json (FamilySearch answers 415).
+            data = _json.dumps(json).encode()
+            headers["Content-Type"] = FS_JSON
         resp = self._session.request(
-            method, url, headers=headers, params=params, json=json, files=files,
+            method, url, headers=headers, params=params, data=data, files=files,
             timeout=timeout,
         )
         if resp.status_code == 401:

@@ -62,6 +62,7 @@ def test_record_search_parses_total_and_next():
     assert out["entries"]
     q = parse_qs(urlparse(responses.calls[-1].request.url).query)
     assert q["q.surname"] == ["Anderson"] and q["count"] == ["2"]
+    assert responses.calls[-1].request.headers["Accept"] == "application/json"
 
 
 @responses.activate

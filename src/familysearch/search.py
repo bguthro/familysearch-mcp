@@ -6,6 +6,8 @@ from .discovery import Discovery
 
 RECORD_SEARCH_PATH = "/service/search/hr/v2/personas"
 ATOM_ACCEPT = "application/x-gedcomx-atom+json"
+# The personas service rejects application/x-fs-v1+json with 406.
+RECORD_ACCEPT = "application/json"
 
 
 def _dict(resp) -> dict:
@@ -49,7 +51,7 @@ class Search:
     ) -> dict:
         params = _clean({"q.givenName": given, "q.surname": surname,
                          "count": count, "offset": offset})
-        data = _dict(self._client.get(RECORD_SEARCH_PATH, params=params))
+        data = _dict(self._client.get(RECORD_SEARCH_PATH, accept=RECORD_ACCEPT, params=params))
         total = data.get("results")
         links = data.get("links")
         nxt = links.get("next") if isinstance(links, dict) else None
