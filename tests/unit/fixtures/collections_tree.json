@@ -1,0 +1,9 @@
+{"collections":[{"id":"FSFT","title":"Family Tree","links":{
+"persons":{"href":"https://beta.familysearch.org/platform/tree/persons?flag=fsh"},
+"relationships":{"href":"https://beta.familysearch.org/platform/tree/relationships?flag=fsh"},
+"artifacts":{"href":"https://beta.familysearch.org/platform/memories/memories?flag=fsh"},
+"person-search":{"template":"https://beta.familysearch.org/platform/tree/search?flag=fst{&access_token}"},
+"source-descriptions":{"href":"https://beta.familysearch.org/platform/sources/descriptions?flag=fsh"},
+"source-references-query":{"template":"https://beta.familysearch.org/platform/tree/source-references?flag=fst{&description,source,access_token}"},
+"matches":{"template":"https://beta.familysearch.org/platform/tree/persons/{pid}/matches?flag=fst{&access_token}"},
+"current-user-person":{"href":"https://beta.familysearch.org/platform/tree/current-person?flag=fsh"}}}]}

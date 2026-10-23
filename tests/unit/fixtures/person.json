@@ -1,0 +1,13 @@
+{"persons":[{"id":"BMXM-2HZ","links":{
+"person":{"href":"https://beta.familysearch.org/platform/tree/persons/BMXM-2HZ"},
+"artifacts":{"href":"https://beta.familysearch.org/platform/tree/persons/BMXM-2HZ/memories?flag=fsh"},
+"source-descriptions":{"href":"https://beta.familysearch.org/platform/tree/persons/BMXM-2HZ/sources?flag=fsh"},
+"parents":{"href":"https://beta.familysearch.org/platform/tree/persons/BMXM-2HZ/parents"},
+"children":{"href":"https://beta.familysearch.org/platform/tree/persons/BMXM-2HZ/children"},
+"spouses":{"href":"https://beta.familysearch.org/platform/tree/persons/BMXM-2HZ/spouses"},
+"change-history":{"href":"https://beta.familysearch.org/platform/tree/persons/BMXM-2HZ/changes"},
+"matches":{"href":"https://beta.familysearch.org/platform/tree/persons/BMXM-2HZ/matches"},
+"merge":{"template":"https://beta.familysearch.org/platform/tree/persons/BMXM-2HZ/merges/{dpid}"},
+"portrait":{"href":"https://beta.familysearch.org/platform/tree/persons/BMXM-2HZ/portrait"},
+"notes":{"href":"https://beta.familysearch.org/platform/tree/persons/BMXM-2HZ/notes"},
+"non-matches":{"href":"https://beta.familysearch.org/platform/tree/persons/BMXM-2HZ/non-matches"}}}]}
