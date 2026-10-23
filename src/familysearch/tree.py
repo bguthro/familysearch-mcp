@@ -1,6 +1,7 @@
 """Tree reads: person, relatives, memories, sources, change history."""
 from __future__ import annotations
 
+from ._urls import join_path
 from .client import FSClient
 from .discovery import Discovery
 from .errors import FSError
@@ -79,11 +80,11 @@ class TreeWriter:
         self._discovery = discovery
 
     def _persons(self) -> str:
-        url = self._discovery.href("persons").rstrip("/")
+        url = self._discovery.href("persons")
         return url if url.startswith("http") else self._client.base_url + url
 
     def _ref(self, person_id: str) -> dict:
-        return {"resource": f"{self._persons()}/{person_id}", "resourceId": person_id}
+        return {"resource": join_path(self._persons(), person_id), "resourceId": person_id}
 
     def _post_relationship(self, rtype: str, p1: str, p2: str, reason: str) -> str:
         body = {"relationships": [{"type": GX + rtype, "person1": self._ref(p1), "person2": self._ref(p2)}]}
@@ -96,7 +97,7 @@ class TreeWriter:
 
     def add_fact(self, person_id: str, fact: dict, *, reason: str) -> None:
         self._client.post(
-            f"{self._persons()}/{person_id}",
+            join_path(self._persons(), person_id),
             json={"persons": [{"facts": [fact]}]},
             reason=reason,
         )
@@ -108,4 +109,4 @@ class TreeWriter:
         return [self._post_relationship("ParentChild", p, child_id, reason) for p in parent_ids]
 
     def delete_person(self, person_id: str, *, reason: str) -> None:
-        self._client.delete(f"{self._persons()}/{person_id}", reason=reason)
+        self._client.delete(join_path(self._persons(), person_id), reason=reason)

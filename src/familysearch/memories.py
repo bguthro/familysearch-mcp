@@ -1,8 +1,7 @@
 """Memories: document upload and linking to persons."""
 from __future__ import annotations
 
-from urllib.parse import quote
-
+from ._urls import join_path
 from .client import FSClient
 from .discovery import Discovery
 from .tree import _new_id
@@ -17,7 +16,7 @@ class Memories:
         self._discovery = discovery
 
     def _artifacts(self) -> str:
-        return self._discovery.href("artifacts").rstrip("/")
+        return self._discovery.href("artifacts")
 
     def upload(
         self, data: bytes, *, filename: str, content_type: str,
@@ -40,8 +39,8 @@ class Memories:
         return _new_id(resp)
 
     def link_to_person(self, person_id: str, memory_id: str, *, reason: str) -> None:
-        url = f"{self._artifacts()}/{quote(memory_id, safe='')}/personas"
+        url = join_path(self._artifacts(), memory_id, "personas")
         self._client.post(url, json={"persons": [{"id": person_id}]}, reason=reason)
 
-    def delete(self, memory_id: str, *, reason: str | None = None) -> None:
-        self._client.delete(f"{self._artifacts()}/{quote(memory_id, safe='')}", reason=reason)
+    def delete(self, memory_id: str, *, reason: str) -> None:
+        self._client.delete(join_path(self._artifacts(), memory_id), reason=reason)

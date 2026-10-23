@@ -1,4 +1,5 @@
 import json
+from urllib.parse import urlsplit
 
 import responses
 
@@ -9,11 +10,12 @@ from familysearch.sources import Sources
 BASE = "https://beta.familysearch.org"
 DESC = BASE + "/platform/sources/descriptions"
 PERSONS = BASE + "/platform/tree/persons"
+Q = "?flag=fsh"
 
 
 class FakeDiscovery:
     def href(self, rel):
-        return {"source-descriptions": DESC, "persons": PERSONS}[rel]
+        return {"source-descriptions": DESC, "persons": PERSONS + Q}[rel]
 
 
 def _src():
@@ -36,9 +38,11 @@ def test_source_create_posts_descriptions():
 
 @responses.activate
 def test_source_attach_posts_to_person_resource():
-    responses.add(responses.POST, PERSONS + "/PID-1", status=200)
+    responses.add(responses.POST, PERSONS + "/PID-1" + Q, status=200)
     _src().attach_to_person("PID-1", DESC + "/SD-1", reason="r2")
     req = responses.calls[0].request
-    assert req.url == PERSONS + "/PID-1"
+    assert req.url == PERSONS + "/PID-1" + Q
+    u = urlsplit(req.url)
+    assert u.path.endswith("/PID-1") and u.query == "flag=fsh"
     assert json.loads(req.body) == {"persons": [{"sources": [{"description": DESC + "/SD-1"}]}]}
     assert req.headers["X-Reason"] == "r2"

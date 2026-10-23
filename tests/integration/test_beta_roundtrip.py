@@ -8,6 +8,7 @@ import uuid
 
 import pytest
 
+from familysearch._urls import join_path
 from familysearch import (
     FACT_BIRTH, FSHTTPError, Memories, Search, Sources, TreeReader, TreeWriter,
     build_fact, build_person,
@@ -48,8 +49,8 @@ class Cleanup:
     def run(self):
         for rid in reversed(self.relationships):
             def _del(r=rid):
-                base = self.discovery.href("relationships").split("?")[0].rstrip("/")
-                self.client.delete(f"{base}/{r}", reason="spike cleanup")
+                url = join_path(self.discovery.href("relationships"), r)
+                self.client.delete(url, reason="spike cleanup")
             self._try(_del, f"relationship {rid}")
         for url in reversed(self.source_urls):
             self._try(lambda u=url: self.client.delete(u, reason=REASON), f"source {url}")
@@ -141,7 +142,7 @@ def test_source_create_and_attach(cleanup, beta_client, discovery):
     sd_id = sources.create_description(
         "https://example.org/zzspike", "ZZSPIKE source", "ZZSPIKE citation", reason=REASON
     )
-    sd_url = f"{discovery.href('source-descriptions').rstrip('/')}/{sd_id}"
+    sd_url = join_path(discovery.href('source-descriptions'), sd_id)
     cleanup.source_urls.append(sd_url)
     assert sd_id
     sources.attach_to_person(pid, sd_url, reason=REASON)

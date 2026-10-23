@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 import time
+from urllib.parse import urlsplit
 
 import requests
 
 from familysearch.auth import Environment
-from familysearch.errors import FSHTTPError, TokenExpiredError
+from familysearch.errors import FSError, FSHTTPError, TokenExpiredError
 
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 DEFAULT_ACCEPT = "application/x-fs-v1+json"
+DEFAULT_TIMEOUT = 30
 
 
 class FSClient:
@@ -36,19 +38,28 @@ class FSClient:
     def base_url(self) -> str:
         return self._environment.base_url
 
-    def get(self, path_or_url, *, accept=None, params=None) -> requests.Response:
-        return self._request("GET", path_or_url, accept=accept, params=params)
+    def get(
+        self, path_or_url, *, accept=None, params=None, timeout=DEFAULT_TIMEOUT
+    ) -> requests.Response:
+        return self._request(
+            "GET", path_or_url, accept=accept, params=params, timeout=timeout
+        )
 
     def post(
-        self, path_or_url, *, json=None, files=None, params=None, reason=None
+        self, path_or_url, *, reason, json=None, files=None, params=None,
+        timeout=DEFAULT_TIMEOUT,
     ) -> requests.Response:
         return self._request(
             "POST", path_or_url, json=json, files=files, params=params,
-            reason=reason, write=True,
+            reason=reason, write=True, timeout=timeout,
         )
 
-    def delete(self, path_or_url, *, reason=None) -> requests.Response:
-        return self._request("DELETE", path_or_url, reason=reason, write=True)
+    def delete(
+        self, path_or_url, *, reason, timeout=DEFAULT_TIMEOUT
+    ) -> requests.Response:
+        return self._request(
+            "DELETE", path_or_url, reason=reason, write=True, timeout=timeout
+        )
 
     def _throttle(self) -> None:
         if self._last_write is not None:
@@ -59,10 +70,18 @@ class FSClient:
 
     def _request(
         self, method, path_or_url, *, accept=None, params=None, json=None,
-        files=None, reason=None, write=False,
+        files=None, reason=None, write=False, timeout=DEFAULT_TIMEOUT,
     ) -> requests.Response:
-        if path_or_url.startswith("http"):
+        if write and not (reason and reason.strip()):
+            raise FSError("a non-empty reason (X-Reason) is required for writes")
+        if path_or_url.startswith(("http", "//")):
             url = path_or_url
+            want, got = urlsplit(self.base_url), urlsplit(url)
+            if (got.scheme, got.netloc.lower()) != (want.scheme, want.netloc.lower()):
+                raise FSError(
+                    f"refusing to send credentials to {got.scheme}://{got.netloc}; "
+                    f"only {want.scheme}://{want.netloc} is allowed"
+                )
         else:
             url = self.base_url + path_or_url
         headers = {
@@ -71,11 +90,11 @@ class FSClient:
             "Accept": accept or DEFAULT_ACCEPT,
         }
         if write:
-            if reason:
-                headers["X-Reason"] = reason
+            headers["X-Reason"] = reason
             self._throttle()
         resp = self._session.request(
-            method, url, headers=headers, params=params, json=json, files=files
+            method, url, headers=headers, params=params, json=json, files=files,
+            timeout=timeout,
         )
         if resp.status_code == 401:
             raise TokenExpiredError("FamilySearch rejected the token (401).")

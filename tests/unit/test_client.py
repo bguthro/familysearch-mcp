@@ -4,7 +4,7 @@ import responses
 from familysearch import client as client_mod
 from familysearch.auth import Environment
 from familysearch.client import FSClient
-from familysearch.errors import FSHTTPError, TokenExpiredError
+from familysearch.errors import FSError, FSHTTPError, TokenExpiredError
 
 BETA = "https://beta.familysearch.org"
 
@@ -39,10 +39,53 @@ def test_relative_path_joined_to_base(fs):
 
 
 @responses.activate
-def test_absolute_url_used_asis(fs):
-    responses.add(responses.GET, "https://other.example.com/a", json={})
-    fs.get("https://other.example.com/a")
-    assert responses.calls[0].request.url == "https://other.example.com/a"
+def test_same_origin_absolute_url_used_asis(fs):
+    responses.add(responses.GET, BETA + "/a?flag=fsh", json={})
+    fs.get(BETA + "/a?flag=fsh")
+    assert responses.calls[0].request.url == BETA + "/a?flag=fsh"
+
+
+@responses.activate
+@pytest.mark.parametrize("url", [
+    "https://other.example.com/a",
+    "http://beta.familysearch.org/a",
+    "https://beta.familysearch.org.evil.com/a",
+    "//other.example.com/a",
+])
+def test_offhost_absolute_url_rejected_without_sending(fs, url):
+    with pytest.raises(FSError):
+        fs.get(url)
+    assert len(responses.calls) == 0
+
+
+@responses.activate
+def test_write_without_reason_refused(fs):
+    with pytest.raises(TypeError):
+        fs.post("/w")
+    with pytest.raises(TypeError):
+        fs.delete("/w")
+    with pytest.raises(FSError):
+        fs.post("/w", reason="")
+    with pytest.raises(FSError):
+        fs.delete("/w", reason="  ")
+    assert len(responses.calls) == 0
+
+
+@responses.activate
+def test_default_timeout_passed(fs):
+    responses.add(responses.GET, BETA + "/x", json={})
+    seen = {}
+    orig = fs._session.request
+
+    def spy(*a, **kw):
+        seen.update(kw)
+        return orig(*a, **kw)
+
+    fs._session.request = spy
+    fs.get("/x")
+    assert seen["timeout"] == client_mod.DEFAULT_TIMEOUT
+    fs.get("/x", timeout=5)
+    assert seen["timeout"] == 5
 
 
 @responses.activate
