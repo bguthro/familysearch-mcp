@@ -155,11 +155,28 @@ a wrong guessed path on the first try.
   matched to shared persons. FamilySearch's own living/possibly-living rule (roughly:
   born within ~110 years with no recorded death) governs the classification; the tool
   must handle the "possibly living" boundary explicitly.
-- **Document upload policy (Ben's decision): conservative filter.** Only documents tied
-  to **deceased** persons are eligible to upload as public memories. Anything concerning
-  a living person, and anything likely rights-restricted (e.g. recent newspaper
-  obituaries), is **excluded**, with borderline cases **flagged for Ben's review** rather
-  than uploaded automatically.
+- **Document upload policy (Ben's decision): conservative filter**, along **three**
+  dimensions:
+  1. **Person status:** only documents tied to **deceased** persons are eligible;
+     anything concerning a living person is excluded.
+  2. **Content rights:** anything likely rights-restricted (e.g. recent newspaper
+     obituaries) is excluded.
+  3. **Provenance / source (added 2026-10-23, prompted by Ben's Fold3 question):**
+     documents **sourced from paywalled aggregators** — Fold3, Ancestry, Newspapers.com,
+     MyHeritage, Findagrave images, and the like — are **excluded by default**, even when
+     they depict a deceased person and even when the *underlying* record is public domain
+     (US government/NARA). Rationale: the aggregator's *digitized image* carries its
+     branding/watermark and its terms restrict redistribution; FamilySearch's upload
+     agreement requires the uploader to hold the rights; FamilySearch also partners with
+     Ancestry and often already holds the record. Losing the subscription does not confer
+     rights. Ben may **confirm rights per file** to allow a specific upload.
+  Detection of provenance uses, in order of reliability: the source **citation** in the
+  person's `ResearchSummary.md`, the `.webloc` source URL, the **filename** (e.g.
+  `… Fold3 …`), and — least reliable — a visible **watermark** (OCR/image heuristic).
+  Where provenance cannot be determined, the document is **flagged for Ben's review**,
+  never uploaded automatically. (Archive scan on 2026-10-23: ~16 files cite Fold3, ~74
+  cite Ancestry, ~10 Newspapers.com, ~6 Findagrave — so this dimension is load-bearing.)
+  Borderline cases on any dimension are flagged for review rather than uploaded.
 - **Match expectation (Ben's input): mostly already in FamilySearch.** Of the ~99
   unpinned persons, Ben expects most ancestors already have shared-tree profiles (he has
   been using FamilySearch as a research source). The job is therefore **match-heavy**,
