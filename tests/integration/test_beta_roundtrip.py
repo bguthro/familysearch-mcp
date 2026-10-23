@@ -25,8 +25,10 @@ PNG = base64.b64decode(
 class Cleanup:
     """Tracks created resources; deletes them (best effort) at teardown."""
 
-    def __init__(self, client, writer, memories):
+    def __init__(self, client, writer, memories, discovery):
         self.client, self.writer, self.memories = client, writer, memories
+        self.discovery = discovery
+        self.relationships: list[str] = []
         self.persons: list[str] = []
         self.memory_ids: list[str] = []
         self.source_urls: list[str] = []
@@ -44,6 +46,11 @@ class Cleanup:
         return pid
 
     def run(self):
+        for rid in reversed(self.relationships):
+            def _del(r=rid):
+                base = self.discovery.href("relationships").split("?")[0].rstrip("/")
+                self.client.delete(f"{base}/{r}", reason="spike cleanup")
+            self._try(_del, f"relationship {rid}")
         for url in reversed(self.source_urls):
             self._try(lambda u=url: self.client.delete(u, reason=REASON), f"source {url}")
         for mid in reversed(self.memory_ids):
@@ -64,7 +71,8 @@ class Cleanup:
 @pytest.fixture
 def cleanup(beta_client, discovery):
     c = Cleanup(
-        beta_client, TreeWriter(beta_client, discovery), Memories(beta_client, discovery)
+        beta_client, TreeWriter(beta_client, discovery), Memories(beta_client, discovery),
+        discovery,
     )
     yield c
     c.run()
@@ -100,7 +108,9 @@ def test_create_addfact_delete_person(cleanup, reader):
 def test_create_couple_relationship(cleanup):
     a = cleanup.person("Male")
     b = cleanup.person("Female")
-    assert cleanup.writer.create_couple(a, b, reason=REASON)
+    rid = cleanup.writer.create_couple(a, b, reason=REASON)
+    cleanup.relationships.append(rid)
+    assert rid
 
 
 def test_create_parent_child_relationship(cleanup):
@@ -108,6 +118,7 @@ def test_create_parent_child_relationship(cleanup):
     dad = cleanup.person("Male")
     mom = cleanup.person("Female")
     ids = cleanup.writer.create_parent_child(child_id=child, parent_ids=[dad, mom], reason=REASON)
+    cleanup.relationships.extend(i for i in ids if i)
     assert len(ids) == 2 and all(ids)
 
 
