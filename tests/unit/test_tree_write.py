@@ -74,8 +74,8 @@ def test_create_couple_body_shape():
     assert _writer().create_couple("P1", "P2", reason="r") == "R-1"
     rel = _body(0)["relationships"][0]
     assert rel["type"] == "http://gedcomx.org/Couple"
-    assert rel["person1"] == {"resource": PERSONS + "/P1" + Q, "resourceId": "P1"}
-    assert rel["person2"] == {"resource": PERSONS + "/P2" + Q, "resourceId": "P2"}
+    assert rel["person1"] == {"resource": PERSONS + "/P1", "resourceId": "P1"}
+    assert rel["person2"] == {"resource": PERSONS + "/P2", "resourceId": "P2"}
     assert responses.calls[0].request.headers["X-Reason"] == "r"
 
 
@@ -91,7 +91,7 @@ def test_create_parent_child_posts_parentchild_per_parent():
         rel = _body(i)["relationships"][0]
         assert rel["type"] == "http://gedcomx.org/ParentChild"
         assert rel["person1"]["resourceId"] == parent
-        assert rel["person2"] == {"resource": PERSONS + "/C" + Q, "resourceId": "C"}
+        assert rel["person2"] == {"resource": PERSONS + "/C", "resourceId": "C"}
         assert responses.calls[i].request.headers["X-Reason"] == "r"
 
 

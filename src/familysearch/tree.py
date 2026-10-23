@@ -84,7 +84,7 @@ class TreeWriter:
         return url if url.startswith("http") else self._client.base_url + url
 
     def _ref(self, person_id: str) -> dict:
-        return {"resource": join_path(self._persons(), person_id), "resourceId": person_id}
+        return {"resource": join_path(self._persons().split("?")[0], person_id), "resourceId": person_id}
 
     def _post_relationship(self, rtype: str, p1: str, p2: str, reason: str) -> str:
         body = {"relationships": [{"type": GX + rtype, "person1": self._ref(p1), "person2": self._ref(p2)}]}

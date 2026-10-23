@@ -142,7 +142,7 @@ def test_source_create_and_attach(cleanup, beta_client, discovery):
     sd_id = sources.create_description(
         "https://example.org/zzspike", "ZZSPIKE source", "ZZSPIKE citation", reason=REASON
     )
-    sd_url = join_path(discovery.href('source-descriptions'), sd_id)
+    sd_url = join_path(discovery.href('source-descriptions').split('?')[0], sd_id)
     cleanup.source_urls.append(sd_url)
     assert sd_id
     sources.attach_to_person(pid, sd_url, reason=REASON)
