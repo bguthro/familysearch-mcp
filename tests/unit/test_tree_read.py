@@ -81,3 +81,22 @@ def test_empty_bodies_return_empty_lists():
     assert r.get_memories("BMXM-2HZ") == []
     assert r.get_sources("BMXM-2HZ") == []
     assert r.get_changes("BMXM-2HZ") == []
+
+
+@responses.activate
+def test_get_matches_returns_candidates():
+    _add(PERSON, _load("person.json"))
+    _add(PERSON + "/matches", {"entries": [
+        {"id": "BMXM-AAA", "score": 4.5, "content": {"gedcomx": {"persons": [{"id": "BMXM-AAA"}]}}},
+        {"id": "BMXM-BBB", "score": 3.0},
+    ]})
+    out = _reader().get_matches("BMXM-2HZ")
+    assert [e["id"] for e in out] == ["BMXM-AAA", "BMXM-BBB"]
+
+
+@responses.activate
+@pytest.mark.parametrize("body", [{}, {"entries": []}, [1, 2]])
+def test_get_matches_empty(body):
+    _add(PERSON, _load("person.json"))
+    _add(PERSON + "/matches", body)
+    assert _reader().get_matches("BMXM-2HZ") == []

@@ -58,6 +58,10 @@ class TreeReader:
         links = self._discovery.person_links(person_id)
         return self._fetch(links, "change-history", "entries")
 
+    def get_matches(self, person_id: str) -> list[dict]:
+        links = self._discovery.person_links(person_id)
+        return self._fetch(links, "matches", "entries")
+
 
 GX = "http://gedcomx.org/"
 
