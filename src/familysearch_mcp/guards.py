@@ -4,6 +4,7 @@ Standard library only; no I/O.
 """
 
 import re
+import unicodedata
 
 # Canonical aggregator name -> lowercase, separator-free needles.
 AGGREGATOR_PATTERNS: dict[str, tuple[str, ...]] = {
@@ -14,17 +15,21 @@ AGGREGATOR_PATTERNS: dict[str, tuple[str, ...]] = {
     "findagrave": ("findagrave",),
 }
 
-_SEPARATORS = re.compile(r"[\s_.\-]+")
+_NON_ALNUM = re.compile(r"[^0-9a-z]+")
+_WORD = re.compile(r"[^\W\d_]+")
 _YEAR = re.compile(r"(?<!\d)\d{4}(?!\d)")
 _MAX_AGE = 110
 
 
 def _match(text: object) -> str | None:
+    # Residuals, accepted: cross-script homoglyphs (e.g. Cyrillic "a") are NOT
+    # handled; cross-word over-refusal ("Dan Cestry") is accepted because the
+    # caller can override per file.
     if not isinstance(text, str) or not text:
         return None
-    stripped = _SEPARATORS.sub("", text.lower())
+    norm = _NON_ALNUM.sub("", unicodedata.normalize("NFKC", text).casefold())
     for name, needles in AGGREGATOR_PATTERNS.items():
-        if any(n in stripped for n in needles):
+        if any(n in norm for n in needles):
             return name
     return None
 
@@ -40,11 +45,29 @@ def provenance_blocked(filename: str, provenance: str | None) -> str | None:
     return _match(filename) or _match(provenance)
 
 
-def _birth_year(birth_date: object) -> int | None:
-    if not isinstance(birth_date, str):
+_DATE_WORDS = frozenset(
+    "jan january feb february mar march apr april may jun june jul july aug "
+    "august sep sept september oct october nov november dec december "
+    "abt about ca circa c cal calc est estimated bef before aft after "
+    "between and to from of or in st nd rd th".split()
+)
+
+
+def _extract_year(text: object, today_year: int) -> int | None:
+    """Latest plausible year in a date string, or None (unknown).
+
+    Any word outside the English date vocabulary makes the date unknown, so
+    e.g. "Lot 1234", "1500 hrs 3 June 1979" and "3 Juni 1879" fail closed.
+    Taking the max year is monotone-safe: junk can only make a person look
+    younger, never older.
+    """
+    if not isinstance(text, str):
         return None
-    m = _YEAR.search(birth_date)
-    return int(m.group()) if m else None
+    if any(w.lower() not in _DATE_WORDS for w in _WORD.findall(text)):
+        return None
+    years = [int(y) for y in _YEAR.findall(text)]
+    years = [y for y in years if 1000 <= y <= today_year + 1]
+    return max(years) if years else None
 
 
 def classify_life_status(
@@ -58,11 +81,12 @@ def classify_life_status(
 
     Fails safe: anything uncertain is "possibly_living".
     """
-    if isinstance(death_date, str) and death_date.strip():
+    death_year = _extract_year(death_date, today_year)
+    if death_year is not None and death_year <= today_year:
         return "possibly_living" if asserted_living else "deceased"
     if asserted_living:
         return "living"
-    year = _birth_year(birth_date)
+    year = _extract_year(birth_date, today_year)
     if year is None:
         return "possibly_living"
     if today_year - year > _MAX_AGE:

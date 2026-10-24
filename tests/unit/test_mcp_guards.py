@@ -106,6 +106,65 @@ def test_classify_whitespace_death_is_absent():
     assert cls("1850", "   ") == "deceased_by_age"
 
 
+@pytest.mark.parametrize(
+    "birth",
+    ["0830 3 June 1979", "1500 hrs 3 June 1979", "Lot 1234", "0830", "9999",
+     "19790603", "3 Juni 1879"],
+)
+def test_classify_birth_fail_closed(birth):
+    assert cls(birth, None) == "possibly_living"
+
+
+@pytest.mark.parametrize(
+    "birth",
+    ["Between 1840 and 1850", "1840-1850", "Jan. 5, 1850", "5th of May 1850",
+     "circa 1850", "c. 1850", "bef 1850", "1850 or 1851"],
+)
+def test_classify_birth_qualified_formats(birth):
+    assert cls(birth, None) == "deceased_by_age"
+
+
+@pytest.mark.parametrize("death", ["Unknown", "?", "N/A", "Living", "2999", 1990])
+def test_classify_junk_death_is_ignored(death):
+    assert cls("1990", death) == "possibly_living"
+    assert cls("1990", death, asserted_living=True) == "living"
+    assert cls("1850", death) == "deceased_by_age"
+
+
+def test_classify_valid_deaths():
+    assert cls("1950", "12 March 2019") == "deceased"
+    assert cls("1990", "abt 1990") == "deceased"
+    assert cls("1990", "abt 1990", asserted_living=True) == "possibly_living"
+
+
+def test_classify_today_year_keyword_only():
+    with pytest.raises(TypeError):
+        classify_life_status("1990", None, 2026)  # type: ignore[misc]
+
+
+@pytest.mark.parametrize(
+    "filename",
+    ["Find–a–Grave memorial.png", "Fold–3 roll.jpg",
+     "Fold​3 roll.jpg", "Fold/3.jpg", "Fold３.jpg", "Fold 3.jpg"],
+)
+def test_provenance_unicode_and_separator_bypasses(filename):
+    expected = "findagrave" if "Grave" in filename else "fold3"
+    assert provenance_blocked(filename, None) == expected
+
+
+@pytest.mark.parametrize(
+    "prov,expected",
+    [("ANCESTRY.COM/records", "ancestry"), ("newspapers com", "newspapers.com"),
+     ("FindAGrave", "findagrave"), ("my heritage", "myheritage")],
+)
+def test_provenance_variants_in_provenance(prov, expected):
+    assert provenance_blocked("clean.jpg", prov) == expected
+
+
+def test_provenance_clean_with_nara():
+    assert provenance_blocked("scan.jpg", "NARA") is None
+
+
 def test_classify_non_string_inputs_do_not_raise():
     assert cls(1850, None) == "possibly_living"  # type: ignore[arg-type]
     assert cls(["1850"], None) == "possibly_living"  # type: ignore[arg-type]
