@@ -33,3 +33,16 @@ def test_clamp():
     assert clamp(None, 1, 50) == 1
     assert clamp("abc", 1, 50) == 1
     assert clamp([], 1, 50) == 1
+
+
+@pytest.mark.parametrize("raw", [
+    "GKLı-DY8", "GKLſ-DY8", "ＧＫＬＶ-DY8", "GKLV-ＤＹ８", "ßßßß-ßß",
+])
+def test_non_ascii_lookalikes_rejected(raw):
+    with pytest.raises(ValueError):
+        validate_person_id(raw)
+
+
+def test_clamp_infinity_and_overflow():
+    assert clamp(float("inf"), 1, 50) == 1
+    assert clamp(float("-inf"), 1, 50) == 1
