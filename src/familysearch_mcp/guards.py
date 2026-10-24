@@ -22,12 +22,17 @@ _MAX_AGE = 110
 
 
 def _match(text: object) -> str | None:
-    # Residuals, accepted: cross-script homoglyphs (e.g. Cyrillic "a") are NOT
-    # handled; cross-word over-refusal ("Dan Cestry") is accepted because the
-    # caller can override per file.
+    # NFKD folds fullwidth forms, ligatures and super/subscript digits to
+    # ASCII; combining marks are then dropped so accented letters match.
+    # Residuals, accepted: cross-script homoglyphs (e.g. Cyrillic "a") and
+    # non-Latin digit lookalikes (e.g. Arabic-Indic "2" in "Fold2") are NOT
+    # handled; cross-word over-refusal ("Dan Cestry", "Anderson Ancestry
+    # Chart.pdf") is accepted because the caller can override per file.
     if not isinstance(text, str) or not text:
         return None
-    norm = _NON_ALNUM.sub("", unicodedata.normalize("NFKC", text).casefold())
+    decomposed = unicodedata.normalize("NFKD", text)
+    base = "".join(c for c in decomposed if unicodedata.category(c) != "Mn")
+    norm = _NON_ALNUM.sub("", base.casefold().replace("\u0131", "i"))
     for name, needles in AGGREGATOR_PATTERNS.items():
         if any(n in norm for n in needles):
             return name
@@ -53,7 +58,12 @@ _DATE_WORDS = frozenset(
 )
 
 
-def _extract_year(text: object, today_year: int) -> int | None:
+_LOWER_BOUND = frozenset({"after", "aft", "from"})
+
+
+def _extract_year(
+    text: object, today_year: int, *, allow_lower_bound: bool
+) -> int | None:
     """Latest plausible year in a date string, or None (unknown).
 
     Any word outside the English date vocabulary makes the date unknown, so
@@ -63,7 +73,13 @@ def _extract_year(text: object, today_year: int) -> int | None:
     """
     if not isinstance(text, str):
         return None
-    if any(w.lower() not in _DATE_WORDS for w in _WORD.findall(text)):
+    if re.search(r"\d{5,}", text):
+        return None
+    words = [w.lower() for w in _WORD.findall(text)]
+    if any(w not in _DATE_WORDS for w in words):
+        return None
+    # "born after 1850" may be living; "died after 1850" still asserts a death.
+    if not allow_lower_bound and any(w in _LOWER_BOUND for w in words):
         return None
     years = [int(y) for y in _YEAR.findall(text)]
     years = [y for y in years if 1000 <= y <= today_year + 1]
@@ -81,12 +97,12 @@ def classify_life_status(
 
     Fails safe: anything uncertain is "possibly_living".
     """
-    death_year = _extract_year(death_date, today_year)
+    death_year = _extract_year(death_date, today_year, allow_lower_bound=True)
     if death_year is not None and death_year <= today_year:
         return "possibly_living" if asserted_living else "deceased"
     if asserted_living:
         return "living"
-    year = _extract_year(birth_date, today_year)
+    year = _extract_year(birth_date, today_year, allow_lower_bound=False)
     if year is None:
         return "possibly_living"
     if today_year - year > _MAX_AGE:

@@ -165,6 +165,39 @@ def test_provenance_clean_with_nara():
     assert provenance_blocked("scan.jpg", "NARA") is None
 
 
+@pytest.mark.parametrize(
+    "birth",
+    ["after 1850", "aft 1850", "from 1850", "From 1850 to 1860", "1850 99999"],
+)
+def test_classify_birth_lower_bound_and_long_digits_fail_closed(birth):
+    assert cls(birth, None) == "possibly_living"
+
+
+@pytest.mark.parametrize(
+    "birth",
+    ["bef 1850", "before 1850", "Between 1840 and 1850", "1 January 1850",
+     "abt 1850", "3 June 1850", "5th of May 1850"],
+)
+def test_classify_birth_upper_bound_still_deceased_by_age(birth):
+    assert cls(birth, None) == "deceased_by_age"
+
+
+@pytest.mark.parametrize("death", ["after 1850", "from 1850"])
+def test_classify_death_lower_bound_ok(death):
+    assert cls("1800", death) == "deceased"
+    assert cls("1800", death, asserted_living=True) == "possibly_living"
+
+
+@pytest.mark.parametrize(
+    "filename,expected",
+    [("Fóld3.jpg", "fold3"), ("Ancéstry notes.pdf", "ancestry"),
+     ("Myherıtage.png", "myheritage"), ("Fóld3.jpg", "fold3"),
+     ("Ancéstry", "ancestry"), ("ﬁndagrave", "findagrave")],
+)
+def test_provenance_diacritics_and_ligatures(filename, expected):
+    assert provenance_blocked(filename, None) == expected
+
+
 def test_classify_non_string_inputs_do_not_raise():
     assert cls(1850, None) == "possibly_living"  # type: ignore[arg-type]
     assert cls(["1850"], None) == "possibly_living"  # type: ignore[arg-type]
