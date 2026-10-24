@@ -23,6 +23,15 @@ def _s(v: Any) -> Any:
     return v if isinstance(v, str) else None
 
 
+def _id(v: Any) -> str | None:
+    """Ids may arrive as JSON integers; keep them as strings. Bool/empty -> None."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        return str(v)
+    return v if isinstance(v, str) and v else None
+
+
 def _first(v: Any) -> dict:
     items = _l(v)
     return _d(items[0]) if items else {}
@@ -54,7 +63,7 @@ def project_person(person: Any) -> dict:
     display = _d(person.get("display"))
     gender = _s(display.get("gender")) or _short(_d(person.get("gender")).get("type"))
     return {
-        "id": _s(person.get("id")),
+        "id": _id(person.get("id")),
         "name": _s(display.get("name")),
         "lifespan": _s(display.get("lifespan")),
         "gender": gender,
@@ -83,7 +92,7 @@ def project_search_hit(entry: Any) -> dict:
     person = _first(gx.get("persons"))
     display = _d(person.get("display"))
     ark = _s(gx.get("id"))
-    pid = _s(person.get("id")) or (ark.rsplit(":", 1)[-1] if ark else None)
+    pid = _id(person.get("id")) or _id(ark.rsplit(":", 1)[-1] if ark else None)
     return {
         "id": pid,
         "confidence": _confidence(entry.get("confidence")),
@@ -108,7 +117,7 @@ def project_record_hit(entry: Any) -> dict:
         if name:
             break
     return {
-        "id": _s(entry.get("id")) or _s(gx.get("id")),
+        "id": _id(entry.get("id")) or _id(gx.get("id")),
         "confidence": _confidence(entry.get("confidence")),
         "name": name,
         "facts": _facts(person.get("facts")),
@@ -118,7 +127,7 @@ def project_record_hit(entry: Any) -> dict:
 def project_source(desc: Any) -> dict:
     desc = _d(desc)
     return {
-        "id": _s(desc.get("id")),
+        "id": _id(desc.get("id")),
         "title": _s(_first(desc.get("titles")).get("value")),
         "citation": _s(_first(desc.get("citations")).get("value")),
         "about": _s(desc.get("about")),
@@ -131,7 +140,7 @@ def project_memory(mem: Any) -> dict:
     if isinstance(desc, list):
         desc = _first(desc).get("value")
     return {
-        "id": _s(mem.get("id")),
+        "id": _id(mem.get("id")),
         "title": _s(_first(mem.get("titles")).get("value")),
         "description": _s(desc),
         "link": _s(_d(_d(mem.get("links")).get("description")).get("href")),

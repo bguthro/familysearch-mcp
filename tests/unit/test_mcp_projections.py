@@ -96,6 +96,25 @@ def test_project_memory_description_forms():
     assert project_memory({"id": "2"})["link"] is None
 
 
+def test_int_ids_become_strings():
+    assert project_memory({"id": 238367374})["id"] == "238367374"
+    assert project_person({"id": 238367374})["id"] == "238367374"
+    assert project_source({"id": 238367374})["id"] == "238367374"
+    e = {"content": {"gedcomx": {"persons": [{"id": 238367374}]}}}
+    assert project_search_hit(e)["id"] == "238367374"
+    assert project_record_hit({"id": 238367374})["id"] == "238367374"
+
+
+def test_bool_and_empty_ids_are_none():
+    assert project_person({"id": True})["id"] is None
+    assert project_memory({"id": ""})["id"] is None
+
+
+def test_ark_ending_in_colon_gives_none_id():
+    e = {"content": {"gedcomx": {"id": "ark:/61903/4:1:", "persons": [{}]}}}
+    assert project_search_hit(e)["id"] is None
+
+
 ALL = [project_person, project_search_hit, project_record_hit, project_source, project_memory]
 BAD = [
     {}, None, [], "x", 5,
