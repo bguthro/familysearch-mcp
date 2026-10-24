@@ -1,0 +1,1 @@
+{"confidence":5,"content":{"gedcomx":{"persons":[{"names":[{"nameForms":[{"fullText":"Wrong Person"}]}]},{"principal":true,"names":[{"nameForms":[{"fullText":"August Anderson"}]}],"facts":[{"type":"http://gedcomx.org/Birth","date":{"original":"1 May 1880"},"place":{"original":"Sweden"}}]}]}}}
