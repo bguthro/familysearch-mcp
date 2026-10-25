@@ -28,8 +28,8 @@ def _spec(kind="write", destructive=False, fingerprint=FP):
 def _registry(status, fingerprint=FP, reason="because"):
     if status is None:
         return {"schema": 1, "operations": {}}
-    return {"schema": 1, "operations": {"Op": {
-        "status": status, "fingerprint": fingerprint, "reason": reason}}}
+    return {"schema": 1, "operations": {"Op": {"generated": {
+        "status": status, "fingerprint": fingerprint, "reason": reason}}}}
 
 
 # Written-out expectations: (status, environment, destructive) -> the exact set of
@@ -115,8 +115,86 @@ def test_missing_entry_is_unverified():
         check_call(_spec(), BETA, _registry(None))
 
 
-def test_unknown_status_value_is_unverified():
-    assert effective_status("Op", FP, _registry("bogus")) == "unverified"
+def test_unknown_status_value_fails_closed_for_writes_and_names_it():
+    assert effective_status("Op", FP, _registry("bogus")) == "unknown"
+    with pytest.raises(OperationLockedError, match="bogus"):
+        check_call(_spec(), BETA, _registry("bogus"), allow_unverified=True,
+                   allow_production=True, confirm_destructive=True)
+    check_call(_spec(kind="read"), BETA, _registry("bogus"))
+
+
+def test_task8_shape_unverifiable_and_excluded_never_run():
+    for status in ("unverifiable", "excluded"):
+        reg = {"schema": 1, "operations": {"Op": {"generated": {"status": status, "reason": "r"}}}}
+        with pytest.raises(OperationLockedError):
+            check_call(_spec(), BETA, reg, allow_unverified=True,
+                       allow_production=True, confirm_destructive=True)
+
+
+def test_task8_shape_verified_matching_fingerprint_honored():
+    reg = {"schema": 1, "operations": {"Op": {"generated": {
+        "status": "verified", "fingerprint": FP, "evidence": "e", "recipe": "r"}}}}
+    check_call(_spec(), BETA, reg)
+    assert effective_status("Op", FP, reg) == "verified"
+
+
+def test_handwritten_entry_does_not_affect_generated_status():
+    reg = {"schema": 1, "operations": {"Op": {"handwritten": {
+        "status": "verified", "fingerprint": FP}}}}
+    assert effective_status("Op", FP, reg) == "unverified"
+    assert effective_status("Op", FP, reg, impl="handwritten") == "verified"
+    with pytest.raises(OperationLockedError):
+        check_call(_spec(), BETA, reg)
+
+
+def test_environment_fails_closed():
+    for env in ("production", None, "beta", object()):
+        with pytest.raises(OperationLockedError):
+            check_call(_spec(), env, _registry("verified"))
+        with pytest.raises(OperationLockedError):
+            check_call(_spec(), env, _registry(None), allow_unverified=True,
+                       allow_production=False)
+    check_call(_spec(), "production", _registry("verified"), allow_production=True)
+
+
+def test_verified_requires_nonempty_matching_fingerprints():
+    for stored, current in ((None, FP), ("", FP), (FP, ""), ("", ""), (None, None)):
+        reg = _registry("verified", fingerprint=stored)
+        assert effective_status("Op", current, reg) == "stale"
+    reg = {"operations": {"Op": {"generated": {"status": "verified"}}}}
+    assert effective_status("Op", FP, reg) == "stale"
+
+
+def test_flags_must_be_literally_true():
+    for bad in ("no", "false", 1, "yes", [1]):
+        with pytest.raises(OperationLockedError):
+            check_call(_spec(), BETA, _registry(None), allow_unverified=bad)
+        with pytest.raises(OperationLockedError):
+            check_call(_spec(), PROD, _registry("verified"), allow_production=bad)
+        with pytest.raises(OperationLockedError):
+            check_call(_spec(destructive=True), BETA, _registry("verified"),
+                       confirm_destructive=bad)
+
+
+def test_destructive_fails_closed():
+    for d in (None, "no", 0, "false"):
+        with pytest.raises(OperationLockedError, match="confirm_destructive"):
+            check_call(_spec(destructive=d), BETA, _registry("verified"))
+    check_call(_spec(destructive=False), BETA, _registry("verified"))
+
+
+@pytest.mark.parametrize("registry", [
+    None, [], {"operations": None}, {"operations": []}, {"operations": "x"},
+    {"operations": {"Op": "str"}}, {"operations": {"Op": None}} if False else {"operations": {"Op": 5}},
+    {"operations": {"Op": {"generated": "verified"}}},
+    {"operations": {"Op": {"generated": ["verified"]}}},
+])
+def test_malformed_registry_raises_locked_error(registry):
+    with pytest.raises(OperationLockedError):
+        check_call(_spec(), BETA, registry, allow_unverified=True)
+    with pytest.raises(OperationLockedError):
+        effective_status("Op", FP, registry)
+    check_call(_spec(kind="read"), BETA, registry)
 
 
 def test_unverifiable_and_excluded_statuses_reported():

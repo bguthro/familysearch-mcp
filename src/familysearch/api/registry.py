@@ -23,24 +23,55 @@ def load_registry(path: Path = REGISTRY_PATH) -> dict:
     return json.loads(Path(path).read_text())
 
 
+def _impl_entry(operation_id: str, registry, impl: str):
+    """Return the registry entry for one implementation, or None when absent.
+
+    Raises OperationLockedError if the registry is malformed (fail closed).
+    """
+    if not isinstance(registry, dict):
+        raise OperationLockedError("operation registry is malformed (not an object)")
+    operations = registry.get("operations")
+    if not isinstance(operations, dict):
+        raise OperationLockedError("operation registry is malformed (no operations map)")
+    entry = operations.get(operation_id)
+    if entry is None:
+        return None
+    if not isinstance(entry, dict):
+        raise OperationLockedError(f"registry entry for {operation_id} is malformed")
+    impl_entry = entry.get(impl)
+    if impl_entry is None:
+        return None
+    if not isinstance(impl_entry, dict):
+        raise OperationLockedError(f"registry entry for {operation_id}/{impl} is malformed")
+    return impl_entry
+
+
+def _nonempty(value) -> bool:
+    return isinstance(value, str) and bool(value)
+
+
 def effective_status(
     operation_id: str, fingerprint: str, registry: dict, impl: str = "generated"
 ) -> str:
-    """Return verified, stale, unverifiable, excluded or unverified.
+    """Return verified, stale, unverifiable, excluded, unverified or unknown.
 
-    ``impl`` names the implementation the entry applies to (an entry's optional
-    ``impl`` field, default "generated"); an entry for another implementation
-    does not vouch for this one.
+    Entries live at ``registry["operations"][id][impl]``. A verified entry is
+    only honored when both its stored fingerprint and ``fingerprint`` are
+    non-empty and equal; otherwise it is stale. An unrecognised status string
+    is reported as "unknown" (check_call refuses writes with it).
     """
-    entry = registry.get("operations", {}).get(operation_id)
-    if not entry or entry.get("impl", "generated") != impl:
+    impl_entry = _impl_entry(operation_id, registry, impl)
+    if impl_entry is None:
         return "unverified"
-    status = entry.get("status")
+    status = impl_entry.get("status")
     if status == "verified":
-        return "verified" if entry.get("fingerprint") == fingerprint else "stale"
-    if status in ("unverifiable", "excluded"):
+        stored = impl_entry.get("fingerprint")
+        if _nonempty(stored) and _nonempty(fingerprint) and stored == fingerprint:
+            return "verified"
+        return "stale"
+    if status in ("unverifiable", "excluded", "unverified"):
         return status
-    return "unverified"
+    return "unknown"
 
 
 def check_call(
@@ -52,34 +83,43 @@ def check_call(
     allow_production: bool = False,
     confirm_destructive: bool = False,
 ) -> None:
-    """Raise OperationLockedError unless this call is permitted. Reads always pass."""
+    """Raise OperationLockedError unless this call is permitted. Reads always pass.
+
+    Fails closed: only the literal Environment.BETA counts as beta, a flag counts
+    only when it is exactly True, and an operation counts as non-destructive only
+    when ``spec.destructive is False``.
+    """
     if spec.kind == "read":
         return
     name = spec.operation_id
     status = effective_status(name, spec.fingerprint, registry)
+    if status == "unknown":
+        raw = _impl_entry(name, registry, "generated").get("status")
+        raise OperationLockedError(
+            f"{name} has an unrecognised registry status {raw!r}; refusing to run it"
+        )
     if status in ("unverifiable", "excluded"):
-        entry = registry.get("operations", {}).get(name, {})
-        reason = entry.get("reason") or "no reason recorded"
+        reason = _impl_entry(name, registry, "generated").get("reason") or "no reason recorded"
         raise OperationLockedError(f"{name} is {status} and can never be run: {reason}")
-    if spec.destructive and not confirm_destructive:
+    if spec.destructive is not False and confirm_destructive is not True:
         raise OperationLockedError(
             f"{name} is destructive; pass confirm_destructive=True to run it"
         )
-    production = environment is Environment.PRODUCTION
+    beta = environment is Environment.BETA
     if status == "verified":
-        if production and not allow_production:
+        if not beta and allow_production is not True:
             raise OperationLockedError(
                 f"{name} is verified on beta; pass allow_production=True to run it "
                 "against production"
             )
         return
     # unverified or stale
-    if production:
+    if not beta:
         raise OperationLockedError(
             f"{name} is {status} and may not run against production, even with "
             "allow_unverified; verify it on beta first"
         )
-    if not allow_unverified:
+    if allow_unverified is not True:
         raise OperationLockedError(
             f"{name} is {status}; pass allow_unverified=True to run it on beta"
         )
