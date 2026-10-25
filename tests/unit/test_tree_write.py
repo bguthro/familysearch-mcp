@@ -1,5 +1,6 @@
 import json
 
+import pytest
 import responses
 
 from familysearch.auth import Environment
@@ -81,20 +82,67 @@ def test_create_couple_body_shape():
     assert responses.calls[0].request.headers["X-Reason"] == "r"
 
 
+CP = BASE + "/platform/tree/child-and-parents-relationships"
+
+
 @responses.activate
-def test_create_parent_child_posts_parentchild_per_parent():
-    responses.add(responses.POST, RELS + Q, status=201, headers={"X-ENTITY-ID": "R-A"})
-    responses.add(responses.POST, RELS + Q, status=201, headers={"X-ENTITY-ID": "R-B"})
-    ids = _writer().create_parent_child(child_id="C", parent_ids=["DAD", "MOM"], reason="r")
-    assert ids == ["R-A", "R-B"]
-    assert len(responses.calls) == 2
-    for i, parent in enumerate(["DAD", "MOM"]):
-        assert responses.calls[i].request.url == RELS + Q
-        rel = _body(i)["relationships"][0]
-        assert rel["type"] == "http://gedcomx.org/ParentChild"
-        assert rel["person1"]["resourceId"] == parent
-        assert rel["person2"] == {"resource": PERSONS + "/C", "resourceId": "C"}
-        assert responses.calls[i].request.headers["X-Reason"] == "r"
+def test_create_parent_child_one_post_with_both_parents():
+    responses.add(responses.POST, RELS + Q, status=201, headers={
+        "X-ENTITY-ID": "CP-1", "Location": CP + "/CP-1"})
+    rid = _writer().create_parent_child(child_id="C", parent_ids=["DAD", "MOM"], reason="r")
+    assert rid == "CP-1" and isinstance(rid, str)
+    assert len(responses.calls) == 1
+    req = responses.calls[0].request
+    assert req.url == RELS + Q
+    assert _body(0) == {"childAndParentsRelationships": [{
+        "parent1": {"resource": PERSONS + "/DAD", "resourceId": "DAD"},
+        "parent2": {"resource": PERSONS + "/MOM", "resourceId": "MOM"},
+        "child": {"resource": PERSONS + "/C", "resourceId": "C"},
+    }]}
+    assert req.headers["Content-Type"] == "application/x-fs-v1+json"
+    assert req.headers["X-Reason"] == "r"
+
+
+@responses.activate
+def test_create_parent_child_single_parent_omits_parent2():
+    responses.add(responses.POST, RELS + Q, status=201, headers={"X-ENTITY-ID": "CP-2"})
+    assert _writer().create_parent_child(child_id="C", parent_ids=["DAD"], reason="r") == "CP-2"
+    assert _body(0) == {"childAndParentsRelationships": [{
+        "parent1": {"resource": PERSONS + "/DAD", "resourceId": "DAD"},
+        "child": {"resource": PERSONS + "/C", "resourceId": "C"},
+    }]}
+
+
+@pytest.mark.parametrize("parents", [[], ["A", "B", "C"], "AB", None])
+@responses.activate
+def test_create_parent_child_validates_parent_count(parents):
+    with pytest.raises(ValueError):
+        _writer().create_parent_child(child_id="C", parent_ids=parents, reason="r")
+    assert len(responses.calls) == 0
+
+
+@responses.activate
+def test_delete_couple_uses_relationships_rel_path():
+    responses.add(responses.DELETE, RELS + "/R-1" + Q, status=204)
+    assert _writer().delete_couple("R-1", reason="cleanup") is None
+    assert _path_query(0) == ("/platform/tree/relationships/R-1", "flag=fsh")
+    assert responses.calls[0].request.headers["X-Reason"] == "cleanup"
+
+
+@responses.activate
+def test_delete_child_and_parents_uses_cp_path():
+    responses.add(responses.DELETE, CP + "/CP-1", status=204)
+    assert _writer().delete_child_and_parents("CP-1", reason="cleanup") is None
+    req = responses.calls[0].request
+    assert req.url == CP + "/CP-1" and req.method == "DELETE"
+    assert req.headers["X-Reason"] == "cleanup"
+
+
+@responses.activate
+def test_delete_relationship_ids_are_quoted():
+    responses.add(responses.DELETE, CP + "/a%2Fb", status=204)
+    _writer().delete_child_and_parents("a/b", reason="r")
+    assert responses.calls[0].request.url == CP + "/a%2Fb"
 
 
 @responses.activate

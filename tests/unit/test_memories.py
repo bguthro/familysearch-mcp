@@ -17,6 +17,9 @@ class FakeDiscovery:
     def href(self, rel):
         return {"artifacts": ART + Q}[rel]
 
+    def person_links(self, pid):
+        return {"artifacts": BASE + f"/platform/tree/persons/{pid}/memories" + Q}
+
 
 def _mem():
     return Memories(FSClient("tkn", Environment.BETA, min_write_interval=0), FakeDiscovery())
@@ -52,16 +55,58 @@ def test_upload_posts_multipart_and_returns_id():
     assert req.headers["X-Reason"] == "r1"
 
 
+PERSON_ART = BASE + "/platform/tree/persons/PID-1/memories"
+
+
 @responses.activate
-def test_link_to_person_posts_persona():
-    url = ART + "/MEM-1/personas" + Q
-    responses.add(responses.POST, url, status=204)
-    _mem().link_to_person("PID-1", "MEM-1", reason="r2")
+def test_upload_to_person_rejects_oversize_and_bad_type():
+    with pytest.raises(ValueError):
+        _mem().upload_to_person("PID-1", b"x" * (Memories.MAX_BYTES + 1), filename="a.png",
+                                content_type="image/png", reason="r")
+    with pytest.raises(ValueError):
+        _mem().upload_to_person("PID-1", b"hi", filename="a.txt",
+                                content_type="text/plain", reason="r")
+    assert len(responses.calls) == 0
+
+
+@responses.activate
+def test_upload_to_person_posts_multipart_to_persons_artifacts_link():
+    responses.add(responses.POST, PERSON_ART, status=201, headers={
+        "X-ENTITY-ID": "MEM-9",
+        "Location": BASE + "/platform/tree/persons/PID-1/memory-references/MEM-9-1"})
+    mid = _mem().upload_to_person("PID-1", b"\x89PNGdata", filename="a.png",
+                                  content_type="image/png", title="Birth cert", reason="r1")
+    assert mid == "MEM-9"
     req = responses.calls[0].request
-    assert req.url == url
     u = urlsplit(req.url)
-    assert u.path.endswith("/MEM-1/personas") and u.query == "flag=fsh"
-    assert json.loads(req.body) == {"persons": [{"id": "PID-1"}]}
+    assert u.path == "/platform/tree/persons/PID-1/memories"
+    assert "flag=fsh" in u.query and "filename=a.png" in u.query and "title=Birth+cert" in u.query
+    assert req.headers["Content-Type"].startswith("multipart/form-data; boundary=")
+    assert b'name="artifact"; filename="a.png"' in req.body
+    assert b"image/png" in req.body and b"\x89PNGdata" in req.body
+    assert req.headers["X-Reason"] == "r1"
+
+
+@responses.activate
+def test_upload_to_person_without_title_omits_title_param():
+    responses.add(responses.POST, PERSON_ART, status=201, headers={"X-ENTITY-ID": "MEM-9"})
+    _mem().upload_to_person("PID-1", b"x", filename="a.png", content_type="image/png", reason="r")
+    assert "title=" not in responses.calls[0].request.url
+
+
+@responses.activate
+def test_link_to_person_posts_persona_with_ark_and_media_description():
+    url = ART + "/MEM-1/personas"
+    responses.add(responses.POST, url, status=201, headers={"X-ENTITY-ID": "MEM-1-1"})
+    assert _mem().link_to_person("PID-1", "MEM-1", reason="r2") is None
+    req = responses.calls[0].request
+    assert req.url == url  # clean: no query string
+    assert json.loads(req.body) == {"persons": [{
+        "media": [{"description": ART + "/MEM-1"}],
+        "identifiers": {"http://familysearch.org/v1/FamilyTreePerson": [
+            BASE + "/ark:/61903/4:1:PID-1"]},
+    }]}
+    assert req.headers["Content-Type"] == "application/x-fs-v1+json"
     assert req.headers["X-Reason"] == "r2"
 
 

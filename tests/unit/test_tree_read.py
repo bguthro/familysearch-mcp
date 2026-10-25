@@ -95,6 +95,14 @@ def test_get_matches_returns_candidates():
 
 
 @responses.activate
+def test_get_matches_sends_atom_accept_and_204_is_empty():
+    _add(PERSON, _load("person.json"))
+    responses.add(responses.GET, PERSON + "/matches", status=204)
+    assert _reader().get_matches("BMXM-2HZ") == []
+    assert responses.calls[-1].request.headers["Accept"] == "application/x-gedcomx-atom+json"
+
+
+@responses.activate
 @pytest.mark.parametrize("body", [{}, {"entries": []}, [1, 2]])
 def test_get_matches_empty(body):
     _add(PERSON, _load("person.json"))

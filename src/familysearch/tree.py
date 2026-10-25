@@ -5,6 +5,7 @@ from ._urls import join_path
 from .client import FSClient
 from .discovery import Discovery
 from .errors import FSError
+from .search import ATOM_ACCEPT
 
 
 def _json(resp) -> dict:
@@ -36,11 +37,11 @@ class TreeReader:
             return persons[0]
         raise FSError(f"person not found: {person_id}")
 
-    def _fetch(self, links: dict[str, str], rel: str, *keys: str) -> list[dict]:
+    def _fetch(self, links: dict[str, str], rel: str, *keys: str, accept=None) -> list[dict]:
         href = links.get(rel)
         if not href:
             return []
-        return _items(_json(self._client.get(href)), *keys)
+        return _items(_json(self._client.get(href, accept=accept)), *keys)
 
     def get_relatives(self, person_id: str) -> dict:
         links = self._discovery.person_links(person_id)
@@ -60,10 +61,14 @@ class TreeReader:
 
     def get_matches(self, person_id: str) -> list[dict]:
         links = self._discovery.person_links(person_id)
-        return self._fetch(links, "matches", "entries")
+        # The matches endpoint answers 406 to x-fs-v1+json; it needs the atom Accept
+        # (204 with no body when there are no matches).
+        return self._fetch(links, "matches", "entries", accept=ATOM_ACCEPT)
 
 
 GX = "http://gedcomx.org/"
+# Not a discovery rel: learned from the Location header of a child-and-parents POST.
+CHILD_AND_PARENTS_PATH = "/platform/tree/child-and-parents-relationships"
 
 
 def _new_id(resp) -> str:
@@ -90,8 +95,10 @@ class TreeWriter:
     def _ref(self, person_id: str) -> dict:
         return {"resource": join_path(self._persons().split("?")[0], person_id), "resourceId": person_id}
 
-    def _post_relationship(self, rtype: str, p1: str, p2: str, reason: str) -> str:
-        body = {"relationships": [{"type": GX + rtype, "person1": self._ref(p1), "person2": self._ref(p2)}]}
+    def create_couple(self, person1_id: str, person2_id: str, *, reason: str) -> str:
+        body = {"relationships": [{
+            "type": GX + "Couple", "person1": self._ref(person1_id), "person2": self._ref(person2_id),
+        }]}
         resp = self._client.post(self._discovery.href("relationships"), json=body, reason=reason)
         return _new_id(resp)
 
@@ -106,11 +113,29 @@ class TreeWriter:
             reason=reason,
         )
 
-    def create_couple(self, person1_id: str, person2_id: str, *, reason: str) -> str:
-        return self._post_relationship("Couple", person1_id, person2_id, reason)
+    def create_parent_child(self, *, child_id: str, parent_ids: list[str], reason: str) -> str:
+        """Create ONE child-and-parents relationship holding all given parents.
 
-    def create_parent_child(self, *, child_id: str, parent_ids: list[str], reason: str) -> list[str]:
-        return [self._post_relationship("ParentChild", p, child_id, reason) for p in parent_ids]
+        (Posting ParentChild ``relationships`` creates couple links instead; proven live.)
+        FamilySearch derives the parents' couple link from a two-parent relationship.
+        """
+        if not isinstance(parent_ids, (list, tuple)) or not 1 <= len(parent_ids) <= 2:
+            raise ValueError("parent_ids must hold 1 or 2 person ids")
+        rel = {f"parent{i}": self._ref(p) for i, p in enumerate(parent_ids, 1)}
+        rel["child"] = self._ref(child_id)
+        resp = self._client.post(
+            self._discovery.href("relationships"),
+            json={"childAndParentsRelationships": [rel]}, reason=reason,
+        )
+        return _new_id(resp)
+
+    def delete_couple(self, relationship_id: str, *, reason: str) -> None:
+        url = join_path(self._discovery.href("relationships"), relationship_id)
+        self._client.delete(url, reason=reason)
+
+    def delete_child_and_parents(self, relationship_id: str, *, reason: str) -> None:
+        url = join_path(self._client.base_url + CHILD_AND_PARENTS_PATH, relationship_id)
+        self._client.delete(url, reason=reason)
 
     def delete_person(self, person_id: str, *, reason: str) -> None:
         self._client.delete(join_path(self._persons(), person_id), reason=reason)
