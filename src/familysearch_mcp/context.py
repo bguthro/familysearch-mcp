@@ -7,7 +7,9 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 import requests
+from urllib.parse import urlsplit
 
+from familysearch.client import DEFAULT_USER_AGENT
 from familysearch import (
     Discovery,
     Environment,
@@ -44,19 +46,34 @@ class Services:
         return "Services(...)"
 
 
-def _status_of_current_user(token: str) -> Callable[[str], int]:
-    """Bootstrap probe for detect_environment: GET /platform/users/current."""
+def _status_of_current_user(
+    token: str, seen: list[int] | None = None
+) -> Callable[[str], int]:
+    """Bootstrap probe for detect_environment: GET /platform/users/current.
+
+    Sends the library's browser User-Agent (FamilySearch's edge answers 403 to
+    python-requests) and records every status seen in `seen`.
+    """
 
     def http_get(base_url: str) -> int:
-        resp = requests.get(
-            base_url + "/platform/users/current",
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/x-fs-v1+json",
-            },
-            timeout=30,
-            allow_redirects=False,
-        )
+        try:
+            resp = requests.get(
+                base_url + "/platform/users/current",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/x-fs-v1+json",
+                    "User-Agent": DEFAULT_USER_AGENT,
+                },
+                timeout=30,
+                allow_redirects=False,
+            )
+        except requests.RequestException as exc:
+            host = urlsplit(base_url).netloc
+            raise ContextError(
+                f"could not reach FamilySearch at {host}: {type(exc).__name__}"
+            ) from None
+        if seen is not None:
+            seen.append(resp.status_code)
         return resp.status_code
 
     return http_get
@@ -81,7 +98,20 @@ class Context:
 
     def _build(self) -> Services:
         token = extract_brave_token()
-        actual = detect_environment(token, _status_of_current_user(token))
+        seen: list[int] = []
+        try:
+            actual = detect_environment(token, _status_of_current_user(token, seen))
+        except ContextError:
+            raise
+        except FSError:
+            if seen and all(code == 403 for code in seen):
+                raise ContextError(
+                    "FamilySearch BLOCKED the auth check (HTTP 403 from both "
+                    "hosts). This is not an expired login: the request was "
+                    "rejected at FamilySearch's edge, which requires a browser "
+                    "User-Agent. Re-logging in will not help."
+                ) from None
+            raise
         if actual is not self.environment:
             raise ContextError(
                 f"Brave is signed into {actual.name.lower()}, but FS_ENVIRONMENT is "
