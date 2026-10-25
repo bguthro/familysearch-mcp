@@ -52,9 +52,14 @@ def class_name(module: str) -> str:
     return "".join(part.capitalize() for part in module.split("_")) + "Ops"
 
 
+def _clean(text: str) -> str:
+    """Collapse whitespace and replace control/non-printable characters with spaces."""
+    return " ".join("".join(c if c.isprintable() else " " for c in text).split())
+
+
 def _docstring(op: ResolvedOp) -> str:
-    summary = " ".join(op.summary.split()) or op.operation_id
-    text = f"{summary} ({op.http_method} {op.path})."
+    summary = _clean(op.summary) or op.operation_id
+    text = _clean(f"{summary} ({op.http_method} {op.path}).")
     text = text.replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
     if text.endswith('"'):
         text = text[:-1] + '\\"'
@@ -78,9 +83,10 @@ def _render_method(op: ResolvedOp) -> str:
     if op.kind == "write":
         kw.append("reason: str")
         call.append("reason=reason")
-        if _BODY_PARAMS[op.body]:
-            kw.append(_BODY_PARAMS[op.body])
-            call.append(_BODY_ARGS[op.body])
+    if _BODY_PARAMS[op.body]:  # some read-classified POSTs carry a body
+        kw.append(_BODY_PARAMS[op.body])
+        call.append(_BODY_ARGS[op.body])
+    if op.kind == "write":
         kw.append(_WRITE_FLAGS)
         call.append(
             "allow_unverified=allow_unverified, allow_production=allow_production, "

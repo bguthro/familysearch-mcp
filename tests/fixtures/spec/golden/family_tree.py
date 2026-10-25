@@ -11,6 +11,10 @@ class FamilyTreeOps:
         """Create Person (POST /tree/persons)."""
         return self._call(OPERATIONS["createPerson"], {}, reason=reason, body=body, allow_unverified=allow_unverified, allow_production=allow_production, confirm_destructive=confirm_destructive, accept=accept, query=query)
 
+    def match_person_by_example(self, *, body: Any = None, accept: str | None = None, query: Mapping[str, Any] | None = None) -> ApiResult:
+        """Match Person by Example (POST /tree/matches)."""
+        return self._call(OPERATIONS["matchPersonByExample"], {}, body=body, accept=accept, query=query)
+
     def read_person(self, pid: str, *, accept: str | None = None, query: Mapping[str, Any] | None = None) -> ApiResult:
         """Read Person (GET /tree/persons/{pid})."""
         return self._call(OPERATIONS["readPerson"], {"pid": pid}, accept=accept, query=query)

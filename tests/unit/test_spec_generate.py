@@ -22,7 +22,8 @@ OVERRIDES = FIXTURES / "mini_overrides.json"
 def mini(overrides=None):
     snapshot = json.loads(SNAPSHOT.read_text())
     ov = load_overrides(OVERRIDES)
-    ov.update(overrides or {})
+    for key, value in (overrides or {}).items():
+        ov[key] = {**ov.get(key, {}), **value} if isinstance(value, dict) else value
     return resolve(snapshot, ov)
 
 
@@ -148,3 +149,23 @@ def test_rejects_param_names_that_clash():
         bad = dataclasses.replace(ops[0], path_params=(bad_name,))
         with pytest.raises(ValueError):
             generate.render([bad], excluded)
+
+
+def test_reads_have_no_write_params_but_read_post_json_has_body():
+    text = render_mini()["family_tree.py"]
+    read = text.split("def read_person")[1].split("    def ")[0]
+    assert "reason" not in read and "allow_" not in read and "body" not in read
+    post = text.split("def match_person_by_example")[1].split("    def ")[0]
+    assert (
+        "(self, *, body: Any = None, accept: str | None = None, "
+        "query: Mapping[str, Any] | None = None) -> ApiResult:"
+    ) in post
+    assert "reason" not in post and "allow_" not in post
+    assert "body=body" in post
+
+
+def test_docstring_with_control_characters_compiles():
+    ops, excluded = mini()
+    nasty = dataclasses.replace(ops[0], summary='a\x00b\x1b"c\\ \n\t d"')
+    for name, text in generate.render([nasty], excluded).items():
+        compile(text, name, "exec")

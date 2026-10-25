@@ -5,7 +5,14 @@
    "method": "DELETE",
    "operation_id": "deleteMemory",
    "params": [
-    {"enum": null, "example": null, "in": "path", "name": "mid", "required": true, "type": "string"}
+    {
+     "enum": null,
+     "example": null,
+     "in": "path",
+     "name": "mid",
+     "required": true,
+     "type": "string"
+    }
    ],
    "path": "/memories/memories/{mid}",
    "summary": "Delete Memory"
@@ -23,12 +30,44 @@
    "method": "GET",
    "operation_id": "readPerson",
    "params": [
-    {"enum": null, "example": "LZJW-C31", "in": "path", "name": "pid", "required": true, "type": "string"},
-    {"enum": ["application/x-fs-v1+json", "application/json"], "example": null, "in": "header", "name": "Accept", "required": true, "type": "string"},
-    {"enum": null, "example": null, "in": "query", "name": "relatives", "required": false, "type": "boolean"}
+    {
+     "enum": null,
+     "example": "LZJW-C31",
+     "in": "path",
+     "name": "pid",
+     "required": true,
+     "type": "string"
+    },
+    {
+     "enum": [
+      "application/x-fs-v1+json",
+      "application/json"
+     ],
+     "example": null,
+     "in": "header",
+     "name": "Accept",
+     "required": true,
+     "type": "string"
+    },
+    {
+     "enum": null,
+     "example": null,
+     "in": "query",
+     "name": "relatives",
+     "required": false,
+     "type": "boolean"
+    }
    ],
    "path": "/tree/persons/{pid}",
    "summary": "Read Person"
+  },
+  {
+   "area": "Family Tree Endpoints",
+   "method": "POST",
+   "operation_id": "matchPersonByExample",
+   "params": [],
+   "path": "/tree/matches",
+   "summary": "Match Person by Example"
   }
  ],
  "schema": 1,
