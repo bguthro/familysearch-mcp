@@ -379,12 +379,22 @@
   },
   "getChildAndParentsRelationship": {
    "generated": {
-    "status": "unverified"
+    "commit": "44ad9445a7622a7e278b32d82abb5baf162c8fb7",
+    "evidence": "read-content",
+    "fingerprint": "01ecad93af0587cd72001d19c0d3bf37d8e74abdfc8bed9d8ec2de29a2955167",
+    "recipe": "reads.tree.relationships",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "getChildAndParentsRelationshipNotes": {
    "generated": {
-    "status": "unverified"
+    "commit": "44ad9445a7622a7e278b32d82abb5baf162c8fb7",
+    "evidence": "read-content",
+    "fingerprint": "6eda6d0b5d8b619d2b643e59698b113ad4d296d9b9dac065c6fd9b10621574b5",
+    "recipe": "reads.tree.child_and_parents_notes",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "getChildAndParentsRelationshipSourceReferences": {
@@ -399,7 +409,12 @@
   },
   "getCoupleRelationshipNotes": {
    "generated": {
-    "status": "unverified"
+    "commit": "44ad9445a7622a7e278b32d82abb5baf162c8fb7",
+    "evidence": "read-content",
+    "fingerprint": "4ddb3ca7f97489949bd9767c6d0d1deea3b2afc3552ab26d0ab17825f2a2f119",
+    "recipe": "reads.tree.couple_notes",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "getGroups": {
@@ -424,7 +439,12 @@
   },
   "getPersonMemories": {
    "generated": {
-    "status": "unverified"
+    "commit": "44ad9445a7622a7e278b32d82abb5baf162c8fb7",
+    "evidence": "read-content",
+    "fingerprint": "49d1849918e5b84dd115c30599e8b9c681c32a4400e25b46393adef94199e2ed",
+    "recipe": "reads.tree.memories",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    },
    "handwritten": {
     "recipe": "tests/integration/test_beta_roundtrip.py::test_upload_to_person_then_link_to_second_person",
@@ -443,7 +463,12 @@
   },
   "headChildAndParentRelationshipHistory": {
    "generated": {
-    "status": "unverified"
+    "commit": "44ad9445a7622a7e278b32d82abb5baf162c8fb7",
+    "evidence": "read-content",
+    "fingerprint": "ddbfeeb24925abf48e2ad06153935fb45cac257503987e393b85a6340f64270c",
+    "recipe": "reads.tree.relationship_history",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "headPerson": {
@@ -483,22 +508,42 @@
   },
   "readAncestry": {
    "generated": {
-    "status": "unverified"
+    "commit": "44ad9445a7622a7e278b32d82abb5baf162c8fb7",
+    "evidence": "read-content",
+    "fingerprint": "97371f3df2b5e99169f95932da6950b4e8342f4584cac9e980de62de3aa89ec0",
+    "recipe": "reads.tree.pedigree",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readChildAndParentRelationship": {
    "generated": {
-    "status": "unverified"
+    "commit": "44ad9445a7622a7e278b32d82abb5baf162c8fb7",
+    "evidence": "read-content",
+    "fingerprint": "45bc12a960549a895a3f69d3550fd43b9cc4755b2d85f4cf5f28f300a0ccc044",
+    "recipe": "reads.tree.relationship_history",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readChildAndParentRelationshipNote": {
    "generated": {
-    "status": "unverified"
+    "commit": "44ad9445a7622a7e278b32d82abb5baf162c8fb7",
+    "evidence": "read-content",
+    "fingerprint": "1e3d497f6f35eeb30cd3ff0b5579dfcf32c2c6611ba4c12cfa4e2cdd71a41df9",
+    "recipe": "reads.tree.child_and_parents_notes",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readChildAndParentsRelationshipHeaders": {
    "generated": {
-    "status": "unverified"
+    "commit": "44ad9445a7622a7e278b32d82abb5baf162c8fb7",
+    "evidence": "read-content",
+    "fingerprint": "17556a9a8637c1049dfc74650605942b5bca67f5fffae06d3c527be5effcd707",
+    "recipe": "reads.tree.relationships",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readComments": {
@@ -508,27 +553,52 @@
   },
   "readCoupleRelationship": {
    "generated": {
-    "status": "unverified"
+    "commit": "44ad9445a7622a7e278b32d82abb5baf162c8fb7",
+    "evidence": "read-content",
+    "fingerprint": "04685662d7ca729bfc6b1d2f302af8701526e58ef4bdac9f6fd159fa653fb4c8",
+    "recipe": "reads.tree.relationships",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readCoupleRelationshipChangeHistory": {
    "generated": {
-    "status": "unverified"
+    "commit": "44ad9445a7622a7e278b32d82abb5baf162c8fb7",
+    "evidence": "read-content",
+    "fingerprint": "4ed022ac889afce33d524cf54820c01a79f4e810bb1ab88a564ff22046015d6d",
+    "recipe": "reads.tree.relationship_history",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readCoupleRelationshipChangeHistoryHeaders": {
    "generated": {
-    "status": "unverified"
+    "commit": "44ad9445a7622a7e278b32d82abb5baf162c8fb7",
+    "evidence": "read-content",
+    "fingerprint": "22f8a81ac89f46163101dfae49f6a25deb676ddad4bd358c0c7c76ce86ad2c4f",
+    "recipe": "reads.tree.relationship_history",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readCoupleRelationshipHeaders": {
    "generated": {
-    "status": "unverified"
+    "commit": "44ad9445a7622a7e278b32d82abb5baf162c8fb7",
+    "evidence": "read-content",
+    "fingerprint": "17b4e93153e5f99d65b2b21330935f19689236f845266a3e35cd8e6dcbba5ef6",
+    "recipe": "reads.tree.relationships",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readCoupleRelationshipNote": {
    "generated": {
-    "status": "unverified"
+    "commit": "44ad9445a7622a7e278b32d82abb5baf162c8fb7",
+    "evidence": "read-content",
+    "fingerprint": "0720ff37e075257d08edf432da04de356b65941ceaffde6031e9b8e562a76b99",
+    "recipe": "reads.tree.couple_notes",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readCoupleRelationshipSourceReferences": {
@@ -562,7 +632,12 @@
   },
   "readDescendancy": {
    "generated": {
-    "status": "unverified"
+    "commit": "44ad9445a7622a7e278b32d82abb5baf162c8fb7",
+    "evidence": "read-content",
+    "fingerprint": "3684df66c13fe4a88223792dacca4d12039dadaacf83876919cce77ec03daec6",
+    "recipe": "reads.tree.pedigree",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readDiscussion": {
@@ -710,12 +785,22 @@
   },
   "readPersonNote": {
    "generated": {
-    "status": "unverified"
+    "commit": "44ad9445a7622a7e278b32d82abb5baf162c8fb7",
+    "evidence": "read-content",
+    "fingerprint": "0d6d773595a299cf73eb7c04ca508df0036d3b117c5afe56042a59120988854b",
+    "recipe": "reads.tree.notes",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readPersonNotes": {
    "generated": {
-    "status": "unverified"
+    "commit": "44ad9445a7622a7e278b32d82abb5baf162c8fb7",
+    "evidence": "read-content",
+    "fingerprint": "f08dac1ed3362d9eb69481bf44e23cb212bf4702889d1a96bc253327333788c0",
+    "recipe": "reads.tree.notes",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readPersonParents": {
