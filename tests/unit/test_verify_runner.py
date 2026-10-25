@@ -395,6 +395,19 @@ def test_dirty_tree_check(porcelain, ok):
     assert (runner.dirty_paths(porcelain) == []) is ok
 
 
+def test_git_status_includes_untracked_files(monkeypatch):
+    import subprocess
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    runner.git_status_porcelain()
+    assert "--untracked-files=normal" in calls[0]
+
+
 @responses.activate
 def test_runner_main_refuses_dirty_tree(reg_path, fake_recipes, no_cookies, monkeypatch,
                                         capsys):

@@ -90,6 +90,23 @@ def test_malformed_registry_exits_2(tmp_path, capsys):
     assert "malformed" in capsys.readouterr().err
 
 
+def test_blank_and_non_string_reasons_are_pending():
+    reg = registry(a={"status": "unverifiable", "reason": "  "},
+                   b={"status": "unverifiable", "reason": 5},
+                   c={"status": "unverifiable", "reason": "real"})
+    r = build_report([op("a"), op("b"), op("c")], {"x": "  ", "y": 5, "z": "ok"}, reg)
+    assert {p["operation_id"] for p in r["pending"]} == {"a", "b", "x", "y"}
+
+
+def test_missing_or_invalid_registry_exits_2_with_message(tmp_path, capsys):
+    assert main(["--registry", str(tmp_path / "nope.json")]) == 2
+    assert "error:" in capsys.readouterr().err
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json")
+    assert main(["--registry", str(bad)]) == 2
+    assert "error:" in capsys.readouterr().err
+
+
 def test_real_registry(capsys):
     assert main(["--require-done"]) == 1
     assert "205" in capsys.readouterr().out

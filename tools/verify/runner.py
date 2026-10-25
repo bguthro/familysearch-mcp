@@ -99,7 +99,7 @@ def build_beta_client() -> FSClient:
 
 
 def git_status_porcelain() -> str:
-    return subprocess.run(["git", "status", "--porcelain"], cwd=REPO_ROOT,
+    return subprocess.run(["git", "status", "--porcelain", "--untracked-files=normal"], cwd=REPO_ROOT,
                           capture_output=True, text=True, check=True).stdout
 
 

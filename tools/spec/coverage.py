@@ -20,6 +20,11 @@ from familysearch.api.registry import (
 from .resolve import OVERRIDES_PATH, SNAPSHOT_PATH, ResolvedOp, load_overrides, resolve
 
 
+def _valid_reason(reason) -> bool:
+    """A recorded reason is a string with something other than whitespace in it."""
+    return isinstance(reason, str) and bool(reason.strip())
+
+
 def build_report(
     ops: list[ResolvedOp],
     excluded: dict,
@@ -46,7 +51,8 @@ def build_report(
         reason = None
         if status == "unverifiable":
             entry = _impl_entry(o.operation_id, registry, "generated")
-            reason = entry.get("reason") or None
+            reason = entry.get("reason")
+            reason = reason if _valid_reason(reason) else None
         if status == "verified" or (status == "unverifiable" and reason):
             continue
         item = {"operation_id": o.operation_id, "kind": o.kind, "status": status}
@@ -56,7 +62,7 @@ def build_report(
 
     for sid, reason in excluded.items():
         count(areas.get(sid, "unknown"), "excluded")
-        if not reason:
+        if not _valid_reason(reason):
             pending.append({"operation_id": sid, "kind": "unknown", "status": "excluded"})
 
     return {"total": len(ops) + len(excluded), "by_area": by_area, "pending": pending}
@@ -103,6 +109,9 @@ def main(argv: list[str] | None = None) -> int:
         report = build_report(ops, excluded, registry, areas)
     except OperationLockedError as exc:
         print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except (OSError, ValueError) as exc:  # missing/unreadable file, invalid JSON
+        print(f"error: cannot read inputs: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
     print(format_report(report))
     if args.require_done and report["pending"]:
