@@ -448,7 +448,12 @@
   },
   "headPersonChangeHistory": {
    "generated": {
-    "status": "unverified"
+    "commit": "0d8c390228ff605347e0197a17bfea07f26097f5",
+    "evidence": "read-content",
+    "fingerprint": "c61f292d41f20ac341deda48bc5544e185f613e87cb477a0a32c0087750cae1a",
+    "recipe": "reads.tree.history",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "mergePerson": {
@@ -651,7 +656,12 @@
   },
   "readPersonChangeHistory": {
    "generated": {
-    "status": "unverified"
+    "commit": "0d8c390228ff605347e0197a17bfea07f26097f5",
+    "evidence": "read-content",
+    "fingerprint": "3cc496725b1214ab85cc33226fc1945b647f5c0303852fa79373fa5a8e48439f",
+    "recipe": "reads.tree.history",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readPersonChildren": {
