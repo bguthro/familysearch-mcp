@@ -443,7 +443,12 @@
   },
   "headPerson": {
    "generated": {
-    "status": "unverified"
+    "commit": "4c59ccf2e18be0b6204ff9b3cb25891e7032d250",
+    "evidence": "read-content",
+    "fingerprint": "356795bebab65db58c4f5bc5eab791b8fdcea06a0627a0d84dc92485ef42900f",
+    "recipe": "reads.tree.persons",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "headPersonChangeHistory": {
@@ -737,7 +742,12 @@
   },
   "readPersons": {
    "generated": {
-    "status": "unverified"
+    "commit": "4c59ccf2e18be0b6204ff9b3cb25891e7032d250",
+    "evidence": "read-content",
+    "fingerprint": "f632ea0ded3ef7e8514da5806b90fc380680c3e4d7762719fa21ee58b2141194",
+    "recipe": "reads.tree.persons",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readPlace": {
