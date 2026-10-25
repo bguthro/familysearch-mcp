@@ -126,9 +126,10 @@ CALLS = {
 }
 
 
-def test_registers_exactly_four_tools_with_docs(setup):
+def test_registers_first_four_tools_with_docs(setup):
+    # The full set of eight is asserted in test_mcp_tools_write_memories.py.
     tools, _, _ = setup
-    assert set(tools) == set(CALLS)
+    assert set(CALLS) <= set(tools)
     for name, fn in tools.items():
         assert fn.__doc__ and fn.__doc__.strip(), name
         assert "reason" in fn.__doc__, name

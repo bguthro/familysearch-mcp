@@ -1,6 +1,8 @@
 import pytest
 
-from familysearch_mcp.validation import clamp, validate_person_id
+from familysearch_mcp.validation import (
+    clamp, validate_memory_id, validate_person_id, validate_source_id,
+)
 
 
 @pytest.mark.parametrize("raw,expected", [
@@ -46,3 +48,36 @@ def test_non_ascii_lookalikes_rejected(raw):
 def test_clamp_infinity_and_overflow():
     assert clamp(float("inf"), 1, 50) == 1
     assert clamp(float("-inf"), 1, 50) == 1
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("1", "1"), ("12345", "12345"), (42, "42"),
+    ("0", "0"), ("9" * 20, "9" * 20),
+])
+def test_validate_memory_id_ok(raw, expected):
+    assert validate_memory_id(raw) == expected
+
+
+@pytest.mark.parametrize("raw", [
+    "", "abc", "12 34", "../1", "１２３", "9" * 21, "1a", "-1", "1.5", "1\n", " 987 ",
+    True, False, None, 1.5, [1], b"12", -5, 10**20,
+])
+def test_validate_memory_id_bad(raw):
+    with pytest.raises(ValueError, match="memory id"):
+        validate_memory_id(raw)
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("71FD-SL2", "71FD-SL2"), (" 71fd-sl2\n", "71FD-SL2"), ("ABCD-12345", "ABCD-12345"),
+])
+def test_validate_source_id_ok(raw, expected):
+    assert validate_source_id(raw) == expected
+
+
+@pytest.mark.parametrize("raw", [
+    "", "nope", "71FD-SL", "71FD-SL2345", "../71FD-SL2", "71FD-SL2/x", "71FD-SL2?a=1",
+    "7ıFD-SL2", "７１FD-SL2", None, 5, b"71FD-SL2", ["71FD-SL2"],
+])
+def test_validate_source_id_bad(raw):
+    with pytest.raises(ValueError, match="source description id"):
+        validate_source_id(raw)

@@ -23,6 +23,30 @@ def validate_person_id(value: Any) -> str:
     )
 
 
+def validate_source_id(value: Any) -> str:
+    """Return the normalized source description id (e.g. '71FD-SL2') or raise ValueError."""
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isascii():
+            candidate = stripped.upper()
+            if _PERSON_ID.fullmatch(candidate):
+                return candidate
+    raise ValueError(
+        f"invalid source description id {value!r}: expected an id like '71FD-SL2'"
+    )
+
+
+def validate_memory_id(value: Any) -> str:
+    """Return a memory id as a string of 1-20 ASCII digits or raise ValueError."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        value = str(value)
+    if isinstance(value, str) and value.isascii() and re.fullmatch(r"[0-9]{1,20}", value):
+        return value
+    raise ValueError(
+        f"invalid memory id {value!r}: expected 1-20 ASCII digits like '123456789'"
+    )
+
+
 def clamp(value: Any, lo: int, hi: int) -> int:
     """Coerce value to int and bound it to [lo, hi]; non-integers become lo."""
     try:

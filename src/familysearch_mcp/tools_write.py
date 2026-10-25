@@ -12,15 +12,21 @@ There is deliberately no delete or merge tool.
 from __future__ import annotations
 
 import datetime
+import os
+import stat
 import unicodedata
+import urllib.parse
 from typing import Any
 
-from familysearch import FACT_BIRTH, FACT_DEATH, FSError, build_fact, build_person
+from familysearch import (
+    FACT_BIRTH, FACT_DEATH, FSError, Memories, build_fact, build_person,
+)
+from familysearch._urls import join_path
 
 from .context import ContextError
-from .guards import classify_life_status
+from .guards import classify_life_status, provenance_blocked
 from .projections import project_search_hit
-from .validation import validate_person_id
+from .validation import validate_memory_id, validate_person_id, validate_source_id
 
 _REASON_MAX = 500
 _TEXT_MAX = 2000
@@ -289,6 +295,195 @@ def _create_parent_child(ctx: Any, child_id, parent_ids, reason) -> dict:
     return {"status": "created", "relationship_ids": created}
 
 
+_PATH_MAX = 4096
+_UPLOAD_TYPES = {
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".tif": "image/tiff", ".tiff": "image/tiff", ".pdf": "application/pdf",
+}
+_MAGIC = {
+    "image/png": (b"\x89PNG\r\n\x1a\n",),
+    "image/jpeg": (b"\xff\xd8\xff",),
+    "image/tiff": (b"II*\x00", b"MM\x00*"),
+    "application/pdf": (b"%PDF-",),
+}
+
+
+def _upload_path(value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("file_path is required: a non-blank path (str)")
+    if len(value) > _PATH_MAX:
+        raise ValueError(f"file_path must be at most {_PATH_MAX} characters")
+    _no_control("file_path", value)
+    return value
+
+
+def _validate_upload_file(file_path: str) -> tuple[str, str, int]:
+    """Resolve and vet the path WITHOUT reading it. Returns (real, content_type, size)."""
+    real = os.path.realpath(os.path.expanduser(file_path))
+    root_env = os.environ.get("FS_UPLOAD_ROOT", "")
+    if root_env.strip():
+        root = os.path.realpath(os.path.expanduser(root_env.strip()))
+        try:
+            inside = os.path.commonpath([real, root]) == root
+        except ValueError:
+            inside = False
+        if not inside:
+            raise ValueError("file_path is outside the allowed upload directory")
+    try:
+        st = os.stat(real)
+    except OSError as e:
+        raise ValueError(f"cannot access file_path: {e.strerror or 'error'}") from None
+    if not stat.S_ISREG(st.st_mode):
+        raise ValueError("file_path must be a regular file")
+    if not 0 < st.st_size <= Memories.MAX_BYTES:
+        raise ValueError(
+            f"file must be between 1 byte and {Memories.MAX_BYTES} bytes (15 MB); "
+            f"it is {st.st_size}"
+        )
+    ext = os.path.splitext(real)[1].lower()
+    content_type = _UPLOAD_TYPES.get(ext)
+    if content_type is None:
+        raise ValueError(
+            "unsupported file type; allowed extensions: " + ", ".join(sorted(_UPLOAD_TYPES))
+        )
+    return real, content_type, st.st_size
+
+
+def _read_upload(real: str, content_type: str) -> bytes:
+    def opener(path: str, flags: int) -> int:  # never block on a swapped-in FIFO
+        return os.open(path, flags | getattr(os, "O_NONBLOCK", 0))
+
+    with open(real, "rb", opener=opener) as f:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+            raise ValueError("file_path must be a regular file")
+        data = f.read(Memories.MAX_BYTES + 1)
+    if not data or len(data) > Memories.MAX_BYTES:
+        raise ValueError("file must be between 1 byte and 15 MB")
+    if not data.startswith(_MAGIC[content_type]):
+        raise ValueError(
+            f"file content does not look like {content_type} (wrong magic bytes); "
+            "refusing to upload"
+        )
+    return data
+
+
+def _upload_memory(ctx: Any, file_path, reason, title, provenance, override_rights) -> dict:
+    refused = _gate(ctx)
+    if refused:
+        return refused
+    reason = _reason(reason)
+    title = _text("title", title)
+    provenance = _text("provenance", provenance)
+    if not isinstance(override_rights, bool):
+        raise ValueError("override_rights must be true or false")
+    file_path = _upload_path(file_path)
+    real, content_type, _size = _validate_upload_file(file_path)
+
+    given_name = os.path.basename(file_path)
+    real_name = os.path.basename(real)
+    aggregator = provenance_blocked(given_name, provenance)
+    shown = given_name
+    if aggregator is None:
+        aggregator = provenance_blocked(real_name, None)
+        shown = real_name
+    if aggregator and not override_rights:
+        return {
+            "status": "provenance_blocked",
+            "aggregator": aggregator,
+            "file": shown,
+            "message": (
+                f"Nothing was uploaded. This looks like an image from {aggregator}. "
+                "Aggregator-sourced images carry the site's branding and redistribution "
+                "terms, and uploads become public memories on the shared tree, so do not "
+                "upload it. If Ben confirms he holds the rights for THIS file, retry "
+                "with override_rights=True."
+            ),
+        }
+    if provenance is None and not aggregator and not override_rights:
+        return {
+            "status": "provenance_unknown",
+            "file": given_name,
+            "message": (
+                "Nothing was uploaded. Policy: a document whose source cannot be "
+                "determined is not uploaded automatically. Retry with `provenance` set "
+                "to the source citation (for example from the person's "
+                "ResearchSummary.md), or have Ben confirm and set override_rights=True."
+            ),
+        }
+
+    data = _read_upload(real, content_type)
+    memory_id = ctx.call(
+        lambda s: s.memories.upload(
+            data, filename=real_name, content_type=content_type,
+            title=title or real_name, reason=reason,
+        )
+    )
+    out = {
+        "status": "uploaded", "memory_id": memory_id, "filename": real_name,
+        "content_type": content_type, "bytes": len(data),
+        "rights_override": override_rights,
+    }
+    if aggregator and override_rights:
+        out["overridden_aggregator"] = aggregator
+    return out
+
+
+def _link_memory(ctx: Any, person_id, memory_id, reason) -> dict:
+    refused = _gate(ctx)
+    if refused:
+        return refused
+    reason = _reason(reason)
+    pid = validate_person_id(person_id)
+    mid = validate_memory_id(memory_id)
+    ctx.call(lambda s: s.memories.link_to_person(pid, mid, reason=reason))
+    return {"status": "linked", "person_id": pid, "memory_id": mid}
+
+
+def _source_url(value: Any) -> str:
+    url = _required_text("about_url", value)
+    if any(ch.isspace() for ch in url):
+        raise ValueError("about_url must not contain whitespace")
+    try:
+        parts = urllib.parse.urlsplit(url)
+        host = parts.netloc
+    except ValueError as e:
+        raise ValueError(f"about_url is not a valid URL: {e}") from None
+    if parts.scheme.lower() not in ("http", "https") or not host or not parts.hostname:
+        raise ValueError("about_url must be an http(s) URL with a host")
+    return url
+
+
+def _create_source(ctx: Any, about_url, title, citation, reason) -> dict:
+    refused = _gate(ctx)
+    if refused:
+        return refused
+    reason = _reason(reason)
+    url = _source_url(about_url)
+    title = _required_text("title", title)
+    citation = _required_text("citation", citation)
+    source_id = ctx.call(
+        lambda s: s.sources.create_description(url, title, citation, reason=reason)
+    )
+    return {"status": "created", "source_id": source_id}
+
+
+def _attach_source(ctx: Any, person_id, source_id, reason) -> dict:
+    refused = _gate(ctx)
+    if refused:
+        return refused
+    reason = _reason(reason)
+    pid = validate_person_id(person_id)
+    sid = validate_source_id(source_id)
+
+    def attach(s: Any) -> None:
+        # Body-embedded URL must be clean: drop the discovery href's query string.
+        url = join_path(s.discovery.href("source-descriptions").split("?")[0], sid)
+        s.sources.attach_to_person(pid, url, reason=reason)
+
+    ctx.call(attach)
+    return {"status": "attached", "person_id": pid, "source_id": sid}
+
+
 def register_write_tools(mcp: Any, ctx: Any) -> None:
     @mcp.tool()
     def create_person(
@@ -379,3 +574,72 @@ def register_write_tools(mcp: Any, ctx: Any) -> None:
         are off.
         """
         return _create_parent_child(ctx, child_id, parent_ids, reason)
+
+    @mcp.tool()
+    def upload_memory(
+        file_path: str,
+        reason: str,
+        title: str | None = None,
+        provenance: str | None = None,
+        override_rights: bool = False,
+    ) -> dict:
+        """Upload a local document or image to FamilySearch as a Memory (a WRITE).
+
+        WARNING: uploaded documents become PUBLIC memories on the shared Family
+        Tree. Only PNG, JPEG, TIFF and PDF files up to 15 MB are accepted; the type
+        is taken from the file extension and verified against the file's header.
+        If the server administrator set FS_UPLOAD_ROOT, only files under that
+        directory are accepted.
+
+        Rights/provenance gate (nothing is uploaded when it blocks):
+        - Images sourced from aggregators (Fold3, Ancestry, Newspapers.com,
+          MyHeritage, Findagrave), detected from the file name or `provenance`, are
+          refused: {"status": "provenance_blocked", "aggregator", "file", "message"}.
+        - Documents of unknown provenance are refused: {"status":
+          "provenance_unknown"}. Always supply `provenance`: the source citation you
+          read (for example from the person's ResearchSummary.md).
+        - Never set `override_rights=True` on your own. Obtain Ben's explicit OK
+          that he holds the rights for THIS file first. An override skips both
+          checks and is recorded in the result.
+        `title` defaults to the file name. Every write needs a `reason`: a short
+        change message (max 500 chars) recorded in FamilySearch's change history.
+        On success returns {"status": "uploaded", "memory_id", "filename",
+        "content_type", "bytes", "rights_override"} (plus "overridden_aggregator"
+        when an aggregator was overridden), or {"status": "writes_disabled"} when
+        writes are off.
+        """
+        return _upload_memory(ctx, file_path, reason, title, provenance, override_rights)
+
+    @mcp.tool()
+    def link_memory(person_id: str, memory_id: str, reason: str) -> dict:
+        """Link an existing Memory (by numeric memory id, e.g. from upload_memory)
+        to a person in the shared Family Tree (a WRITE). Every write needs a
+        `reason`: a short change message (max 500 chars) recorded in FamilySearch's
+        change history; mention the research archive folder or source when
+        relevant. Returns {"status": "linked", "person_id", "memory_id"}, or
+        {"status": "writes_disabled"} when writes are off.
+        """
+        return _link_memory(ctx, person_id, memory_id, reason)
+
+    @mcp.tool()
+    def create_source(about_url: str, title: str, citation: str, reason: str) -> dict:
+        """Create a source description in the user's FamilySearch source box (a
+        WRITE). `about_url` must be an http(s) URL of the source itself; `title` and
+        `citation` are required, non-blank text (max 2000 chars each). Every write
+        needs a `reason`: a short change message (max 500 chars) recorded in
+        FamilySearch's change history. Returns {"status": "created", "source_id"};
+        pass that source_id to attach_source. Returns {"status":
+        "writes_disabled"} when writes are off.
+        """
+        return _create_source(ctx, about_url, title, citation, reason)
+
+    @mcp.tool()
+    def attach_source(person_id: str, source_id: str, reason: str) -> dict:
+        """Attach an existing source description (by `source_id`, e.g. '71FD-SL2'
+        as returned by create_source) to a person in the shared Family Tree (a
+        WRITE). Takes an id, not a URL. Every write needs a `reason`: a short change
+        message (max 500 chars) recorded in FamilySearch's change history. Returns
+        {"status": "attached", "person_id", "source_id"}, or {"status":
+        "writes_disabled"} when writes are off.
+        """
+        return _attach_source(ctx, person_id, source_id, reason)
