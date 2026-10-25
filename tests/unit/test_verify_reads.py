@@ -168,7 +168,7 @@ def test_204_on_positive_call_fails_without_allow_empty(reg_path):
     serve_children()
     with pytest.raises(AssertionError, match="204"):
         run_case(ctx_for("readPersonChildren", reg_path=reg_path), FakeWorld(),
-                 children_case("child"))
+                 children_case("child", anchors=(CHILD_NAMED,)))
 
 
 @responses.activate
@@ -289,18 +289,46 @@ def test_framework_checks_anchors_even_when_expect_does_not(reg_path):
     def expect(result, world):
         assert json_path(result.body, "persons[0].display.name") == "Somebody Else"
 
-    with pytest.raises(AssertionError, match=f"{CHILD}.*not in the response"):
+    with pytest.raises(AssertionError, match=f"{CHILD_NAME}.*not in the response"):
         run_case(ctx_for("readPerson", reg_path=reg_path), FakeWorld(),
-                 read_child(expect=expect, anchors=(CHILD_ID,)))
+                 read_child(expect=expect, anchors=(CHILD_NAMED,)))
 
 
 @responses.activate
 def test_anchor_only_in_a_key_fails(reg_path):
     # Mutants keep dict keys: an anchor that survives the scrub is not response content.
-    serve_person(body={"persons": [{"id": "X"}], "index": {CHILD: 1}})
+    serve_person(body={"persons": [{"id": "X"}], "index": {CHILD_NAME: 1}})
     with pytest.raises(AssertionError, match="survives"):
         run_case(ctx_for("readPerson", reg_path=reg_path), FakeWorld(),
-                 read_child(anchors=(CHILD_ID,), expect=lambda r, w: contains(r, "X")))
+                 read_child(anchors=(CHILD_NAMED,), expect=lambda r, w: contains(r, "X")))
+
+
+@responses.activate
+def test_anchors_that_only_echo_the_request_fail(reg_path):
+    # Review probe: another person's record that merely links back to the requested id.
+    body = {"persons": [{"id": OTHER, "gender": {"type": "http://gedcomx.org/Male"}}],
+            "links": {"self": {"href": f"https://beta/platform/tree/persons/{CHILD}"}}}
+    serve_person(body=body)
+    case = read_child(anchors=(CHILD_ID,), expect=lambda r, w: contains(r, "gedcomx.org"))
+    with pytest.raises(AssertionError, match="echo"):
+        run_case(ctx_for("readPerson", reg_path=reg_path), FakeWorld(), case)
+    assert len(responses.calls) == 0  # refused before anything is sent
+
+
+@responses.activate
+def test_echo_check_covers_query_and_read_post_body(reg_path):
+    query_case = ReadCase(op="searchTreePersons", path_args=lambda w: {},
+                          expect=lambda r, w: contains(r, w.ids["child"]), missing={},
+                          query=lambda w: {"q.surname": w.names["child_name"]},
+                          missing_query={"q.surname": "Nobody"}, anchors=(CHILD_NAMED,))
+    body_case = ReadCase(op="createNameSegments", path_args=lambda w: {},
+                         expect=lambda r, w: contains(r, w.names["child_name"]), missing={},
+                         body={"names": [CHILD_NAME]}, missing_body={"bogus": True},
+                         anchors=(CHILD_NAMED,))
+    for op, case in (("searchTreePersons", query_case), ("createNameSegments", body_case)):
+        with pytest.raises(AssertionError, match="echo"):
+            run_case(ctx_for(op, reg_path=reg_path), FakeWorld(), case)
+    assert len(responses.calls) == 0
 
 
 # Probes from review: expects that do not tie the case to the fixture.
@@ -315,8 +343,8 @@ def _try_except(r, w):
         pass
 
 
-def _not_mutated(r, w):  # games a fixed scrub marker
-    assert json_path(r.body, "persons[0].id") != reads.MUTATED_PREFIX
+def _not_mutated(r, w):  # would game a fixed scrub marker, if there were one
+    assert not json_path(r.body, "persons[0].id").startswith("ZZMUTATED")
 
 
 def _status_only(result, world):
@@ -414,12 +442,31 @@ def test_mutants_scrub_every_string_and_empty_the_response():
     result = ApiResult(200, {"ETag": "e1"}, FS_JSON, {"a": [{"b": "x", "n": 3}]}, '{"a": 1}')
     scrubbed, emptied = reads.mutants(result)
     marker = scrubbed.body["a"][0]["b"]
-    assert marker.startswith(reads.MUTATED_PREFIX) and marker != reads.MUTATED_PREFIX
+    assert not any("MUTATED" in name for name in dir(reads))  # no fixed marker to test for
     assert scrubbed.body == {"a": [{"b": marker, "n": 3}]}  # keys and numbers kept
     assert scrubbed.headers == {"ETag": marker} and "x" not in scrubbed.text
     assert emptied.body is None and emptied.text == "" and emptied.headers == {}
     assert result.body == {"a": [{"b": "x", "n": 3}]}  # the original is untouched
-    assert reads.mutants(result)[0].body["a"][0]["b"] != marker  # random per call
+    others = [reads.mutants(result)[0].body["a"][0]["b"] for _ in range(20)]
+    assert marker not in others and len(set(others)) == 20  # random per call
+    # Not even a shared prefix to recognise it by.
+    assert len({m[:4] for m in others + [marker]}) > 1
+
+
+@pytest.mark.parametrize("kw", [
+    {},                                        # an op with path params
+    {"needs": ("persons",)},                   # parameterless, but it uses fixtures
+])
+def test_anchor_free_reason_only_for_parameterless_fixture_free_cases(kw):
+    if not kw:
+        case = read_child(anchors=(), anchor_free_reason="lazy",
+                          expect=lambda r, w: contains(r, "gedcomx.org"))
+    else:
+        case = ReadCase(op="searchTreePersons", path_args=lambda w: {},
+                        expect=lambda r, w: contains(r, "E1"), missing={},
+                        missing_query={"q.surname": "Nobody"}, anchor_free_reason="r", **kw)
+    with pytest.raises(ValueError, match="anchor_free_reason"):
+        reads_recipe("t", [case])
 
 
 # ------------------------------------------------------------- HEAD, OPTIONS, POST
@@ -487,11 +534,10 @@ def merge_case(**kw):
         assert "POST" in result.headers.get("Allow", ""), "merge not allowed"
 
     kw.setdefault("contrast_args", lambda w: {"pid": w.ids["child"], "dpid": w.ids["child"]})
+    # No anchors: Allow carries no fixture value; the contrast shows it depends on the ids.
     return ReadCase(op="allowPersonMerge",
                     path_args=lambda w: {"pid": w.ids["child"], "dpid": w.ids["dad"]},
-                    expect=expect, missing={"dpid": BOGUS},
-                    anchor_free_reason="Allow carries no fixture value; the contrast shows "
-                                       "it depends on the ids", **kw)
+                    expect=expect, missing={"dpid": BOGUS}, **kw)
 
 
 def serve_options(*, contrast_allow="GET"):
@@ -500,6 +546,18 @@ def serve_options(*, contrast_allow="GET"):
     responses.add(responses.OPTIONS, f"{PERSONS}/{CHILD}/merges/{CHILD}", status=200,
                   headers={"Allow": contrast_allow})
     responses.add(responses.OPTIONS, f"{PERSONS}/{CHILD}/merges/{BOGUS}", status=404)
+
+
+@responses.activate
+def test_options_contrast_without_allow_fails(reg_path):
+    serve_options(contrast_allow="")  # differs, but says nothing
+    with pytest.raises(AssertionError, match="contrast.*no Allow"):
+        run_case(ctx_for("allowPersonMerge", reg_path=reg_path), FakeWorld(), merge_case())
+
+
+def test_options_case_may_not_waive_its_contrast():
+    with pytest.raises(ValueError, match="anchor_free_reason"):
+        reads_recipe("t", [merge_case(anchor_free_reason="no fixture value")])
 
 
 @responses.activate
@@ -514,6 +572,9 @@ def test_options_case_fails_when_allow_ignores_the_args(reg_path):
     serve_options(contrast_allow="POST, GET")  # same set, other order and spacing
     with pytest.raises(AssertionError, match="same Allow"):
         run_case(ctx_for("allowPersonMerge", reg_path=reg_path), FakeWorld(), merge_case())
+
+
+SEGMENTS = {"names": [{"given": "ZZSPIKE Child", "surname": "Testabc12345"}]}
 
 
 @responses.activate
@@ -531,11 +592,10 @@ def test_read_post_sends_body_and_no_reason(reg_path):
     responses.add_callback(responses.POST, url, callback=answer)
     case = ReadCase(op="createNameSegments", path_args=lambda w: {},
                     expect=lambda r, w: contains(r, w.names["child_name"]), missing={},
-                    body={"names": [CHILD_NAME]}, missing_body={"bogus": True},
-                    anchors=(CHILD_NAMED,))
+                    body=SEGMENTS, missing_body={"bogus": True}, anchors=(CHILD_NAMED,))
     run_case(ctx_for("createNameSegments", reg_path=reg_path), FakeWorld(), case)
     (positive, headers), (control, _) = sent
-    assert positive == {"names": [CHILD_NAME]} and control == {"bogus": True}
+    assert positive == SEGMENTS and control == {"bogus": True}
     assert not any(k.lower() == "x-reason" for k in headers)
 
 
@@ -614,7 +674,7 @@ def test_cases_see_a_sealed_read_only_world(reg_path, where, fragment):
         return {"pid": world.ids["child"]}
 
     case = ReadCase(op="readPerson", path_args=path_args, expect=expect,
-                    missing={"pid": BOGUS}, anchors=(CHILD_ID,))
+                    missing={"pid": BOGUS}, anchors=(CHILD_NAMED,))
     built = []
 
     def factory(ctx):
@@ -679,6 +739,7 @@ def _case(op, **kw):
     ([_case("readPerson", anchors=(), anchor_free_reason="  ")], "anchor_free_reason"),
     ([_case("readPerson", anchors=("KWZZ-CHD",))], "anchors"),
     ([_case("headPerson")], "compare_with"),
+    ([_case("headPerson", anchor_free_reason="lazy")], "anchor_free_reason"),
     ([_case("headPerson", compare_with="readPersonNotes", anchors=(CHILD_ID,))], "compare_with"),
     ([_case("headPerson", compare_with="headPerson")], "compare_with"),
     ([_case("headPerson", compare_with="readPersonChildren", anchors=()) ], "anchors"),
@@ -697,8 +758,9 @@ def test_reads_recipe_rejects_bad_cases(cases, fragment):
 def test_reads_recipe_shape():
     recipe = reads_recipe("t.p", [_case("readPerson", needs=("persons",)),
                                   _case("readPersonChildren", needs=("persons", "couple"))])
-    assert recipe.name == "t.p" and recipe.evidence == "read-content" and recipe.reads
+    assert recipe.name == "t.p" and recipe.evidence == "read-content"
     assert recipe.ops == ("readPerson", "readPersonChildren")
+    assert reads.read_recipe_problem(recipe) is None
 
 
 def test_head_sibling_get_is_not_a_declared_op():
@@ -707,10 +769,27 @@ def test_head_sibling_get_is_not_a_declared_op():
 
 
 def test_validate_recipes_rejects_read_content_recipes_not_built_by_reads_recipe():
-    hand = Recipe("hand", ("readPerson",), "read-content", lambda ctx: None)
+    import dataclasses
+
     built = reads_recipe("built", [read_child()])
-    assert any("reads_recipe" in p for p in validate_recipes({"hand": hand}))
+    forged = {
+        "hand": Recipe("hand", ("readPerson",), "read-content", lambda ctx: None),
+        # A copy of a genuine recipe with its run swapped is not that recipe.
+        "swapped": dataclasses.replace(built, name="swapped", run=lambda ctx: None),
+        "copied": dataclasses.replace(built, name="copied"),
+    }
+    for key, recipe in forged.items():
+        assert any("reads_recipe" in p for p in validate_recipes({key: recipe})), key
     assert validate_recipes({"built": built}) == []
+    assert not hasattr(Recipe, "reads")  # no flag anyone could set by hand
+
+
+def test_custom_world_factory_admitted_only_in_test_mode():
+    custom = reads_recipe("custom", [read_child()], world_factory=FakeWorld)
+    assert any("world factory" in p for p in validate_recipes({"custom": custom}))
+    with reads.allow_test_world_factories():
+        assert validate_recipes({"custom": custom}) == []
+    assert any("world factory" in p for p in validate_recipes({"custom": custom}))
 
 
 @responses.activate
@@ -734,14 +813,14 @@ def test_reads_recipe_aggregates_every_failing_case(reg_path):
     serve_person(bogus=200)  # readPerson's control fails
     responses.add(responses.GET, f"{PERSONS}/{CHILD}/notes", status=500)
     responses.add(responses.GET, f"{PERSONS}/{CHILD}/spouses", body=json.dumps(
-        {"persons": [{"id": CHILD}]}), content_type=FS_JSON)
+        person_body(CHILD, CHILD_NAME)), content_type=FS_JSON)
     responses.add(responses.GET, f"{PERSONS}/{BOGUS}/spouses", status=404)
     cases = [read_child(),
              ReadCase(op="readPersonNotes", path_args=lambda w: {"pid": w.ids["child"]},
-                      expect=expect_child, missing={"pid": BOGUS}, anchors=(CHILD_ID,)),
+                      expect=expect_child, missing={"pid": BOGUS}, anchors=(CHILD_NAMED,)),
              ReadCase(op="readPersonSpouses", path_args=lambda w: {"pid": w.ids["child"]},
                       expect=lambda r, w: contains(r, w.ids["child"]), missing={"pid": BOGUS},
-                      anchors=(CHILD_ID,))]
+                      anchors=(CHILD_NAMED,))]
     recipe = reads_recipe("t.agg", cases, world_factory=FakeWorld)
     with pytest.raises(AssertionError) as info:
         recipe.run(make_ctx(recipe, reg_path))
@@ -775,8 +854,9 @@ def test_reads_recipe_verifies_through_the_runner(reg_path):
     serve_person()
     recipe = reads_recipe("reads.t.person", [read_child(needs=("persons",))],
                           world_factory=FakeWorld)
-    result = runner.run_recipe(recipe, make_ctx(recipe, reg_path), registry_path=reg_path,
-                               commit="abc123", today="2026-10-25")
+    with reads.allow_test_world_factories():
+        result = runner.run_recipe(recipe, make_ctx(recipe, reg_path),
+                                   registry_path=reg_path, commit="abc123", today="2026-10-25")
     assert result == {"recipe": "reads.t.person", "passed": True, "problems": []}
     entry = json.loads(reg_path.read_text())["operations"]["readPerson"]["generated"]
     assert entry["status"] == "verified" and entry["evidence"] == "read-content"
@@ -788,10 +868,43 @@ def test_failing_reads_recipe_records_nothing(reg_path):
     serve_person(bogus=200)
     recipe = reads_recipe("reads.t.person", [read_child()], world_factory=FakeWorld)
     raw = reg_path.read_bytes()
+    with reads.allow_test_world_factories():
+        result = runner.run_recipe(recipe, make_ctx(recipe, reg_path),
+                                   registry_path=reg_path, commit="abc", today="2026-10-25")
+    assert result["passed"] is False and reg_path.read_bytes() == raw
+    assert any("readPerson" in p and "control" in p for p in result["problems"])
+
+
+@responses.activate
+def test_runner_refuses_custom_world_factory_before_running(reg_path):
+    # Review probe: a factory gets the raw client and could write with it.
+    made = []
+
+    def factory(ctx):
+        made.append(ctx)
+        ctx.client.request("POST", "/platform/tree/persons", write=True, reason="r", json={})
+        return FakeWorld(ctx)
+
+    recipe = reads_recipe("reads.t", [read_child()], world_factory=factory)
+    raw = reg_path.read_bytes()
     result = runner.run_recipe(recipe, make_ctx(recipe, reg_path), registry_path=reg_path,
                                commit="abc", today="2026-10-25")
     assert result["passed"] is False and reg_path.read_bytes() == raw
-    assert any("readPerson" in p and "control" in p for p in result["problems"])
+    assert any("world factory" in p for p in result["problems"])
+    assert made == [] and len(responses.calls) == 0
+
+
+@responses.activate
+def test_runner_refuses_forged_read_recipe_before_running(reg_path):
+    import dataclasses
+
+    ran = []
+    built = reads_recipe("reads.t", [read_child()])
+    forged = dataclasses.replace(built, run=lambda ctx: ran.append(ctx))
+    result = runner.run_recipe(forged, make_ctx(forged, reg_path), registry_path=reg_path,
+                               commit="abc", today="2026-10-25")
+    assert result["passed"] is False and ran == []
+    assert any("reads_recipe" in p for p in result["problems"])
 
 
 @responses.activate
@@ -821,16 +934,18 @@ def test_read_recipe_that_calls_a_write_is_refused(reg_path):
 @responses.activate
 def test_runner_refuses_read_recipe_whose_api_called_a_write(reg_path):
     # However the write got through (a non-read-only API, a bug), the result is refused.
+    # A test-only factory stands in for "somehow": the recipe itself passes.
     serve_person()
 
-    def body(ctx):
-        ctx.api.read_person(CHILD)
+    def factory(ctx):
         ctx.api.called.add("createPerson")
+        return FakeWorld(ctx)
 
-    recipe = Recipe("sneaky", ("readPerson",), "read-content", body)
+    recipe = reads_recipe("sneaky", [read_child()], world_factory=factory)
     raw = reg_path.read_bytes()
-    result = runner.run_recipe(recipe, make_ctx(recipe, reg_path), registry_path=reg_path,
-                               commit="abc", today="2026-10-25")
+    with reads.allow_test_world_factories():
+        result = runner.run_recipe(recipe, make_ctx(recipe, reg_path),
+                                   registry_path=reg_path, commit="abc", today="2026-10-25")
     assert result["passed"] is False and reg_path.read_bytes() == raw
     assert any("createPerson" in p and "write" in p for p in result["problems"])
 
@@ -851,6 +966,7 @@ def test_runner_refuses_hand_built_read_content_recipe(reg_path):
                                commit="abc", today="2026-10-25")
     assert result["passed"] is False and reg_path.read_bytes() == raw
     assert any("reads_recipe" in p for p in result["problems"])
+    assert len(responses.calls) == 0  # refused before run: the POST was never sent
 
 
 def test_make_context_read_only_only_for_all_read_recipes(reg_path):

@@ -31,6 +31,7 @@ from . import record
 from .core import (Recipe, VerifyApi, VerifyContext, called_writes, evidence_problem,
                    reads_only)
 from .fixtures import FixtureSet
+from .reads import read_recipe_problem
 from .recipes import RECIPES, validate_recipes
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -53,9 +54,16 @@ def make_context(client: FSClient, recipe: Recipe, *, registry_path: Path = REGI
 def run_recipe(recipe: Recipe, ctx: VerifyContext, *, registry_path: Path, commit: str,
                today: str) -> dict:
     problems: list[str] = []
+    # Only reads_recipe's own recipes (with the real world) run as read recipes: their
+    # cases are held to anchors and controls and see a sealed world. Refused before
+    # run, since anything else could reach the raw client.
+    gate = read_recipe_problem(recipe) if recipe.evidence == "read-content" else None
+    if gate:
+        problems.append(gate)
     try:
         try:
-            recipe.run(ctx)
+            if not gate:
+                recipe.run(ctx)
         except Exception as e:  # noqa: BLE001 - a failing recipe is a result, not a crash
             problems.append(f"run: {type(e).__name__}: {e}")
     finally:
@@ -68,9 +76,6 @@ def run_recipe(recipe: Recipe, ctx: VerifyContext, *, registry_path: Path, commi
     missing = sorted(set(recipe.ops) - ctx.api.called)
     if missing:
         problems.append(f"claimed but never successfully called: {', '.join(missing)}")
-    if recipe.evidence == "read-content" and recipe.reads is not True:
-        # Only reads_recipe's cases are held to anchors and controls, and see a sealed world.
-        problems.append("read-content recipes must be built with tools.verify.reads.reads_recipe")
     writes = called_writes(recipe.ops, ctx.api.called)
     if writes:
         problems.append(f"read-only recipe called write operation(s): {', '.join(writes)}")

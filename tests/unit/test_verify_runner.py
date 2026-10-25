@@ -14,6 +14,7 @@ from familysearch.errors import FSError
 from tools.verify import record, runner
 from tools.verify.core import Recipe, VerifyApi, VerifyContext, expect_changed
 from tools.verify.fixtures import FixtureSet
+from tools.verify.reads import ReadCase, allow_test_world_factories, json_path, reads_recipe
 from tools.verify.recipes import validate_recipes
 
 BETA = Environment.BETA.base_url
@@ -249,14 +250,48 @@ def test_expect_changed_on_context_counts_controls(reg_path):
 # ---------------------------------------------------------------- main
 
 
+USER_ID = "ZZUSER-0001"
+
+
+class _UserWorld:
+    ids = {"user": USER_ID}
+    names: dict = {}
+
+    def need(self, *groups):
+        pass
+
+
+def read_user_recipe(ran):
+    """A read-content stub built the only accepted way: reads_recipe. Its world factory
+    records the context; runner.main admits it only inside allow_test_world_factories."""
+    def factory(ctx):
+        ran.append(ctx)
+        return _UserWorld()
+
+    def expect(result, world):
+        assert json_path(result.body, "users[0].id") == world.ids["user"], "user id"
+
+    case = ReadCase(op="readCurrentUser", path_args=lambda w: {}, expect=expect, missing={},
+                    missing_query={"zzbogus": "1"}, anchors=(lambda w: w.ids["user"],))
+    return reads_recipe("read-user", [case], world_factory=factory)
+
+
+def serve_current_user():
+    def answer(request):
+        if "zzbogus" in request.url:
+            return 400, {}, ""
+        return 200, {"Content-Type": "application/x-fs-v1+json"}, json.dumps(
+            {"users": [{"id": USER_ID}]})
+
+    responses.add_callback(responses.GET, BETA + "/platform/users/current", callback=answer)
+
+
 @pytest.fixture
 def fake_recipes(monkeypatch):
     ran = []
-    # reads=True stands in for reads_recipe so validate_recipes admits the stub.
-    recipe = Recipe("read-user", ("readCurrentUser",), "read-content",
-                    lambda ctx: ran.append(ctx), reads=True)
-    monkeypatch.setattr(runner, "RECIPES", {"read-user": recipe})
-    return ran
+    monkeypatch.setattr(runner, "RECIPES", {"read-user": read_user_recipe(ran)})
+    with allow_test_world_factories():
+        yield ran
 
 
 @pytest.fixture
@@ -308,16 +343,7 @@ def test_runner_main_refuses_when_beta_check_fails(beta_status, reg_path, fake_r
 def test_runner_main_runs_on_verified_beta(reg_path, fake_recipes, no_cookies, clean_tree,
                                            capsys, monkeypatch):
     monkeypatch.setattr(runner, "current_commit", lambda: "abc123")
-    responses.add(responses.GET, BETA + "/platform/users/current",
-                  json={"users": [{"id": "U"}]})
-
-    def body(ctx):
-        fake_recipes.append(ctx)
-        assert ctx.api.read_current_user().status == 200
-
-    # reads=True stands in for reads_recipe so validate_recipes admits the stub.
-    monkeypatch.setitem(runner.RECIPES, "read-user", Recipe(
-        "read-user", ("readCurrentUser",), "read-content", body, reads=True))
+    serve_current_user()
     code = runner.main(["run", "--recipe", "read-user", "--registry", str(reg_path)])
     out = capsys.readouterr()
     assert code == 0, out

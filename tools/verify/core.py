@@ -48,15 +48,14 @@ def called_writes(ops: Iterable[str], called: Iterable[str]) -> list[str]:
 class Recipe:
     """``ops`` are the operations this recipe proves; ``evidence`` says how.
 
-    ``reads`` marks a recipe built by ``tools.verify.reads.reads_recipe``, the only
-    way to make a ``read-content`` recipe that ``validate_recipes`` accepts.
+    A ``read-content`` recipe is accepted only if ``tools.verify.reads.reads_recipe``
+    built this very object (``reads.read_recipe_problem``); there is no flag to set.
     """
 
     name: str
     ops: tuple[str, ...]
     evidence: str
     run: Callable[[VerifyContext], None]
-    reads: bool = False
 
 
 def _require_beta(client) -> None:

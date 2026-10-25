@@ -23,11 +23,13 @@ the generated API; cases only ever see a sealed, read-only view of it (``seal``)
 """
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import json
 import re
 import uuid
-from collections.abc import Callable, Mapping, Sequence
+import weakref
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from functools import cache
 from types import MappingProxyType
 from typing import Any, Protocol
@@ -40,11 +42,15 @@ from familysearch.errors import FSHTTPError
 from .core import Recipe, VerifyContext
 
 MAX_CASES = 12  # one bad case should fail only a small group
-MUTATED_PREFIX = "ZZMUTATED"  # plus a random suffix per mutation, so no check can expect it
 # Not-found means the id (or query) does not exist; nothing else proves the server looked.
 NOT_FOUND_STATUSES = frozenset({400, 404, 410})
 _VALIDATORS = ("ETag", "Last-Modified", "Content-Length")
 _BODY_LIMIT = 200
+
+# Recipes reads_recipe built, by identity: id -> (weak ref, built with default_world).
+# Only reads_recipe writes here, so a hand-made or copied Recipe is never in it.
+_BUILT: dict[int, tuple[weakref.ref, bool]] = {}
+_test_factories = 0  # > 0 inside allow_test_world_factories()
 
 
 class World(Protocol):
@@ -52,6 +58,10 @@ class World(Protocol):
 
     ``need`` creates the named fixture groups that do not exist yet; ``ids`` and
     ``names`` hold the created objects' ids and the display strings to look for.
+    Anchors are checked by membership in these values, so the world must keep shared
+    constants (the ``ZZSPIKE`` prefix, a surname common to every fixture, the signed-in
+    user's id) out of them, or give each fixture a distinct value: a value every
+    fixture shares would let another fixture's record pass as this one's.
     """
 
     ids: Mapping[str, str]
@@ -66,10 +76,14 @@ class ReadCase:
 
     ``anchors`` give the fixture values (each must be exactly one of the world's ids
     or names) the framework requires in the response: the body, or the header values
-    for HEAD/OPTIONS without a sibling GET. Every populated case needs at least one,
-    unless it declares ``anchor_free_reason`` (no fixture value can appear, as for a
-    standards vocabulary list): its ``expect`` must then compare against a value
-    discovered from an earlier response in the same recipe.
+    for HEAD/OPTIONS without a sibling GET. At least one must be a value the request
+    did not carry (not a path arg, query value or body string): a server echoing the
+    requested id proves nothing about the record. Every populated case needs anchors,
+    except OPTIONS (its contrast stands in) and a case that declares
+    ``anchor_free_reason``, allowed only for an operation without path params and a
+    case without ``needs`` (no fixture exists to appear, as for a standards vocabulary
+    list): its ``expect`` must then compare against a value discovered from an earlier
+    response in the same recipe.
 
     ``expect(result, world)`` checks structure and placement; it raises
     ``AssertionError`` on a mismatch and returns None. ``missing`` overrides path args
@@ -79,7 +93,7 @@ class ReadCase:
     args or query, that passes first in the same recipe (a 204 is then a real
     "empty", not a server that answers 204 to everything).
 
-    ``compare_with`` (HEAD only, required unless ``anchor_free_reason``) names the GET
+    ``compare_with`` (HEAD only, required) names the GET
     with the same path: it is called with the same args, the anchors and ``expect``
     run on its result, and HEAD and GET must agree on an ETag, Last-Modified or
     Content-Length. ``contrast_args`` (OPTIONS only, required) are other path args
@@ -274,9 +288,10 @@ def mutants(result: ApiResult) -> list[ApiResult]:
     One with every string value replaced by a fresh random marker (body, text and
     header values; keys and numbers kept), one with no body, text or headers. A check
     tied to a fixture's id or name fails on both; one that looks only at status, keys
-    or counts does not.
+    or counts does not. The marker is lowercase hex with no fixed part, so a check
+    cannot recognise it, and it cannot contain an uppercase fixture id or a name.
     """
-    marker = f"{MUTATED_PREFIX}{uuid.uuid4().hex[:12]}"
+    marker = uuid.uuid4().hex
     body = _scrub(result.body, marker)
     text = json.dumps(body) if result.body is not None else (marker if result.text else "")
     scrubbed = dataclasses.replace(
@@ -322,6 +337,31 @@ def _anchor_values(case: ReadCase, world: World) -> list[str]:
             raise AssertionError(f"anchor {value!r} is not a world id or name")
         values.append(value)
     return values
+
+
+def _strings(value: Any) -> Iterator[str]:
+    """Every string leaf of a query, path args or JSON body (values only, as sent)."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, Mapping):
+        for v in value.values():
+            yield from _strings(v)
+    elif isinstance(value, (list, tuple)):
+        for v in value:
+            yield from _strings(v)
+    elif value is not None and not isinstance(value, bool):
+        yield str(value)
+
+
+def _echo_problem(anchors: list[str], args: dict, query, body) -> str | None:
+    """Anchors must include one the request did not carry: echoes prove nothing."""
+    if not anchors:
+        return None
+    sent = set(_strings(args)) | set(_strings(query)) | set(_strings(body))
+    if all(a in sent for a in anchors):
+        return (f"every anchor ({', '.join(map(repr, anchors))}) echoes a value the request "
+                "sent; add one the response must supply (a name, or a related id)")
+    return None
 
 
 # ------------------------------------------------------------------ cases
@@ -399,6 +439,8 @@ def _contrast(ctx: VerifyContext, spec: OpSpec, case: ReadCase, world: World, ar
         answer = _call(ctx, spec, other, query, accept, None)
     except FSHTTPError as e:
         raise AssertionError(f"OPTIONS contrast call failed: {_snippet(e)}") from None
+    if not _allow(answer):
+        raise AssertionError("OPTIONS contrast call answered no Allow header")
     if _allow(answer) == allow:
         raise AssertionError(f"OPTIONS answers the same Allow ({', '.join(sorted(allow))}) "
                              "for the contrast args: it does not depend on the ids")
@@ -433,7 +475,10 @@ def _run_case(ctx: VerifyContext, world: World, case: ReadCase,
         raise AssertionError("allow_empty variant reads the same args and query as the "
                              f"populated {case.op} case")
     anchors = _anchor_values(case, world)
-    accept = case.accept or (spec.accepts[0] if spec.accepts else None)
+    echo = _echo_problem(anchors, args, query, case.body)
+    if echo:
+        raise AssertionError(echo)
+    accept =case.accept or (spec.accepts[0] if spec.accepts else None)
     try:
         result = _call(ctx, spec, args, query, accept, case.body)
     except FSHTTPError as e:
@@ -542,16 +587,21 @@ def _content_problems(case: ReadCase, spec: OpSpec) -> list[str]:
     if not (isinstance(case.anchors, tuple) and all(callable(a) for a in case.anchors)):
         problems.append(f"{op}: anchors must be a tuple of callables taking the world")
     reason = case.anchor_free_reason
-    if reason is not None and not (isinstance(reason, str) and reason.strip()):
-        problems.append(f"{op}: anchor_free_reason must be a non-empty explanation")
-    if not case.anchors and not case.allow_empty and reason is None:
+    if reason is not None:
+        if not (isinstance(reason, str) and reason.strip()):
+            problems.append(f"{op}: anchor_free_reason must be a non-empty explanation")
+        if spec.path_params or case.needs:
+            # A fixture-bearing case always has a fixture value to anchor on.
+            problems.append(f"{op}: anchor_free_reason is only for an operation without "
+                            "path params and a case without needs")
+    options = spec.http_method == "OPTIONS"  # Allow carries no fixture: the contrast does
+    if not case.anchors and not case.allow_empty and reason is None and not options:
         problems.append(f"{op}: anchors (world ids/names the response must contain) are "
                         "required, or an anchor_free_reason")
     if spec.http_method == "HEAD":
         sibling = OPERATIONS.get(case.compare_with) if case.compare_with else None
-        if case.compare_with is None and reason is None:
-            problems.append(f"{op}: a HEAD case needs compare_with (its GET), or an "
-                            "anchor_free_reason")
+        if case.compare_with is None:
+            problems.append(f"{op}: a HEAD case needs compare_with (its GET)")
         elif case.compare_with is not None and not (
                 sibling and sibling.http_method == "GET" and sibling.kind == "read"
                 and sibling.path == spec.path):
@@ -597,9 +647,40 @@ def default_world(ctx: VerifyContext) -> World:
     return FixtureWorld(ctx.client, ctx.fixtures, ctx.reason, ctx.unique)
 
 
+@contextlib.contextmanager
+def allow_test_world_factories() -> Iterator[None]:
+    """Unit tests only: admit recipes built with a fake ``world_factory``.
+
+    Outside this block ``read_recipe_problem`` refuses them, so the runner only ever
+    runs the real fixture world (a factory receives the raw client and could write).
+    """
+    global _test_factories
+    _test_factories += 1
+    try:
+        yield
+    finally:
+        _test_factories -= 1
+
+
+def read_recipe_problem(recipe: Recipe) -> str | None:
+    """Why ``recipe`` may not run as a read recipe, or None.
+
+    It must be the very object ``reads_recipe`` returned (a hand-made Recipe, or a
+    ``dataclasses.replace`` copy with another ``run``, is not), built with
+    ``default_world`` unless inside ``allow_test_world_factories``.
+    """
+    entry = _BUILT.get(id(recipe))
+    if entry is None or entry[0]() is not recipe:
+        return "read-content recipes must be built with tools.verify.reads.reads_recipe"
+    if not entry[1] and not _test_factories:
+        return ("read recipe built with a custom world factory; only default_world runs "
+                "outside unit tests")
+    return None
+
+
 def reads_recipe(name: str, cases: Sequence[ReadCase], *,
                  world_factory: Callable[[VerifyContext], World] = default_world) -> Recipe:
-    """A ``read-content`` recipe proving each case's operation (``Recipe.reads`` set).
+    """A ``read-content`` recipe proving each case's operation.
 
     Raises ValueError at construction for any case ``run_case`` would refuse, an
     operation repeated other than as ``allow_empty`` variants, or too many cases.
@@ -608,6 +689,8 @@ def reads_recipe(name: str, cases: Sequence[ReadCase], *,
     cases run before ``allow_empty`` ones; one AssertionError lists every failing
     case. The world's fixtures live in ``ctx.fixtures``, torn down by the runner.
     A HEAD case's sibling GET is called but not declared, so it is not verified here.
+    The recipe is registered by identity (``read_recipe_problem``); ``world_factory``
+    other than ``default_world`` is for unit tests (``allow_test_world_factories``).
     """
     cases = tuple(cases)
     problems = _recipe_problems(cases)
@@ -637,4 +720,8 @@ def reads_recipe(name: str, cases: Sequence[ReadCase], *,
             raise AssertionError(f"{len(failures)} of {len(cases)} read cases failed:\n  "
                                  + "\n  ".join(failures))
 
-    return Recipe(name, ops, "read-content", run, reads=True)
+    recipe = Recipe(name, ops, "read-content", run)
+    key = id(recipe)
+    _BUILT[key] = (weakref.ref(recipe, lambda _ref: _BUILT.pop(key, None)),
+                   world_factory is default_world)
+    return recipe
