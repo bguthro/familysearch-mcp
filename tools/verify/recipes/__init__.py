@@ -1,9 +1,10 @@
-"""The verification recipes, keyed by name. Empty until recipes are written."""
+"""The verification recipes, keyed by name."""
 from familysearch.api import OPERATIONS
 
 from ..core import Recipe, evidence_problem
+from .pilot import PILOT
 
-RECIPES: dict[str, Recipe] = {}
+RECIPES: dict[str, Recipe] = {r.name: r for r in PILOT}
 
 
 def validate_recipes(recipes: dict[str, Recipe]) -> list[str]:
