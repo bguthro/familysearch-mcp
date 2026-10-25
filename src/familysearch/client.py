@@ -18,6 +18,7 @@ DEFAULT_USER_AGENT = (
 FS_JSON = "application/x-fs-v1+json"
 DEFAULT_ACCEPT = FS_JSON
 DEFAULT_TIMEOUT = 30
+METHODS = frozenset({"GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"})
 
 
 class FSClient:
@@ -40,27 +41,32 @@ class FSClient:
     def base_url(self) -> str:
         return self._environment.base_url
 
+    @property
+    def environment(self) -> Environment:
+        return self._environment
+
     def get(
         self, path_or_url, *, accept=None, params=None, timeout=DEFAULT_TIMEOUT
     ) -> requests.Response:
-        return self._request(
-            "GET", path_or_url, accept=accept, params=params, timeout=timeout
+        return self.request(
+            "GET", path_or_url, write=False, accept=accept, params=params,
+            timeout=timeout,
         )
 
     def post(
         self, path_or_url, *, reason, json=None, files=None, params=None,
         timeout=DEFAULT_TIMEOUT,
     ) -> requests.Response:
-        return self._request(
-            "POST", path_or_url, json=json, files=files, params=params,
-            reason=reason, write=True, timeout=timeout,
+        return self.request(
+            "POST", path_or_url, write=True, reason=reason, json=json,
+            files=files, params=params, timeout=timeout,
         )
 
     def delete(
         self, path_or_url, *, reason, timeout=DEFAULT_TIMEOUT
     ) -> requests.Response:
-        return self._request(
-            "DELETE", path_or_url, reason=reason, write=True, timeout=timeout
+        return self.request(
+            "DELETE", path_or_url, write=True, reason=reason, timeout=timeout
         )
 
     def _throttle(self) -> None:
@@ -70,10 +76,18 @@ class FSClient:
                 time.sleep(remaining)
         self._last_write = time.monotonic()
 
-    def _request(
-        self, method, path_or_url, *, accept=None, params=None, json=None,
-        files=None, reason=None, write=False, timeout=DEFAULT_TIMEOUT,
+    def request(
+        self, method, path_or_url, *, write, reason=None, accept=None,
+        params=None, json=None, files=None, data=None, content_type=None,
+        timeout=DEFAULT_TIMEOUT,
     ) -> requests.Response:
+        method = method.upper()
+        if method not in METHODS:
+            raise ValueError(f"unsupported HTTP method {method!r}")
+        if sum(b is not None for b in (json, files, data)) > 1:
+            raise ValueError("json, files and data are mutually exclusive")
+        if data is not None and not content_type:
+            raise ValueError("data requires a content_type")
         if write and not (reason and reason.strip()):
             raise FSError("a non-empty reason (X-Reason) is required for writes")
         if path_or_url.startswith(("http", "//")):
@@ -94,11 +108,12 @@ class FSClient:
         if write:
             headers["X-Reason"] = reason
             self._throttle()
-        data = None
         if json is not None:
             # requests' json= forces application/json (FamilySearch answers 415).
             data = _json.dumps(json).encode()
             headers["Content-Type"] = FS_JSON
+        elif data is not None:
+            headers["Content-Type"] = content_type
         resp = self._session.request(
             method, url, headers=headers, params=params, data=data, files=files,
             timeout=timeout,

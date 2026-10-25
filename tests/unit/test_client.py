@@ -125,3 +125,68 @@ def test_write_throttle_enforced(monkeypatch):
     fs.post("/w", reason="b")
     assert len(sleeps) == 1
     assert sleeps[0] == pytest.approx(0.15)
+
+
+@responses.activate
+def test_request_supports_put_head_options(fs):
+    responses.add(responses.PUT, BETA + "/p", json={})
+    responses.add(responses.HEAD, BETA + "/p")
+    responses.add(responses.OPTIONS, BETA + "/p")
+    fs.request("PUT", "/p", write=True, reason="r", json={"a": 1})
+    sent = responses.calls[0].request
+    assert sent.headers["Content-Type"] == "application/x-fs-v1+json"
+    assert sent.body == b'{"a": 1}'
+    assert fs.request("HEAD", "/p", write=False).status_code == 200
+    assert fs.request("OPTIONS", "/p", write=False).status_code == 200
+
+
+@responses.activate
+def test_post_with_write_false_sends_no_reason_and_does_not_throttle(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr(client_mod.time, "sleep", lambda s: sleeps.append(s))
+    responses.add(responses.POST, BETA + "/q", json={})
+    fs = FSClient("tkn", Environment.BETA, min_write_interval=5)
+    fs.request("POST", "/q", write=False, json={"a": 1})
+    fs.request("POST", "/q", write=False, json={"a": 1})
+    assert "X-Reason" not in responses.calls[0].request.headers
+    assert sleeps == []
+
+
+@responses.activate
+def test_write_true_requires_reason(fs):
+    responses.add(responses.POST, BETA + "/x", json={})
+    with pytest.raises(FSError):
+        fs.request("POST", "/x", write=True)
+    assert len(responses.calls) == 0
+    fs.request("POST", "/x", write=True, reason="why")
+    assert responses.calls[0].request.headers["X-Reason"] == "why"
+
+
+@responses.activate
+def test_raw_data_requires_content_type(fs):
+    responses.add(responses.POST, BETA + "/x", json={})
+    with pytest.raises(ValueError):
+        fs.request("POST", "/x", write=False, data=b"x")
+    fs.request("POST", "/x", write=False, data=b"x", content_type="image/png")
+    sent = responses.calls[0].request
+    assert sent.body == b"x"
+    assert sent.headers["Content-Type"] == "image/png"
+
+
+@pytest.mark.parametrize("kw", [
+    {"json": {}, "data": b"x"},
+    {"json": {}, "files": {"f": b"x"}},
+    {"files": {"f": b"x"}, "data": b"x"},
+])
+def test_body_kinds_are_mutually_exclusive(fs, kw):
+    with pytest.raises(ValueError):
+        fs.request("POST", "/x", write=False, content_type="image/png", **kw)
+
+
+def test_unknown_method_rejected(fs):
+    with pytest.raises(ValueError):
+        fs.request("TRACE", "/x", write=False)
+
+
+def test_environment_property():
+    assert FSClient("t", Environment.BETA).environment is Environment.BETA
