@@ -12,9 +12,10 @@ There is deliberately no delete or merge tool.
 from __future__ import annotations
 
 import datetime
+import unicodedata
 from typing import Any
 
-from familysearch import FACT_BIRTH, FACT_DEATH, build_fact, build_person
+from familysearch import FACT_BIRTH, FACT_DEATH, FSError, build_fact, build_person
 
 from .context import ContextError
 from .guards import classify_life_status
@@ -49,27 +50,53 @@ def _gate(ctx: Any) -> dict | None:
     return None
 
 
+class PartialWriteError(FSError):
+    """A multi-step write failed part-way; some relationships already exist."""
+
+    def __init__(self, message: str, created_ids: list[str]) -> None:
+        super().__init__(message)
+        self.created_ids = list(created_ids)
+
+
+def _no_control(name: str, value: str) -> None:
+    if any(unicodedata.category(ch) == "Cc" for ch in value):
+        raise ValueError(f"{name} must not contain control characters")
+
+
 def _reason(value: Any) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError("reason is required: a non-blank change message (str)")
+    value = value.strip()
     if len(value) > _REASON_MAX:
         raise ValueError(f"reason must be at most {_REASON_MAX} characters")
-    return value.strip()
+    _no_control("reason", value)
+    return value
 
 
 def _text(name: str, value: Any) -> str | None:
+    """Stripped free text; blank becomes None. Rejects control characters."""
     if value is None:
         return None
     if not isinstance(value, str):
         raise ValueError(f"{name} must be a string or null")
+    value = value.strip()
     if len(value) > _TEXT_MAX:
         raise ValueError(f"{name} must be at most {_TEXT_MAX} characters")
-    return value
+    _no_control(name, value)
+    return value or None
+
+
+def _past_date(name: str, value: str | None, year: int) -> None:
+    if value is not None and classify_life_status(None, value, today_year=year) != "deceased":
+        raise ValueError(
+            f"{name} is not a recognizable past date; omit it (use "
+            "confirm_deceased=True for a deceased person whose death date is unknown)"
+        )
 
 
 def _required_text(name: str, value: Any) -> str:
     out = _text(name, value)
-    if out is None or not out.strip():
+    if out is None:
         raise ValueError(f"{name} is required")
     return out
 
@@ -119,6 +146,8 @@ def _create_person(ctx: Any, given, surname, gender, reason, birth_date, birth_p
         raise ValueError("create_despite_matches and confirm_deceased must be booleans")
     if living is True and confirm_deceased:
         raise ValueError("living=True and confirm_deceased=True contradict each other")
+    year = _current_year()
+    _past_date("death_date", death_date, year)
 
     # MATCH GATE: any hit blocks creation until Ben has reviewed the candidates.
     if not create_despite_matches:
@@ -128,6 +157,8 @@ def _create_person(ctx: Any, given, surname, gender, reason, birth_date, birth_p
                 birth_place=birth_place, count=_MAX_CANDIDATES,
             )
         )
+        if not isinstance(hits, list):
+            raise FSError("tree_search returned an unexpected response; refusing to create")
         if hits:
             candidates = [project_search_hit(e) for e in hits]
             candidates.sort(key=_confidence_key, reverse=True)
@@ -144,7 +175,7 @@ def _create_person(ctx: Any, given, surname, gender, reason, birth_date, birth_p
 
     # LIFE STATUS: living=False is not a bypass; only living=True is an assertion.
     classification = classify_life_status(
-        birth_date, death_date, today_year=_current_year(),
+        birth_date, death_date, today_year=year,
         asserted_living=(living is True),
     )
     if classification == "living":
@@ -191,6 +222,8 @@ def _add_fact(ctx: Any, person_id, fact_type, reason, date, place) -> dict:
     place = _text("place", place)
     if date is None and place is None:
         raise ValueError("add_fact needs at least one of date or place")
+    if short == "Death":
+        _past_date("date", date, _current_year())
     fact = build_fact(uri, date=date, place=place)
     ctx.call(lambda s: s.writer.add_fact(pid, fact, reason=reason))
     return {"status": "added", "person_id": pid, "fact_type": short}
@@ -222,10 +255,26 @@ def _create_parent_child(ctx: Any, child_id, parent_ids, reason) -> dict:
         raise ValueError("parent_ids must not contain duplicates")
     if child in parents:
         raise ValueError("a person cannot be their own parent")
-    rels = ctx.call(
-        lambda s: s.writer.create_parent_child(child_id=child, parent_ids=parents, reason=reason)
-    )
-    return {"status": "created", "relationship_ids": list(rels)}
+    # One ctx.call per parent: a failure (or a token-expiry re-run) on a later
+    # parent must never re-post an earlier, already-created relationship.
+    created: list[str] = []
+    for parent in parents:
+        try:
+            rels = ctx.call(
+                lambda s, p=parent: s.writer.create_parent_child(
+                    child_id=child, parent_ids=[p], reason=reason)
+            )
+        except Exception as e:
+            if not created:
+                raise
+            raise PartialWriteError(
+                f"Relationship(s) already created: {', '.join(created)}. Linking parent "
+                f"{parent} FAILED ({e}). Do NOT repeat the whole call; only the failed "
+                f"parent {parent} remains to be linked.",
+                created,
+            ) from e
+        created.extend(rels)
+    return {"status": "created", "relationship_ids": created}
 
 
 def register_write_tools(mcp: Any, ctx: Any) -> None:
@@ -244,7 +293,9 @@ def register_write_tools(mcp: Any, ctx: Any) -> None:
     ) -> dict:
         """Create a new person in the shared FamilySearch Family Tree (a WRITE).
 
-        `gender` is Male, Female or Unknown. Every write needs a `reason`: a short
+        `gender` is Male, Female or Unknown. `death_date`, if given, must be a
+        recognizable past date (junk like "Unknown" is rejected; for a deceased person
+        with no known death date use confirm_deceased=True). Every write needs a `reason`: a short
         change message (max 500 chars) recorded in FamilySearch's change history;
         mention the research archive folder or source when relevant.
 

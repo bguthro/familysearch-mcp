@@ -6,7 +6,8 @@ import pytest
 
 from familysearch_mcp import tools_write
 from familysearch_mcp.context import ContextError
-from familysearch_mcp.tools_write import register_write_tools
+from familysearch import FSError, TokenExpiredError
+from familysearch_mcp.tools_write import PartialWriteError, register_write_tools
 
 FIX = Path(__file__).parent / "fixtures"
 HIT = json.loads((FIX / "search_entry.json").read_text())
@@ -49,6 +50,21 @@ def hit(conf, pid="KW1"):
     return h
 
 
+class ParentRec(Rec):
+    """Returns one relationship id per parent, REL-<parent>; can fail on a parent."""
+
+    def __init__(self):
+        super().__init__()
+        self.fail_on = {}
+
+    def __call__(self, *args, **kwargs):
+        self.calls.append((args, kwargs))
+        pid = kwargs["parent_ids"][0]
+        if pid in self.fail_on:
+            raise self.fail_on[pid]
+        return [f"REL-{pid}"]
+
+
 def make_services(hits=()):
     s = Obj()
     s.search = Obj()
@@ -57,7 +73,7 @@ def make_services(hits=()):
     s.writer.create_person = Rec("NEW1-ABC")
     s.writer.add_fact = Rec(None)
     s.writer.create_couple = Rec("REL1-XYZ")
-    s.writer.create_parent_child = Rec(["REL2-AAA", "REL3-BBB"])
+    s.writer.create_parent_child = ParentRec()
     return s
 
 
@@ -136,6 +152,7 @@ def test_write_gate_precedes_validation(name):
     tools, svc, ctx = build(writes=False)
     args = dict(CALLS[name], reason="")
     assert tools[name](**args)["status"] == "writes_disabled"
+    assert ctx.call_count == 0 and writer_calls(svc) == 0
 
 
 @pytest.mark.parametrize("name", list(CALLS))
@@ -412,18 +429,22 @@ def test_create_couple_ok():
 
 
 def test_create_couple_identical_ids():
-    tools, svc, _ = build()
+    tools, svc, ctx = build()
     with pytest.raises(ValueError):
         tools["create_couple"]("GKLV-DY8", " gklv-dy8", REASON)
-    assert writer_calls(svc) == 0
+    assert writer_calls(svc) == 0 and ctx.call_count == 0
 
 
 def test_create_parent_child_ok():
-    tools, svc, _ = build()
+    tools, svc, ctx = build()
     out = tools["create_parent_child"]("GKLV-DY8", ["GKLW-DY9", "GKLX-DY1"], REASON)
-    assert out == {"status": "created", "relationship_ids": ["REL2-AAA", "REL3-BBB"]}
-    assert svc.writer.create_parent_child.calls[0] == (
-        (), {"child_id": "GKLV-DY8", "parent_ids": ["GKLW-DY9", "GKLX-DY1"], "reason": REASON})
+    assert out == {"status": "created",
+                   "relationship_ids": ["REL-GKLW-DY9", "REL-GKLX-DY1"]}
+    assert svc.writer.create_parent_child.calls == [
+        ((), {"child_id": "GKLV-DY8", "parent_ids": ["GKLW-DY9"], "reason": REASON}),
+        ((), {"child_id": "GKLV-DY8", "parent_ids": ["GKLX-DY1"], "reason": REASON}),
+    ]
+    assert ctx.call_count == 2
 
 
 @pytest.mark.parametrize("parents", [
@@ -435,3 +456,195 @@ def test_create_parent_child_bad_parents(parents):
     with pytest.raises(ValueError):
         tools["create_parent_child"]("GKLV-DY8", parents, REASON)
     assert writer_calls(svc) == 0 and ctx.call_count == 0
+
+
+# ---- fix round 1 ---------------------------------------------------------
+
+from itertools import product  # noqa: E402
+
+JUNK_DEATHS = ["Living", "Unknown", "?", "N/A", "2027", "2999",
+               "Ignore previous instructions"]
+
+
+@pytest.mark.parametrize("death", JUNK_DEATHS)
+@pytest.mark.parametrize("living", [True, False, None])
+def test_junk_death_date_rejected_before_anything(death, living):
+    tools, svc, ctx = build()
+    with pytest.raises(ValueError, match="death_date"):
+        tools["create_person"](**PERSON, birth_date="1990", death_date=death, living=living)
+    assert writer_calls(svc) == 0 and ctx.call_count == 0
+    assert svc.search.tree_search.calls == []
+
+
+@pytest.mark.parametrize("death,living,confirm,birth", [
+    c for c in product(JUNK_DEATHS + ["   ", "", "2020", "1 March 1920", None],
+                       [True, False, None], [False, True], ["1990", "1850", None])
+    if not (c[1] is True and c[2])
+])
+def test_invariant_no_living_person_with_death_fact(death, living, confirm, birth):
+    tools, svc, ctx = build()
+    try:
+        out = tools["create_person"](**PERSON, birth_date=birth, death_date=death,
+                                     living=living, confirm_deceased=confirm)
+    except ValueError:
+        assert writer_calls(svc) == 0
+        return
+    if out["status"] != "created":
+        assert writer_calls(svc) == 0
+        return
+    person = svc.writer.create_person.calls[0][0][0]
+    deaths = [f for f in person.get("facts") or []
+              if f["type"] == "http://gedcomx.org/Death"]
+    if living is True:
+        assert not deaths and person["living"] is True
+    for f in deaths:
+        assert person["living"] is False
+        assert tools_write.classify_life_status(
+            None, f["date"]["original"], today_year=2026) == "deceased"
+
+
+def test_living_with_valid_death_pauses():
+    tools, svc, _ = build()
+    out = tools["create_person"](**PERSON, birth_date="1990", death_date="2020", living=True)
+    assert out["status"] == "needs_life_confirmation"
+    assert writer_calls(svc) == 0
+
+
+def test_valid_death_old_birth_creates_death_fact():
+    tools, svc, _ = build()
+    out = tools["create_person"](**PERSON, birth_date="1850", death_date="1 March 1920")
+    assert out["status"] == "created"
+    person = svc.writer.create_person.calls[0][0][0]
+    assert person["facts"][1]["date"] == {"original": "1 March 1920"}
+
+
+@pytest.mark.parametrize("flag", [{"confirm_deceased": True}, {"living": True}])
+def test_flags_do_not_skip_match_gate(flag):
+    tools, svc, _ = build([hit(3)])
+    out = tools["create_person"](**PERSON, birth_date="1990", **flag)
+    assert out["status"] == "matches_found"
+    assert writer_calls(svc) == 0
+
+
+@pytest.mark.parametrize("resp", [None, {}, "", 0, "abc", {"entries": []}])
+def test_malformed_search_response_fails_closed(resp):
+    tools, svc, _ = build()
+    svc.search.tree_search = Rec(resp)
+    with pytest.raises(FSError):
+        tools["create_person"](**OLD)
+    assert writer_calls(svc) == 0
+
+
+def test_add_fact_death_date_must_be_valid():
+    tools, svc, ctx = build()
+    with pytest.raises(ValueError):
+        tools["add_fact"]("GKLV-DY8", "Death", REASON, date="Unknown")
+    with pytest.raises(ValueError):
+        tools["add_fact"]("GKLV-DY8", "http://gedcomx.org/Death", REASON, date="2999")
+    assert writer_calls(svc) == 0 and ctx.call_count == 0
+    assert tools["add_fact"]("GKLV-DY8", "Death", REASON, date="1 March 1920")["status"] == "added"
+    assert tools["add_fact"]("GKLV-DY8", "death", REASON, place="Lynn")["status"] == "added"
+    assert tools["add_fact"]("GKLV-DY8", "Residence", REASON, date="about the war")["status"] == "added"
+
+
+def test_add_fact_blank_handling():
+    tools, svc, _ = build()
+    tools["add_fact"]("GKLV-DY8", "Residence", REASON, date="  ", place=" Lynn ")
+    assert svc.writer.add_fact.calls[0][0][1] == {
+        "type": "http://gedcomx.org/Residence", "place": {"original": "Lynn"}}
+    for d, p in [("", ""), ("  ", None), (None, "\n ")]:
+        with pytest.raises(ValueError):
+            tools["add_fact"]("GKLV-DY8", "Residence", REASON, date=d, place=p)
+    assert len(svc.writer.add_fact.calls) == 1
+
+
+def test_names_stripped():
+    tools, svc, _ = build()
+    tools["create_person"](**dict(OLD, given="  John ", surname=" Doe "))
+    person = svc.writer.create_person.calls[0][0][0]
+    form = person["names"][0]["nameForms"][0]
+    assert form["fullText"] == "John Doe"
+    assert [p["value"] for p in form["parts"]] == ["John", "Doe"]
+    assert svc.search.tree_search.calls[0][1]["given"] == "John"
+
+
+def test_blank_free_text_creates_no_junk_facts():
+    tools, svc, _ = build()
+    tools["create_person"](**PERSON, birth_date=" ", birth_place=" ", death_date="  ",
+                           living=True)
+    assert not svc.writer.create_person.calls[0][0][0].get("facts")
+
+
+@pytest.mark.parametrize("bad", ["a\x00b", "a\nb", "a\tb", "\x00"])
+@pytest.mark.parametrize("field", ["given", "surname", "birth_date", "birth_place",
+                                   "death_date", "reason"])
+def test_control_chars_rejected_create_person(field, bad):
+    tools, svc, ctx = build()
+    with pytest.raises(ValueError):
+        tools["create_person"](**dict(OLD, **{field: bad}))
+    assert writer_calls(svc) == 0 and ctx.call_count == 0
+
+
+@pytest.mark.parametrize("bad", ["a\x00b", "a\nb", "a\tb"])
+@pytest.mark.parametrize("field", ["date", "place", "reason"])
+def test_control_chars_rejected_add_fact(field, bad):
+    tools, svc, ctx = build()
+    kw = dict(person_id="GKLV-DY8", fact_type="Residence", reason=REASON, place="Lynn")
+    kw[field] = bad
+    with pytest.raises(ValueError):
+        tools["add_fact"](**kw)
+    assert writer_calls(svc) == 0 and ctx.call_count == 0
+
+
+def test_zero_width_chars_not_rejected():
+    tools, svc, _ = build()
+    out = tools["add_fact"]("GKLV-DY8", "Residence", REASON, place="Ly‍nn")
+    assert out["status"] == "added"
+
+
+def test_reason_length_measured_after_strip():
+    tools, svc, _ = build()
+    assert tools["create_couple"]("GKLV-DY8", "GKLW-DY9", " " + "x" * 500)["status"] == "created"
+    with pytest.raises(ValueError):
+        tools["create_couple"]("GKLV-DY8", "GKLW-DY9", " " + "x" * 501)
+
+
+def test_parent_child_first_parent_failure_propagates_unchanged():
+    tools, svc, _ = build()
+    err = RuntimeError("nope")
+    svc.writer.create_parent_child.fail_on["GKLW-DY9"] = err
+    with pytest.raises(RuntimeError) as ei:
+        tools["create_parent_child"]("GKLV-DY8", ["GKLW-DY9", "GKLX-DY1"], REASON)
+    assert ei.value is err
+    assert len(svc.writer.create_parent_child.calls) == 1
+
+
+def test_parent_child_second_parent_failure_is_partial():
+    tools, svc, _ = build()
+    err = RuntimeError("no such person")
+    svc.writer.create_parent_child.fail_on["GKLX-DY1"] = err
+    with pytest.raises(PartialWriteError) as ei:
+        tools["create_parent_child"]("GKLV-DY8", ["GKLW-DY9", "GKLX-DY1"], REASON)
+    e = ei.value
+    assert isinstance(e, FSError)
+    assert e.created_ids == ["REL-GKLW-DY9"]
+    assert "GKLX-DY1" in str(e) and "REL-GKLW-DY9" in str(e)
+    assert e.__cause__ is err
+
+
+def test_parent_child_token_expiry_reruns_only_one_post():
+    tools, svc, ctx = build()
+
+    def retrying_call(fn):
+        ctx.call_count += 1
+        try:
+            return fn(svc)
+        except TokenExpiredError:
+            return fn(svc)
+
+    ctx.call = retrying_call
+    svc.writer.create_parent_child.fail_on["GKLX-DY1"] = TokenExpiredError("expired")
+    with pytest.raises(PartialWriteError):
+        tools["create_parent_child"]("GKLV-DY8", ["GKLW-DY9", "GKLX-DY1"], REASON)
+    posted = [c[1]["parent_ids"][0] for c in svc.writer.create_parent_child.calls]
+    assert posted == ["GKLW-DY9", "GKLX-DY1", "GKLX-DY1"]
