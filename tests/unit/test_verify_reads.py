@@ -4,7 +4,9 @@ The fake service is ``responses``: each test scripts what beta answers for the f
 ids and for the bogus ids the not-found control uses. ``FakeWorld`` stands in for the
 fixture world (Task 2) with fixed ids and names.
 """
+import dataclasses
 import json
+import re
 import shutil
 
 import pytest
@@ -316,6 +318,34 @@ def test_anchors_that_only_echo_the_request_fail(reg_path):
 
 
 @responses.activate
+@pytest.mark.parametrize("pids", [
+    lambda w: f"{w.ids['child']},{w.ids['dad']}",   # review probe p6: joined
+    lambda w: [w.ids["child"], w.ids["dad"]],        # review probe p6b: a list
+])
+def test_anchors_contained_in_what_was_sent_are_echoes(reg_path, pids):
+    # A server that echoes the pids back passes both anchors: neither proves content.
+    def expect(r, w):
+        assert [p["id"] for p in r.body["persons"]] == [w.ids["child"], w.ids["dad"]]
+
+    case = ReadCase(op="readPersons", path_args=lambda w: {},
+                    query=lambda w: {"pids": pids(w)}, expect=expect, missing={},
+                    missing_query={"pids": BOGUS}, anchors=(CHILD_ID, lambda w: w.ids["dad"]))
+    with pytest.raises(AssertionError, match="echo"):
+        run_case(ctx_for("readPersons", reg_path=reg_path), FakeWorld(), case)
+    assert len(responses.calls) == 0
+    # Adding an anchor the request did not carry (the child's name) makes it a real check.
+    ok = dataclasses.replace(case, anchors=(CHILD_ID, CHILD_NAMED))
+    responses.add(responses.GET, PERSONS, body=json.dumps(
+        {"persons": [{"id": CHILD, "display": {"name": CHILD_NAME}}, {"id": DAD}]}),
+        content_type=FS_JSON, match=[responses.matchers.query_param_matcher(
+            {"pids": f"{CHILD},{DAD}"} if isinstance(pids(FakeWorld()), str)
+            else {"pids": [CHILD, DAD]})])
+    responses.add(responses.GET, PERSONS, status=404,
+                  match=[responses.matchers.query_param_matcher({"pids": BOGUS})])
+    run_case(ctx_for("readPersons", reg_path=reg_path), FakeWorld(), ok)
+
+
+@responses.activate
 def test_echo_check_covers_query_and_read_post_body(reg_path):
     query_case = ReadCase(op="searchTreePersons", path_args=lambda w: {},
                           expect=lambda r, w: contains(r, w.ids["child"]), missing={},
@@ -432,8 +462,140 @@ def test_anchor_free_case_runs_on_its_expect(reg_path):
     case = ReadCase(op="searchTreePersons", path_args=lambda w: {},
                     expect=lambda r, w: contains(r, "E1"), missing={},
                     query={"q.surname": "Test"}, missing_query={"q.surname": "Nobody"},
-                    anchor_free_reason="discovered value; no fixture in the response")
+                    anchor_free_reason="discovered value; no fixture in the response",
+                    literal_anchors=("E1",))
     run_case(ctx_for("searchTreePersons", reg_path=reg_path), FakeWorld(), case)
+
+
+# ----------------------------------------------- anchor-free cases and literal anchors
+
+PLACE_TYPE = "http://gedcomx.org/City"  # a spec constant a place-types list must carry
+
+
+def place_types_case(**kw):
+    kw.setdefault("literal_anchors", (PLACE_TYPE,))
+    kw.setdefault("expect", lambda r, w: contains(r, PLACE_TYPE))
+    return ReadCase(op="readPlaceTypes", path_args=lambda w: {}, missing={},
+                    missing_query={"zzbogus": "1"}, anchor_free_reason="standards vocabulary",
+                    **kw)
+
+
+def serve_place_types(body=None, *, control_body=""):
+    body = {"types": [{"uri": PLACE_TYPE}]} if body is None else body
+
+    def answer(request):
+        if "zzbogus" in request.url:
+            return 400, {}, control_body
+        return 200, {"Content-Type": "application/ld+json"}, json.dumps(body)
+
+    responses.add_callback(responses.GET, BETA + "/platform/places/types", callback=answer)
+
+
+@responses.activate
+def test_anchor_free_case_passes_with_its_literal_anchor(reg_path):
+    serve_place_types()
+    run_case(ctx_for("readPlaceTypes", reg_path=reg_path), FakeWorld(), place_types_case())
+
+
+def test_anchor_free_case_needs_literal_anchors():
+    for bad in ((), ("",), (PLACE_TYPE, 3)):
+        with pytest.raises(ValueError, match="literal_anchors"):
+            reads_recipe("t", [place_types_case(literal_anchors=bad)])
+
+
+def _distinct_strings(r, w):  # review probe p4: "two distinct strings" is no content check
+    strings = [v for v in json.dumps(r.body or {}).split('"') if v.strip(" :,{}[]")]
+    assert len(set(strings)) > 2, "need distinct strings"
+
+
+@responses.activate
+@pytest.mark.parametrize("expect", [_distinct_strings, lambda r, w: contains(r, "x")])
+def test_anchor_free_vacuous_expect_fails_on_its_literal_anchor(reg_path, expect):
+    # A catch-all answer with some constant strings: the literal anchor is not there.
+    serve_place_types({"a": "x", "b": "y"})
+    with pytest.raises(AssertionError, match=f"{PLACE_TYPE}.*not in the response"):
+        run_case(ctx_for("readPlaceTypes", reg_path=reg_path), FakeWorld(),
+                 place_types_case(expect=expect))
+
+
+@responses.activate
+def test_literal_anchor_only_in_a_key_fails(reg_path):
+    serve_place_types({"types": {PLACE_TYPE: "City"}})
+    with pytest.raises(AssertionError, match="survives"):
+        run_case(ctx_for("readPlaceTypes", reg_path=reg_path), FakeWorld(),
+                 place_types_case(expect=lambda r, w: contains(r, "City")))
+
+
+@responses.activate
+def test_literal_anchor_in_the_not_found_answer_fails(reg_path):
+    # A server that answers the vocabulary even when it says 400 is not discriminating.
+    serve_place_types(control_body=json.dumps({"types": [{"uri": PLACE_TYPE}]}))
+    with pytest.raises(AssertionError, match="control.*" + re.escape(PLACE_TYPE)):
+        run_case(ctx_for("readPlaceTypes", reg_path=reg_path), FakeWorld(), place_types_case())
+
+
+def test_literal_anchor_sent_in_the_request_fails():
+    case = place_types_case(query={"type": PLACE_TYPE})
+    with pytest.raises(AssertionError, match="echo"):
+        run_case(None, FakeWorld(), case)
+
+
+def _ancestry_case(**kw):
+    return ReadCase(op="readAncestry", path_args=lambda w: {},
+                    query=lambda w: {"person": w.ids["child"]}, expect=_distinct_strings,
+                    missing={}, missing_query={"person": BOGUS},
+                    anchor_free_reason="ancestry is whatever it is",
+                    literal_anchors=("http://gedcomx.org/Male",), **kw)
+
+
+def serve_ancestry():
+    def answer(request):
+        if BOGUS in request.url:
+            return 404, {}, "{}"
+        return 200, {"Content-Type": FS_JSON}, json.dumps(
+            {"persons": [{"id": "ANY", "gender": {"type": "http://gedcomx.org/Male"}}]})
+
+    responses.add_callback(responses.GET, BETA + "/platform/tree/ancestry", callback=answer)
+
+
+@responses.activate
+@pytest.mark.parametrize("query", [
+    lambda w: {"person": w.ids["child"]},                       # review probe p5b
+    lambda w: {"person": f"{w.ids['child']},{w.ids['dad']}"},   # contained, not equal
+    lambda w: {"person": [w.ids["dad"]]},                        # a list item
+])
+def test_anchor_free_case_may_not_send_a_fixture_value(reg_path, query):
+    serve_ancestry()
+    case = dataclasses.replace(_ancestry_case(), query=query)
+    with pytest.raises(AssertionError, match="anchor-free.*sends"):
+        run_case(ctx_for("readAncestry", reg_path=reg_path), FakeWorld(), case)
+    assert len(responses.calls) == 0
+
+
+@responses.activate
+def test_anchor_free_case_may_not_send_a_fixture_name_in_its_body(reg_path):
+    case = ReadCase(op="createNameSegments", path_args=lambda w: {}, missing={},
+                    expect=lambda r, w: contains(r, "x"), body={"names": [CHILD_NAME]},
+                    missing_body={"bogus": True}, anchor_free_reason="r",
+                    literal_anchors=("http://gedcomx.org/Given",))
+    with pytest.raises(AssertionError, match="anchor-free.*sends"):
+        run_case(ctx_for("createNameSegments", reg_path=reg_path), FakeWorld(), case)
+    assert len(responses.calls) == 0
+
+
+@responses.activate
+def test_anchor_free_case_borrowing_another_cases_fixture_fails_in_the_runner(reg_path):
+    # Review probe p5: the case itself has no needs; another case's needs put the child
+    # in the world, and the anchor-free case queries it.
+    serve_ancestry()
+    serve_person()
+    recipe = reads_recipe("t.p5", [read_child(needs=("persons",)), _ancestry_case()],
+                          world_factory=FakeWorld)
+    with reads.allow_test_world_factories():
+        result = runner.run_recipe(recipe, make_ctx(recipe, reg_path),
+                                   registry_path=reg_path, commit="abc", today="2026-10-25")
+    assert result["passed"] is False
+    assert any("readAncestry" in p and "anchor-free" in p for p in result["problems"])
 
 
 def test_mutants_scrub_every_string_and_empty_the_response():

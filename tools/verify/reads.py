@@ -76,14 +76,22 @@ class ReadCase:
 
     ``anchors`` give the fixture values (each must be exactly one of the world's ids
     or names) the framework requires in the response: the body, or the header values
-    for HEAD/OPTIONS without a sibling GET. At least one must be a value the request
-    did not carry (not a path arg, query value or body string): a server echoing the
-    requested id proves nothing about the record. Every populated case needs anchors,
-    except OPTIONS (its contrast stands in) and a case that declares
-    ``anchor_free_reason``, allowed only for an operation without path params and a
-    case without ``needs`` (no fixture exists to appear, as for a standards vocabulary
-    list): its ``expect`` must then compare against a value discovered from an earlier
-    response in the same recipe.
+    for HEAD/OPTIONS without a sibling GET. At least one must not be contained in any
+    string the request sends (path args, query values and list items, body strings):
+    a server echoing the requested ids proves nothing about the record. Every
+    populated case needs anchors, except OPTIONS (its contrast stands in) and a case
+    that declares ``anchor_free_reason``.
+
+    ``anchor_free_reason`` is allowed only for an operation without path params and a
+    case without ``needs``, and needs ``literal_anchors``. For such a case the
+    framework enforces exactly this: the request sends no string containing any world
+    id or name; each literal anchor (a spec constant, such as a place-type URI) is in
+    the response, not only in a dict key, not in what the request sent and not in the
+    not-found control's error body; and ``expect`` fails on the mutants. Whether the
+    response is the right one beyond that (e.g. ``expect`` comparing against a value
+    discovered earlier in the recipe) is up to the case author and is not checked.
+    ``literal_anchors`` may also be given to a fixture-anchored case, with the same
+    checks.
 
     ``expect(result, world)`` checks structure and placement; it raises
     ``AssertionError`` on a mismatch and returns None. ``missing`` overrides path args
@@ -116,6 +124,7 @@ class ReadCase:
     anchor_free_reason: str | None = None
     compare_with: str | None = None
     contrast_args: Callable[[World], dict] | None = None
+    literal_anchors: tuple[str, ...] = ()
 
 
 # ------------------------------------------------------------------ the world
@@ -288,8 +297,10 @@ def mutants(result: ApiResult) -> list[ApiResult]:
     One with every string value replaced by a fresh random marker (body, text and
     header values; keys and numbers kept), one with no body, text or headers. A check
     tied to a fixture's id or name fails on both; one that looks only at status, keys
-    or counts does not. The marker is lowercase hex with no fixed part, so a check
-    cannot recognise it, and it cannot contain an uppercase fixture id or a name.
+    or counts does not. The marker is a fresh ``uuid4().hex`` (32 lowercase hex
+    digits, no fixed part): a check cannot expect a constant, though it could still
+    recognise the shape. An anchor with an uppercase letter, a space or punctuation
+    cannot occur in it; an all-lowercase-hex or all-digit anchor could, by chance.
     """
     marker = uuid.uuid4().hex
     body = _scrub(result.body, marker)
@@ -353,14 +364,33 @@ def _strings(value: Any) -> Iterator[str]:
         yield str(value)
 
 
-def _echo_problem(anchors: list[str], args: dict, query, body) -> str | None:
-    """Anchors must include one the request did not carry: echoes prove nothing."""
-    if not anchors:
-        return None
-    sent = set(_strings(args)) | set(_strings(query)) | set(_strings(body))
-    if all(a in sent for a in anchors):
+def _sent_problem(case: ReadCase, world: World, anchors: list[str], args: dict, query,
+                  body) -> str | None:
+    """What the request sends must not be what the check looks for (by containment).
+
+    An anchor counts as an echo if it is a substring of any sent string (``pids`` of
+    ``"A,B"`` echoes both A and B); at least one anchor must not be. No literal anchor
+    may be sent. An anchor-free case may send no world id or name at all: it has no
+    fixture anchor, so a fixture value in its request would go unchecked.
+    """
+    sent = [*_strings(args), *_strings(query), *_strings(body)]
+
+    def is_sent(value: str) -> bool:
+        return any(value in s for s in sent)
+
+    if case.anchor_free_reason is not None:
+        fixture = sorted({v for v in (*world.ids.values(), *world.names.values())
+                          if isinstance(v, str) and v and is_sent(v)})
+        if fixture:
+            return (f"anchor-free case sends fixture value(s) {', '.join(map(repr, fixture))}; "
+                    "a case that reads a fixture must anchor on it")
+    if anchors and all(is_sent(a) for a in anchors):
         return (f"every anchor ({', '.join(map(repr, anchors))}) echoes a value the request "
                 "sent; add one the response must supply (a name, or a related id)")
+    echoed = [lit for lit in case.literal_anchors if is_sent(lit)]
+    if echoed:
+        return (f"literal anchor(s) {', '.join(map(repr, echoed))} echo a value the request "
+                "sent")
     return None
 
 
@@ -475,9 +505,10 @@ def _run_case(ctx: VerifyContext, world: World, case: ReadCase,
         raise AssertionError("allow_empty variant reads the same args and query as the "
                              f"populated {case.op} case")
     anchors = _anchor_values(case, world)
-    echo = _echo_problem(anchors, args, query, case.body)
+    echo = _sent_problem(case, world, anchors, args, query, case.body)
     if echo:
         raise AssertionError(echo)
+    anchors += list(case.literal_anchors)  # checked in the response just like anchors
     accept =case.accept or (spec.accepts[0] if spec.accepts else None)
     try:
         result = _call(ctx, spec, args, query, accept, case.body)
@@ -524,6 +555,12 @@ def _control(ctx: VerifyContext, spec: OpSpec, case: ReadCase, args: dict, query
         answer = _call(ctx, spec, bad_args, bad_query, accept, bad_body)
     except FSHTTPError as e:
         if e.status in case.missing_statuses:
+            # A literal anchor in the error answer means the server serves the
+            # vocabulary whatever it is asked: the positive proves nothing.
+            leaked = [lit for lit in case.literal_anchors if lit in (e.body or "")]
+            if leaked:
+                raise AssertionError(f"not-found control answered {e.status} but carries "
+                                     f"literal anchor(s) {', '.join(map(repr, leaked))}")
             return
         raise AssertionError(f"not-found control answered {e.status}, not one of "
                              f"{list(case.missing_statuses)}: {_snippet(e)}") from None
@@ -594,7 +631,14 @@ def _content_problems(case: ReadCase, spec: OpSpec) -> list[str]:
             # A fixture-bearing case always has a fixture value to anchor on.
             problems.append(f"{op}: anchor_free_reason is only for an operation without "
                             "path params and a case without needs")
-    options = spec.http_method == "OPTIONS"  # Allow carries no fixture: the contrast does
+        if not case.literal_anchors:
+            problems.append(f"{op}: an anchor-free case needs literal_anchors (spec "
+                            "constants the response must carry)")
+    literals = case.literal_anchors
+    if not (isinstance(literals, tuple)
+            and all(isinstance(lit, str) and lit.strip() for lit in literals)):
+        problems.append(f"{op}: literal_anchors must be a tuple of non-empty strings")
+    options =spec.http_method == "OPTIONS"  # Allow carries no fixture: the contrast does
     if not case.anchors and not case.allow_empty and reason is None and not options:
         problems.append(f"{op}: anchors (world ids/names the response must contain) are "
                         "required, or an anchor_free_reason")
