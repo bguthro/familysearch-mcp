@@ -75,8 +75,10 @@ class FakeTree:
     revision than the GET.
     """
 
-    def __init__(self, mode=None, *, relationship_lag=0):
+    def __init__(self, mode=None, *, relationship_lag=0, search_lie=None):
         self.relationship_lag = relationship_lag  # 204s before the relationship is computed
+        self.search_lie = search_lie  # ignore_count / other_first / no_confidence
+        self.search_params: list[dict] = []
         self.mode = mode
         self.role = {pid: role for role, pid in IDS.items() if role in GIVEN}
 
@@ -214,12 +216,42 @@ class FakeTree:
             return self._answer(request, 200, self.family(role, self.role[self._who(other)]))
         return self._answer(request, 404, {"errors": [{"code": 404}]})
 
+    def search(self, request):
+        """Beta's tree search over real data, as probed: the canary is the best hit for
+        its own name and birth year; no parameter at all answers 400."""
+        query = {k: v[0] for k, v in parse_qs(urlsplit(request.url).query).items()}
+        self.search_params.append(query)
+        if not query:
+            if self.mode == "catch_all":
+                return self._answer(request, 200, {"entries": []}, ATOM_JSON)
+            return self._answer(request, 400, {"errors": [{"message": "upstream 400"}]})
+        if self.mode == "empty":
+            return self._answer(request, 204)
+        count = 20 if self.search_lie == "ignore_count" else int(query.get("count", 20))
+        canary = (query.get("q.givenName"), query.get("q.surname")) == (
+            rtp.CANARY_NAME.split()[0], rtp.CANARY_NAME.split()[-1])
+        hits = [{"id": f"GQZZ-{n:03d}", "confidence": 2, "content": {"gedcomx": {"persons": [{
+            "id": f"GQZZ-{n:03d}", "display": {"name": f"Rosine Zopf {n}",
+                                                "birthDate": "1871"}}]}}}
+                for n in range(count)]
+        if canary and self.mode != "other_person" and self.search_lie != "other_first":
+            hits[0] = {"id": rtp.CANARY_ID, "confidence": 4, "content": {"gedcomx": {
+                "persons": [{"id": rtp.CANARY_ID, "display": {
+                    "name": rtp.CANARY_NAME, "birthDate": rtp.CANARY_BIRTH_DATE,
+                    "birthPlace": "Switzerland"}}]}}}
+        if self.search_lie == "no_confidence":
+            for hit in hits:
+                hit.pop("confidence")
+        return self._answer(request, 200, {"entries": hits, "results": 200}, ATOM_JSON)
+
     def serve(self):
         persons_list = re.compile(re.escape(TREE + "/persons") + r"(\?.*)?$")
         person = re.compile(re.escape(TREE + "/persons/") + r".+")
+        search = re.compile(re.escape(TREE + "/search") + r"(\?.*)?$")
         for method in (responses.GET, responses.HEAD):
             responses.add_callback(method, persons_list, callback=self.persons)
             responses.add_callback(method, person, callback=self.person_route)
+            responses.add_callback(method, search, callback=self.search)
 
 
 @pytest.fixture
@@ -257,11 +289,35 @@ def test_recipe_passes_against_the_honest_fake(name, reg_path, fake_world):
         assert entry["recipe"] == name
 
 
-def test_search_is_deferred_not_registered():
-    # Live runs 1-3: beta's tree search never surfaced the fresh fixtures.
-    assert "searchTreePersons" in rtp.DEFERRED and "2 min" in rtp.DEFERRED["searchTreePersons"]
-    assert "reads.tree.search" not in RECIPES
-    assert all(r.name != "reads.tree.search" for r in rtp.READS_TREE_PERSONS)
+@responses.activate
+def test_search_reads_the_canary_and_its_control_is_an_empty_query(reg_path, fake_world):
+    # Fresh fixtures are never indexed (live runs 1-3): the case reads a stable real
+    # beta record instead, anchor-free, and asks the server one question it must refuse.
+    assert "searchTreePersons" not in rtp.DEFERRED
+    case = next(c for c in rtp.SEARCH_CASES if c.op == "searchTreePersons")
+    assert case.anchor_free_reason and not case.needs and case.eventual is None
+    assert set(case.literal_anchors) == {
+        rtp.CANARY_ID, rtp.CANARY_NAME, rtp.CANARY_BIRTH_DATE}
+    result, tree = run("reads.tree.search", reg_path)
+    assert result["passed"] is True, result["problems"]
+    positive, control = tree.search_params
+    assert positive == {k: str(v) for k, v in rtp.CANARY_QUERY.items()}
+    assert positive["flag"] == "fst" and positive["count"] == str(rtp.CANARY_COUNT)
+    assert control == {}  # no parameter at all: beta answers 400
+
+
+def test_current_tree_person_stays_deferred_for_want_of_a_control():
+    # A discovered anchor (readCurrentUser's personId) would be sound, but the operation
+    # takes no parameter, so no request to it can be a not-found control.
+    reason = rtp.DEFERRED["readCurrentTreePerson"]
+    assert "control" in reason and "no path or query parameter" in reason
+
+
+@responses.activate
+@pytest.mark.parametrize("lie", ["ignore_count", "other_first", "no_confidence"])
+def test_search_fails_when_the_canary_answer_is_wrong(lie, reg_path, fake_world):
+    result, _tree = run("reads.tree.search", reg_path, search_lie=lie)
+    assert result["passed"] is False, lie
 
 
 @responses.activate
@@ -315,7 +371,8 @@ LIES = {
     "other_person": OWN_RECIPES,
     "catch_all": OWN_RECIPES,
     "ignore_pids": {"reads.tree.persons"},
-    "empty": {"reads.tree.persons", "reads.tree.relatives", "reads.tree.history"},
+    "empty": {"reads.tree.persons", "reads.tree.relatives", "reads.tree.search",
+              "reads.tree.history"},
     "stale_head": {"reads.tree.persons", "reads.tree.history"},
 }
 # What each lie is caught by (so a recipe cannot fail for an unrelated reason).

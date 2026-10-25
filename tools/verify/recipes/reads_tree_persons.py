@@ -1,4 +1,4 @@
-"""Read recipes for the person-centred Family Tree reads: persons, relatives, history.
+"""Read recipes for the person-centred Family Tree reads: persons, relatives, search, history.
 
 Every case reads the fixture family (``dad`` + ``mom`` -> ``child``, built by
 tools/verify/world.py) and anchors on a value the request does not send: a relative's
@@ -7,8 +7,9 @@ Shapes and statuses follow the recon (docs/superpowers/recon/2026-10-25-api-surf
 and the live runs: relative lists answer 204 when empty (the childless/parentless
 variants below, each after its populated case), ``readPersons`` needs ``pids``, change
 histories are atom feeds. ``readPerson`` is verified by the pilot; ``headPerson`` only
-uses it as its sibling GET. The reads that no obtainable fixture can exercise under the
-read rules (tree search among them: fresh fixtures never surfaced) are in ``DEFERRED``.
+uses it as its sibling GET. Tree search never surfaces fresh fixtures, so it reads a
+stable real canary record (anchor-free). The reads that no obtainable fixture can
+exercise under the read rules are in ``DEFERRED``.
 """
 from __future__ import annotations
 
@@ -31,12 +32,19 @@ UNKNOWN_OPID_EMPTY = (
     "run 3: no relationship and no such person look the same), while the positive call "
     "returned both endpoints' names under their ids")
 
+# ---------------------------------------------------------------- the search canary
+# A real, deceased person in beta's tree (the coordinator's read-only probe): tree
+# search does not index fresh fixtures (live runs 1-3), so searchTreePersons is checked
+# against this stable record instead. It is real beta data: if it ever changes, the
+# search case fails loudly, which is intended. Never hardcode these values elsewhere.
+CANARY_ID = "GQYM-SVR"
+CANARY_NAME = "Rosina Zopfi"
+CANARY_BIRTH_DATE = "11 March 1870"
+CANARY_COUNT = 5
+CANARY_QUERY = {"flag": "fst", "q.givenName": "Rosina", "q.surname": "Zopfi",
+                "q.birthLikeDate": "1870", "count": CANARY_COUNT}
+
 DEFERRED: dict[str, str] = {
-    "searchTreePersons": (
-        "beta tree search does not index/surface freshly created persons within 2 min; "
-        "live runs 1-3 (surname, then given name + surname, flag=fst, polled up to 2 "
-        "min) returned only unrelated confidence-2 hits; revisit in P3 with an aged "
-        "fixture or a stable literal"),
     "readTreePersonMatches": (
         "beta answers 204 for every fixture (recon: dad and child); a 204 counts only "
         "after a populated case, which needs a possible-duplicate person the matcher has "
@@ -65,9 +73,11 @@ DEFERRED: dict[str, str] = {
         "describe a fixture created at run time; an anchor-free case would need a literal "
         "proven in every match response, and the recon never called this operation"),
     "readCurrentTreePerson": (
-        "parameterless and scoped to the signed-in user's own tree person, which is no "
-        "fixture (no anchor), and no query or body makes it answer not-found, so the "
-        "not-found control cannot be built"),
+        "an anchor could be discovered (readCurrentUser's personId and that person's "
+        "name), but the not-found control cannot be built: the operation takes no path "
+        "or query parameter, so every request to it reads the same signed-in user's "
+        "person (the framework rejects a control identical to the positive, and an "
+        "ignored extra parameter still answers the person, not 400/404/410/204)"),
 }
 
 
@@ -231,6 +241,37 @@ RELATIVES_CASES = (
 )
 RELATIVES = reads_recipe("reads.tree.relatives", RELATIVES_CASES)
 
+def _expect_canary_hits(result, world):
+    """The canary search: exactly ``count`` hits, each a person with an id and a name and
+    a confidence, the canary first (by id, name and birth date)."""
+    entries = json_path(result.body, "entries")
+    assert isinstance(entries, list) and len(entries) == CANARY_COUNT, (
+        f"{len(entries) if isinstance(entries, list) else 'no'} entries, "
+        f"not count={CANARY_COUNT}")
+    for n, entry in enumerate(entries):
+        person = json_path(entry, "content.gedcomx.persons[0]")
+        assert isinstance(person.get("id"), str) and person["id"], f"hit {n} has no id"
+        name = json_path(person, "display.name")
+        assert isinstance(name, str) and name, f"hit {n} has no display name"
+        confidence = entry.get("confidence")
+        assert isinstance(confidence, (int, float)) and not isinstance(confidence, bool), (
+            f"hit {n} has no confidence")
+    first = json_path(entries[0], "content.gedcomx.persons[0]")
+    assert first["id"] == CANARY_ID, f"first hit is {first['id']!r}, not {CANARY_ID}"
+    assert json_path(first, "display.name") == CANARY_NAME, "first hit's name"
+    assert json_path(first, "display.birthDate") == CANARY_BIRTH_DATE, "first hit's birth"
+
+
+SEARCH_CASES = (
+    ReadCase(op="searchTreePersons", path_args=lambda w: {}, query=dict(CANARY_QUERY),
+             missing={}, missing_query={}, missing_statuses=(400,),
+             expect=_expect_canary_hits,
+             anchor_free_reason=("beta fresh fixtures are not indexed by tree search; "
+                                 "verified against a stable real canary record"),
+             literal_anchors=(CANARY_ID, CANARY_NAME, CANARY_BIRTH_DATE)),
+)
+SEARCH = reads_recipe("reads.tree.search", SEARCH_CASES)
+
 HISTORY = reads_recipe("reads.tree.history", [
     # The pid is in the path and in every link: the name is the anchor it cannot echo.
     ReadCase(op="readPersonChangeHistory", path_args=_pid("child"), missing=MISSING_PID,
@@ -242,4 +283,4 @@ HISTORY = reads_recipe("reads.tree.history", [
              needs=("persons",)),
 ])
 
-READS_TREE_PERSONS = (PERSONS, RELATIVES, HISTORY)
+READS_TREE_PERSONS = (PERSONS, RELATIVES, SEARCH, HISTORY)
