@@ -1,14 +1,14 @@
-"""Read recipes for the person-centred Family Tree reads: persons, relatives, search, history.
+"""Read recipes for the person-centred Family Tree reads: persons, relatives, history.
 
 Every case reads the fixture family (``dad`` + ``mom`` -> ``child``, built by
 tools/verify/world.py) and anchors on a value the request does not send: a relative's
 full name or id, the relationship ids, or a name that only the record itself carries.
-Shapes and statuses follow the recon (docs/superpowers/recon/2026-10-25-api-surface):
-relative lists answer 204 when empty (the childless/parentless variants below, each
-after its populated case), ``readPersons`` needs ``pids``, search needs ``flag=fst`` and
-answers 400 without it, change histories are atom feeds. ``readPerson`` is verified by
-the pilot; ``headPerson`` only uses it as its sibling GET. The reads that no obtainable
-fixture can exercise under the read rules are in ``DEFERRED`` with the reason.
+Shapes and statuses follow the recon (docs/superpowers/recon/2026-10-25-api-surface)
+and the live runs: relative lists answer 204 when empty (the childless/parentless
+variants below, each after its populated case), ``readPersons`` needs ``pids``, change
+histories are atom feeds. ``readPerson`` is verified by the pilot; ``headPerson`` only
+uses it as its sibling GET. The reads that no obtainable fixture can exercise under the
+read rules (tree search among them: fresh fixtures never surfaced) are in ``DEFERRED``.
 """
 from __future__ import annotations
 
@@ -24,16 +24,19 @@ UNKNOWN_PIDS_EMPTY = (
     "beta answers readPersons for an unknown pid (ZZZZ-ZZZ, and NOT-A-PERSON-ID) with an "
     "empty 204 (live runs 1 and 2); the spec's 200/400/404/410 omits it, the known "
     "undocumented 204 for empty lists (recon README)")
-# A surname no fixture carries; sent without flag=fst, which beta answers 400.
-NO_SUCH_SURNAME = "ZZSPIKENOSUCHSURNAME"
-SEARCH_COUNT = 20
-# The search index lags behind persons created a moment ago (live run 2 found only
-# real tree persons): up to 12 tries, 10 s apart.
-SEARCH_EVENTUAL = (12, 10.0)
 # Live run 2: the relationship between just-created fixtures first answers 204.
 RELATIONSHIP_EVENTUAL = (8, 5.0)
+UNKNOWN_OPID_EMPTY = (
+    "beta answers findRelationship for an unknown opid (ZZZZ-ZZZ) with an empty 204 (live "
+    "run 3: no relationship and no such person look the same), while the positive call "
+    "returned both endpoints' names under their ids")
 
 DEFERRED: dict[str, str] = {
+    "searchTreePersons": (
+        "beta tree search does not index/surface freshly created persons within 2 min; "
+        "live runs 1-3 (surname, then given name + surname, flag=fst, polled up to 2 "
+        "min) returned only unrelated confidence-2 hits; revisit in P3 with an aged "
+        "fixture or a stable literal"),
     "readTreePersonMatches": (
         "beta answers 204 for every fixture (recon: dad and child); a 204 counts only "
         "after a populated case, which needs a possible-duplicate person the matcher has "
@@ -160,30 +163,6 @@ def _expect_history(role: str):
     return expect
 
 
-def _expect_search_hits(*roles: str):
-    """Each role is a search hit: an entry whose gedcomx person is it, under its name."""
-
-    def expect(result, world):
-        entries = json_path(result.body, "entries")
-        assert isinstance(entries, list), "entries is not a list"
-        found: dict[str, dict] = {}
-        for entry in entries:
-            if not isinstance(entry, dict):
-                continue
-            gx = (entry.get("content") or {}).get("gedcomx") or {}
-            persons = [p for p in gx.get("persons") or [] if isinstance(p, dict)]
-            found.update(_persons_by_id(persons))
-            # A hit's person may carry its id only as the entry id (as
-            # projections.project_search_hit reads it): the hit is still that person.
-            if len(persons) == 1 and "id" not in persons[0] and isinstance(
-                    entry.get("id"), str):
-                found[entry["id"]] = persons[0]
-        for role in roles:
-            _assert_person(found, world, role)
-
-    return expect
-
-
 # ------------------------------------------------------------------ cases
 
 
@@ -216,7 +195,7 @@ PERSONS_CASES = (
 )
 PERSONS = reads_recipe("reads.tree.persons", PERSONS_CASES)
 
-RELATIVES = reads_recipe("reads.tree.relatives", [
+RELATIVES_CASES = (
     ReadCase(op="readPersonParents", path_args=_pid("child"), missing=MISSING_PID,
              expect=_both(_expect_persons("dad", "mom"),
                           _expect_relationship("childAndParentsRelationships",
@@ -248,22 +227,9 @@ RELATIVES = reads_recipe("reads.tree.relatives", [
              missing={"opid": NO_SUCH_PERSON},
              expect=_expect_persons("child", "dad"),
              anchors=(_name("child"), _name("dad")), needs=FAMILY,
-             eventual=RELATIONSHIP_EVENTUAL),
-])
-
-SEARCH = reads_recipe("reads.tree.search", [
-    # The proven shape (Search.tree_search): flag=fst, the child's own given token
-    # (unique to it) and the run's surname. Neither alone is the child's full name, which
-    # the hit must carry, with the child's id, which the request never sends.
-    ReadCase(op="searchTreePersons", path_args=lambda w: {},
-             query=lambda w: {"flag": "fst", "q.givenName": w.names["child_name"].split()[0],
-                              "q.surname": w.names["child_name"].split()[-1],
-                              "count": SEARCH_COUNT},
-             missing={}, missing_query={"q.surname": NO_SUCH_SURNAME}, missing_statuses=(400,),
-             expect=_expect_search_hits("child"),
-             anchors=(_name("child"), _id("child")), needs=("persons",),
-             eventual=SEARCH_EVENTUAL),
-])
+             eventual=RELATIONSHIP_EVENTUAL, control_may_be_empty=UNKNOWN_OPID_EMPTY),
+)
+RELATIVES = reads_recipe("reads.tree.relatives", RELATIVES_CASES)
 
 HISTORY = reads_recipe("reads.tree.history", [
     # The pid is in the path and in every link: the name is the anchor it cannot echo.
@@ -276,4 +242,4 @@ HISTORY = reads_recipe("reads.tree.history", [
              needs=("persons",)),
 ])
 
-READS_TREE_PERSONS = (PERSONS, RELATIVES, SEARCH, HISTORY)
+READS_TREE_PERSONS = (PERSONS, RELATIVES, HISTORY)

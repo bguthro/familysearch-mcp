@@ -38,7 +38,6 @@ IDS = {"dad": "KWZZ-DAD", "mom": "KWZZ-MOM", "child": "KWZZ-CHD",
 GIVEN = {"dad": "ZZSPIKED100000000001", "mom": "ZZSPIKEM100000000002",
          "child": "ZZSPIKEC100000000003"}
 GENDER = {"dad": "Male", "mom": "Female", "child": "Male"}
-STRANGER = {"id": "KWZZ-STR", "name": "Somebody Else"}
 PID_FORMAT = re.compile(r"^[A-Z0-9]{4}-[A-Z0-9]{3,4}$")
 OWN_RECIPES = {r.name for r in rtp.READS_TREE_PERSONS}
 SCOPE_PREFIXES = ("/tree/persons", "/tree/search", "/tree/matches", "/tree/current-person")
@@ -70,18 +69,16 @@ class FakeTree:
     """The fixture family on a fake beta.
 
     ``mode`` is None (honest) or one lie: ``other_person`` answers every person read with
-    the next person's data (dad -> mom -> child -> dad) and search with strangers;
-    ``ignore_pids`` answers readPersons with everyone; ``catch_all`` answers 200 for
-    unknown ids (and search without ``flag=fst``); ``empty`` answers 204 for every
-    populated list; ``stale_head`` answers HEAD with another revision than the GET.
+    the next person's data (dad -> mom -> child -> dad); ``ignore_pids`` answers
+    readPersons with everyone; ``catch_all`` answers 200 for unknown ids; ``empty``
+    answers 204 for every populated list; ``stale_head`` answers HEAD with another
+    revision than the GET.
     """
 
-    def __init__(self, mode=None, *, search_lag=0, relationship_lag=0):
+    def __init__(self, mode=None, *, relationship_lag=0):
         self.relationship_lag = relationship_lag  # 204s before the relationship is computed
         self.mode = mode
         self.role = {pid: role for role, pid in IDS.items() if role in GIVEN}
-        self.search_params: list[dict] = []
-        self.search_lag = search_lag  # positive searches answered 204 before the index has them
 
     # ------------------------------------------------------------ shapes
 
@@ -209,7 +206,7 @@ class FakeTree:
             if other not in self.role:
                 if self.mode == "catch_all":
                     return self._answer(request, 200, {"persons": []})
-                return self._answer(request, 400, {"errors": [{"code": 400}]})
+                return self._answer(request, 204)  # live run 3: unknown opid is "none"
             if self.relationship_lag:  # live run 2: 204 for just-created fixtures
                 self.relationship_lag -= 1
                 return self._answer(request, 204)
@@ -217,36 +214,12 @@ class FakeTree:
             return self._answer(request, 200, self.family(role, self.role[self._who(other)]))
         return self._answer(request, 404, {"errors": [{"code": 404}]})
 
-    def search(self, request):
-        query = {k: v[0] for k, v in parse_qs(urlsplit(request.url).query).items()}
-        self.search_params.append(query)
-        if query.get("flag") != "fst":
-            if self.mode == "catch_all":
-                return self._answer(request, 204)
-            return self._answer(request, 400, {"errors": [{"message": "upstream 400"}]})
-        if self.search_lag:
-            self.search_lag -= 1
-            return self._answer(request, 204)
-        if self.mode == "other_person":
-            hits = [{"id": STRANGER["id"], "content": {"gedcomx": {"persons": [{
-                "id": STRANGER["id"], "display": {"name": STRANGER["name"]}}]}}}]
-        else:
-            given = query.get("q.givenName")
-            hits = [{"id": IDS[r], "score": 1.0,
-                     "content": {"gedcomx": {"persons": [self.person(IDS[r])]}}}
-                    for r in GIVEN if query.get("q.surname") == SURNAME
-                    and given in (None, GIVEN[r])]
-        return self._list(request, {"entries": hits, "results": len(hits)} if hits else None,
-                          ATOM_JSON)
-
     def serve(self):
         persons_list = re.compile(re.escape(TREE + "/persons") + r"(\?.*)?$")
         person = re.compile(re.escape(TREE + "/persons/") + r".+")
-        search = re.compile(re.escape(TREE + "/search") + r"(\?.*)?$")
         for method in (responses.GET, responses.HEAD):
             responses.add_callback(method, persons_list, callback=self.persons)
             responses.add_callback(method, person, callback=self.person_route)
-            responses.add_callback(method, search, callback=self.search)
 
 
 @pytest.fixture
@@ -284,26 +257,24 @@ def test_recipe_passes_against_the_honest_fake(name, reg_path, fake_world):
         assert entry["recipe"] == name
 
 
-@responses.activate
-def test_search_sends_the_proven_shape(reg_path, fake_world):
-    _result, tree = run("reads.tree.search", reg_path)
-    positive, control = tree.search_params
-    assert positive["flag"] == "fst" and positive["q.surname"] == SURNAME
-    assert positive["q.givenName"] == GIVEN["child"]  # the child's unique given token
-    # The control sends the parameter with a dead value and no flag: a server answer.
-    assert "flag" not in control and control["q.surname"] != SURNAME
+def test_search_is_deferred_not_registered():
+    # Live runs 1-3: beta's tree search never surfaced the fresh fixtures.
+    assert "searchTreePersons" in rtp.DEFERRED and "2 min" in rtp.DEFERRED["searchTreePersons"]
+    assert "reads.tree.search" not in RECIPES
+    assert all(r.name != "reads.tree.search" for r in rtp.READS_TREE_PERSONS)
 
 
 @responses.activate
-def test_search_waits_for_the_index_but_not_forever(reg_path, fake_world):
-    attempts, pause = rtp.SEARCH_EVENTUAL
-    result, tree = run("reads.tree.search", reg_path, search_lag=attempts - 1)
+def test_find_relationship_control_is_an_empty_answer_for_an_unknown_opid(
+        reg_path, fake_world):
+    case = next(c for c in rtp.RELATIVES_CASES if c.op == "findRelationship")
+    assert case.control_may_be_empty and "204" in case.control_may_be_empty
+    assert case.eventual == rtp.RELATIONSHIP_EVENTUAL
+    result, _tree = run("reads.tree.relatives", reg_path)
     assert result["passed"] is True, result["problems"]
-    assert fake_world == [pause] * (attempts - 1)
-    assert len(tree.search_params) == attempts + 1  # the control is asked once
-    fake_world.clear()
-    result, tree = run("reads.tree.search", reg_path, search_lag=attempts)
-    assert result["passed"] is False and "answered 204" in "\n".join(result["problems"])
+    controls = [c for c in responses.calls if c.request.url.endswith(
+        f"/relationships/{rtp.NO_SUCH_PERSON}")]
+    assert len(controls) == 1 and controls[0].response.status_code == 204
 
 
 @responses.activate
@@ -334,10 +305,8 @@ def test_find_relationship_waits_for_the_calculation_but_not_forever(reg_path, f
 @responses.activate
 def test_failures_carry_the_response_skeleton(reg_path, fake_world):
     result, _tree = run("reads.tree.relatives", reg_path, "other_person")
-    assert "response: 200" in "\n".join(result["problems"])
-    # A search hit's person (and its name) is deep enough to be shown.
-    result, _tree = run("reads.tree.search", reg_path, "other_person")
-    assert STRANGER["name"] in "\n".join(result["problems"])
+    problems = "\n".join(result["problems"])
+    assert "response: 200" in problems and GIVEN["dad"] in problems  # the names shown
 
 
 # ------------------------------------------------------------------ the fake lies
@@ -346,8 +315,7 @@ LIES = {
     "other_person": OWN_RECIPES,
     "catch_all": OWN_RECIPES,
     "ignore_pids": {"reads.tree.persons"},
-    "empty": {"reads.tree.persons", "reads.tree.relatives", "reads.tree.search",
-              "reads.tree.history"},
+    "empty": {"reads.tree.persons", "reads.tree.relatives", "reads.tree.history"},
     "stale_head": {"reads.tree.persons", "reads.tree.history"},
 }
 # What each lie is caught by (so a recipe cannot fail for an unrelated reason).

@@ -1316,9 +1316,22 @@ def test_empty_control_for_a_list_read_whose_spec_omits_204(reg_path):
     run_case(ctx_for("readPersons", reg_path=reg_path), FakeWorld(), case)
 
 
+@responses.activate
+def test_empty_control_for_a_one_record_read_with_reason_and_anchored_positive(reg_path):
+    # Any GET read may use it (coordinator ruling, live run 3): the positive proved the
+    # record's content first, so the empty answer for the unknown id is "nothing".
+    serve_person(bogus=None)
+    responses.add(responses.GET, f"{PERSONS}/{BOGUS}", status=204)
+    ctx = ctx_for("readPerson", reg_path=reg_path)
+    run_case(ctx, FakeWorld(), read_child(control_may_be_empty=EMPTY_REASON))
+    with pytest.raises(AssertionError, match="control answered 204"):
+        run_case(ctx, FakeWorld(), read_child())  # without the flag: not proof
+
+
 @pytest.mark.parametrize("make, why", [
-    # readPerson reads one record: an empty answer for it is no "nothing found".
-    (lambda: [read_child(control_may_be_empty=EMPTY_REASON)], "list"),
+    (lambda: [head_case(control_may_be_empty=EMPTY_REASON)], "HEAD"),
+    (lambda: [merge_case(control_may_be_empty=EMPTY_REASON)], "OPTIONS"),
+    (lambda: [_ancestry_case(control_may_be_empty=EMPTY_REASON)], "anchor-free"),
     (lambda: [children_case("dad", control_may_be_empty="  ")], "reason"),
     (lambda: [children_case("dad", control_may_be_empty=True)], "reason"),
     (lambda: [children_case("dad"), children_case("child", allow_empty=True,
