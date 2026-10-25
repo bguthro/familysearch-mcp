@@ -10,8 +10,10 @@ the session cookie from Brave and aborts (exit 2) unless beta's
 ``GET /platform/users/current`` answers 200 for it. Production is never contacted
 and is refused in every code path. A recipe marks its operations verified only when it
 raised nothing, its fixtures were torn down cleanly, it called every operation it
-claims and (for ``state-change`` evidence) passed a negative control; otherwise the
-registry file is left untouched. The token is never printed.
+claims, (for ``state-change`` evidence) passed a negative control and (when every
+operation it claims is a read) called no write: such a recipe's API refuses writes
+before sending them, and any write found in ``api.called`` fails the recipe.
+Otherwise the registry file is left untouched. The token is never printed.
 """
 import argparse
 import datetime
@@ -66,6 +68,9 @@ def run_recipe(recipe: Recipe, ctx: VerifyContext, *, registry_path: Path, commi
     missing = sorted(set(recipe.ops) - ctx.api.called)
     if missing:
         problems.append(f"claimed but never successfully called: {', '.join(missing)}")
+    if recipe.evidence == "read-content" and recipe.reads is not True:
+        # Only reads_recipe's cases are held to anchors and controls, and see a sealed world.
+        problems.append("read-content recipes must be built with tools.verify.reads.reads_recipe")
     writes = called_writes(recipe.ops, ctx.api.called)
     if writes:
         problems.append(f"read-only recipe called write operation(s): {', '.join(writes)}")

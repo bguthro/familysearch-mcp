@@ -4,24 +4,32 @@ A case passes only if all of these hold, in one run against the same server:
 
 - the positive call (fixture ids from the world) answers an accepted success status
   (``accepted_statuses``) in the media type that was asked for (``media_type_problem``);
-- its ``expect`` passes on the real result and fails on every mutant of it
-  (``mutants``): a check that still passes with every string in the response replaced,
-  or with the response emptied, does not depend on the response and proves nothing;
+- every ``anchor`` (an exact world id or name) appears in the response, checked by
+  the framework, and none survives in the scrubbed mutant (so it is response content,
+  not a dict key);
+- its ``expect`` (structure and placement) passes on the real result and fails on
+  every mutant of it (``mutants``): a check that still passes with every string in the
+  response replaced, or with the response emptied, does not depend on the response;
 - the not-found control (the same operation with ``missing`` ids, or for a
   parameterless operation ``missing_query``/``missing_body``) reaches the server and
   answers one of ``missing_statuses``, so a catch-all server cannot pass.
 
-``reads_recipe`` groups cases into a ``read-content`` recipe and reports every failing
-case at once. Fixtures come from a ``World`` (built by tools/verify/world.py), created
-on the beta client with the hand-written library, never through the generated API.
+HEAD cases read their content from the matching GET (``compare_with``) and must share
+an HTTP validator with it; OPTIONS cases must answer a different ``Allow`` for
+``contrast_args``. ``reads_recipe`` groups cases into a ``read-content`` recipe and
+reports every failing case at once. Fixtures come from a ``World`` (built by
+tools/verify/world.py) on the beta client with the hand-written library, never through
+the generated API; cases only ever see a sealed, read-only view of it (``seal``).
 """
 from __future__ import annotations
 
 import dataclasses
 import json
 import re
+import uuid
 from collections.abc import Callable, Mapping, Sequence
 from functools import cache
+from types import MappingProxyType
 from typing import Any, Protocol
 
 from familysearch.api import OPERATIONS
@@ -32,9 +40,10 @@ from familysearch.errors import FSHTTPError
 from .core import Recipe, VerifyContext
 
 MAX_CASES = 12  # one bad case should fail only a small group
-MUTATED = "ZZMUTATED"
-# Statuses that say nothing about whether the id exists: auth, throttling, timeouts.
-_UNINFORMATIVE = frozenset({401, 403, 407, 408, 429})
+MUTATED_PREFIX = "ZZMUTATED"  # plus a random suffix per mutation, so no check can expect it
+# Not-found means the id (or query) does not exist; nothing else proves the server looked.
+NOT_FOUND_STATUSES = frozenset({400, 404, 410})
+_VALIDATORS = ("ETag", "Last-Modified", "Content-Length")
 _BODY_LIMIT = 200
 
 
@@ -55,13 +64,26 @@ class World(Protocol):
 class ReadCase:
     """How to read one operation for a fixture, check the content, and check not-found.
 
-    ``expect(result, world)`` raises ``AssertionError`` on a mismatch and returns None.
-    ``missing`` overrides path args with ids that must not exist (``{}`` for a
-    parameterless operation, whose control is ``missing_query`` and/or
-    ``missing_body`` instead). ``allow_empty`` accepts a 204 (no content) for this
-    case; it needs a populated case of the same operation in the same recipe, which
-    must pass first (a 204 is then a real "empty", not a server that answers 204 to
-    everything).
+    ``anchors`` give the fixture values (each must be exactly one of the world's ids
+    or names) the framework requires in the response: the body, or the header values
+    for HEAD/OPTIONS without a sibling GET. Every populated case needs at least one,
+    unless it declares ``anchor_free_reason`` (no fixture value can appear, as for a
+    standards vocabulary list): its ``expect`` must then compare against a value
+    discovered from an earlier response in the same recipe.
+
+    ``expect(result, world)`` checks structure and placement; it raises
+    ``AssertionError`` on a mismatch and returns None. ``missing`` overrides path args
+    with ids that must not exist (``{}`` for a parameterless operation, whose control
+    is ``missing_query`` and/or ``missing_body`` instead). ``allow_empty`` accepts a
+    204 for this case; it needs a populated case of the same operation, with other
+    args or query, that passes first in the same recipe (a 204 is then a real
+    "empty", not a server that answers 204 to everything).
+
+    ``compare_with`` (HEAD only, required unless ``anchor_free_reason``) names the GET
+    with the same path: it is called with the same args, the anchors and ``expect``
+    run on its result, and HEAD and GET must agree on an ETag, Last-Modified or
+    Content-Length. ``contrast_args`` (OPTIONS only, required) are other path args
+    whose ``Allow`` must differ from the positive call's.
     """
 
     op: str
@@ -76,6 +98,40 @@ class ReadCase:
     needs: tuple[str, ...] = ()
     allow_empty: bool = False
     missing_body: Any = None
+    anchors: tuple[Callable[[World], str], ...] = ()
+    anchor_free_reason: str | None = None
+    compare_with: str | None = None
+    contrast_args: Callable[[World], dict] | None = None
+
+
+# ------------------------------------------------------------------ the world
+
+
+class _SealedWorld:
+    """A frozen copy of a world's ``ids`` and ``names``: nothing else, and no ``need``."""
+
+    __slots__ = ("ids", "names")
+
+    def __init__(self, ids: Mapping[str, str], names: Mapping[str, str]):
+        object.__setattr__(self, "ids", MappingProxyType(dict(ids)))
+        object.__setattr__(self, "names", MappingProxyType(dict(names)))
+
+    def __setattr__(self, name, value):
+        raise AttributeError("the world is sealed: cases cannot change it")
+
+    def need(self, *groups: str) -> None:
+        raise AssertionError("the world is sealed: fixtures are built up front from the "
+                             "cases' needs, not from inside a case")
+
+
+def seal(world: World) -> World:
+    """The read-only view handed to ``path_args``, ``query``, ``anchors`` and ``expect``.
+
+    No client, fixtures or ``need``: a case can read the fixtures, never make more.
+    """
+    if isinstance(world, _SealedWorld):
+        return world
+    return _SealedWorld(world.ids, world.names)
 
 
 # ------------------------------------------------------------------ the spec
@@ -163,6 +219,10 @@ def _serialized(result: ApiResult) -> str:
     return result.text or ""
 
 
+def _header_text(result: ApiResult) -> str:
+    return "\n".join(str(v) for v in result.headers.values())
+
+
 def contains(result: ApiResult, *needles: str) -> None:
     """Each needle appears in the JSON-serialized body (the text if not JSON)."""
     if not needles:
@@ -196,38 +256,54 @@ def json_path(body: Any, path: str) -> Any:
     return value
 
 
-def _scrub(value: Any) -> Any:
+def _scrub(value: Any, marker: str) -> Any:
+    """Every string value replaced by ``marker``; dict keys and numbers are kept, so a
+    check that finds a fixture value only in a key (or only counts) still passes."""
     if isinstance(value, str):
-        return MUTATED
+        return marker
     if isinstance(value, dict):
-        return {k: _scrub(v) for k, v in value.items()}
+        return {k: _scrub(v, marker) for k, v in value.items()}
     if isinstance(value, list):
-        return [_scrub(v) for v in value]
+        return [_scrub(v, marker) for v in value]
     return value
 
 
 def mutants(result: ApiResult) -> list[ApiResult]:
     """Copies of ``result`` a content check must reject.
 
-    One with every string value replaced (body, text and header values; keys and
-    numbers kept), one with no body, text or headers. A check tied to a fixture's id
-    or name fails on both; one that looks only at status, keys or counts does not.
+    One with every string value replaced by a fresh random marker (body, text and
+    header values; keys and numbers kept), one with no body, text or headers. A check
+    tied to a fixture's id or name fails on both; one that looks only at status, keys
+    or counts does not.
     """
-    body = _scrub(result.body)
-    text = json.dumps(body) if result.body is not None else (MUTATED if result.text else "")
+    marker = f"{MUTATED_PREFIX}{uuid.uuid4().hex[:12]}"
+    body = _scrub(result.body, marker)
+    text = json.dumps(body) if result.body is not None else (marker if result.text else "")
     scrubbed = dataclasses.replace(
-        result, body=body, text=text, headers={k: MUTATED for k in result.headers})
+        result, body=body, text=text, headers={k: marker for k in result.headers})
     emptied = dataclasses.replace(result, body=None, text="", headers={})
     return [scrubbed, emptied]
 
 
-def _run_expect(case: ReadCase, result: ApiResult, world: World) -> None:
+def _check_content(case: ReadCase, result: ApiResult, world: World, anchors: list[str],
+                   in_headers: bool) -> None:
+    """Anchors in the response (and not in its scrubbed copy), then ``expect`` on it and,
+    failing, on every mutant."""
+    haystack = _header_text if in_headers else _serialized
+    where = "response headers" if in_headers else "response"
+    for anchor in anchors:
+        if anchor not in haystack(result):
+            raise AssertionError(f"anchor {anchor!r} not in the {where}")
     returned = case.expect(result, world)
     if returned is not None:
         raise AssertionError(
             f"expect returned {returned!r} instead of raising: use assert, contains or "
             "json_path so a mismatch fails")
     for mutant in mutants(result):
+        for anchor in anchors:
+            if anchor in haystack(mutant):
+                raise AssertionError(f"anchor {anchor!r} survives with every string value "
+                                     "replaced (it is only in a key): not response content")
         try:
             case.expect(mutant, world)
         except Exception:  # noqa: BLE001 - any failure means the check saw the change
@@ -235,6 +311,17 @@ def _run_expect(case: ReadCase, result: ApiResult, world: World) -> None:
         raise AssertionError(
             "expect does not depend on the response: it still passes with the response's "
             "strings replaced or the response emptied; check a fixture's id or name")
+
+
+def _anchor_values(case: ReadCase, world: World) -> list[str]:
+    known = set(world.ids.values()) | set(world.names.values())
+    values = []
+    for anchor in case.anchors:
+        value = anchor(world)
+        if not isinstance(value, str) or value not in known:
+            raise AssertionError(f"anchor {value!r} is not a world id or name")
+        values.append(value)
+    return values
 
 
 # ------------------------------------------------------------------ cases
@@ -256,24 +343,96 @@ def _call(ctx: VerifyContext, spec: OpSpec, args: dict, query, accept, body) -> 
     return getattr(ctx.api, spec.method_name)(**args, **kwargs)
 
 
+def _header(result: ApiResult, name: str) -> str | None:
+    for key, value in result.headers.items():
+        if key.lower() == name.lower():
+            return value
+    return None
+
+
+def _validator(value: str) -> str:
+    """An ETag without its weak ``W/`` prefix, quotes or a ``-gzip`` suffix."""
+    value = value.strip()
+    if value.startswith("W/"):
+        value = value[2:]
+    value = value.strip('"')
+    return value[:-5] if value.endswith("-gzip") else value
+
+
+def _sibling_get(ctx: VerifyContext, case: ReadCase, head: ApiResult, args: dict,
+                 query) -> ApiResult:
+    """The matching GET (same path args), which must answer and share a validator."""
+    spec = OPERATIONS[case.compare_with]
+    accept = spec.accepts[0] if spec.accepts else None
+    try:
+        got = _call(ctx, spec, args, query, accept, None)
+    except FSHTTPError as e:
+        raise AssertionError(f"sibling {case.compare_with} failed: {_snippet(e)}") from None
+    if not 200 <= got.status < 300 or got.status == 204:
+        raise AssertionError(f"sibling {case.compare_with} answered {got.status}, not content")
+    problem = media_type_problem(spec, accept, got.content_type)
+    if problem:
+        raise AssertionError(f"sibling {case.compare_with}: {problem}")
+    for name in _VALIDATORS:
+        h, g = _header(head, name), _header(got, name)
+        if h and g and _validator(h) == _validator(g):
+            return got
+    raise AssertionError(f"HEAD and {case.compare_with} share no equal validator "
+                         f"({', '.join(_VALIDATORS)})")
+
+
+def _allow(result: ApiResult) -> frozenset[str]:
+    return frozenset(m.strip().upper() for m in (_header(result, "Allow") or "").split(",")
+                     if m.strip())
+
+
+def _contrast(ctx: VerifyContext, spec: OpSpec, case: ReadCase, world: World, args: dict,
+              query, accept, positive: ApiResult) -> None:
+    """OPTIONS for other args must answer another ``Allow``: the answer depends on the ids."""
+    other = dict(case.contrast_args(world) or {})
+    if other == args:
+        raise AssertionError("contrast_args are the positive call's own args")
+    allow = _allow(positive)
+    if not allow:
+        raise AssertionError("OPTIONS answered no Allow header")
+    try:
+        answer = _call(ctx, spec, other, query, accept, None)
+    except FSHTTPError as e:
+        raise AssertionError(f"OPTIONS contrast call failed: {_snippet(e)}") from None
+    if _allow(answer) == allow:
+        raise AssertionError(f"OPTIONS answers the same Allow ({', '.join(sorted(allow))}) "
+                             "for the contrast args: it does not depend on the ids")
+
+
 def run_case(ctx: VerifyContext, world: World, case: ReadCase, *,
-             populated: frozenset[str] | set[str] = frozenset()) -> None:
+             populated: Mapping[str, tuple[dict, Any]] | None = None) -> None:
     """Run one case's positive call, content check and not-found control.
 
-    ``populated`` names the operations whose populated case already passed; a 204
-    counts for an ``allow_empty`` case only if its operation is in it (standalone,
-    nothing vouches for it: fail closed). On a 204 there is no content: ``expect``
-    is not called, and the control still must answer not-found. HEAD and OPTIONS
-    have no body: ``expect`` checks ``result.headers``, and mutants scrub those.
+    Raises ValueError for a case ``reads_recipe`` would reject, AssertionError when it
+    fails. ``populated`` maps each operation whose populated case already passed to
+    that case's (args, query); an ``allow_empty`` case must read other args or query,
+    and its 204 counts only if its operation is in it (standalone, nothing vouches for
+    it: fail closed). On a 204 there is no content: anchors and ``expect`` are not
+    run, and the control still must answer not-found. ``world`` is sealed first.
     """
-    _run_case(ctx, world, case, populated)
+    problems = _case_problems(case)
+    if problems:
+        raise ValueError("; ".join(problems))
+    _run_case(ctx, seal(world), case, populated or {})
 
 
 def _run_case(ctx: VerifyContext, world: World, case: ReadCase,
-              populated: frozenset[str] | set[str]) -> ApiResult:
+              populated: Mapping[str, tuple[dict, Any]]) -> tuple[dict, Any]:
     spec = OPERATIONS[case.op]
     args = dict(_resolve(case.path_args, world) or {})
     query = _resolve(case.query, world)
+    for key, value in case.missing.items():
+        if args.get(key) == value:
+            raise AssertionError(f"missing {key}={value!r} is the fixture's own value")
+    if case.allow_empty and populated.get(case.op) == (args, query):
+        raise AssertionError("allow_empty variant reads the same args and query as the "
+                             f"populated {case.op} case")
+    anchors = _anchor_values(case, world)
     accept = case.accept or (spec.accepts[0] if spec.accepts else None)
     try:
         result = _call(ctx, spec, args, query, accept, case.body)
@@ -287,14 +446,20 @@ def _run_case(ctx: VerifyContext, world: World, case: ReadCase,
         if case.op not in populated:
             raise AssertionError(
                 f"204 (empty) accepted only after a populated {case.op} case passed")
+    elif spec.http_method == "HEAD" and case.compare_with:
+        _check_content(case, _sibling_get(ctx, case, result, args, query), world, anchors,
+                       in_headers=False)
+    elif spec.http_method in ("HEAD", "OPTIONS"):
+        _check_content(case, result, world, anchors, in_headers=True)
+        if spec.http_method == "OPTIONS":
+            _contrast(ctx, spec, case, world, args, query, accept, result)
     else:
-        problem = (None if spec.http_method in ("HEAD", "OPTIONS")
-                   else media_type_problem(spec, accept, result.content_type))
+        problem = media_type_problem(spec, accept, result.content_type)
         if problem:
             raise AssertionError(problem)
-        _run_expect(case, result, world)
+        _check_content(case, result, world, anchors, in_headers=False)
     _control(ctx, spec, case, args, query, accept)
-    return result
+    return args, query
 
 
 def _control(ctx: VerifyContext, spec: OpSpec, case: ReadCase, args: dict, query,
@@ -333,41 +498,73 @@ def _case_problems(case: Any) -> list[str]:
     spec = OPERATIONS.get(case.op)
     if spec is None:
         return [f"{case.op}: unknown operation"]
-    problems = []
+    op, problems = case.op, []
     if spec.kind != "read" or is_write(spec):
-        problems.append(f"{case.op}: not a read operation (kind={spec.kind})")
+        problems.append(f"{op}: not a read operation (kind={spec.kind})")
     if not callable(case.expect):
-        problems.append(f"{case.op}: expect (a content check) is required and must be callable")
+        problems.append(f"{op}: expect (a content check) is required and must be callable")
     if not callable(case.path_args):
-        problems.append(f"{case.op}: path_args must be a callable taking the world")
+        problems.append(f"{op}: path_args must be a callable taking the world")
     if case.accept is not None and case.accept not in spec.accepts:
-        problems.append(f"{case.op}: accept {case.accept!r} not one of {list(spec.accepts)}")
+        problems.append(f"{op}: accept {case.accept!r} not one of {list(spec.accepts)}")
     if not isinstance(case.missing, dict):
-        problems.append(f"{case.op}: missing must be a dict")
+        problems.append(f"{op}: missing must be a dict")
     else:
         extra = sorted(set(case.missing) - set(spec.path_params))
         if extra:
-            problems.append(f"{case.op}: missing keys {extra} are not path parameters")
+            problems.append(f"{op}: missing keys {extra} are not path parameters")
         if spec.path_params and not case.missing:
-            problems.append(f"{case.op}: missing must override at least one of "
+            problems.append(f"{op}: missing must override at least one of "
                             f"{list(spec.path_params)} for the not-found control")
     if not spec.path_params and case.missing_query is None and case.missing_body is None:
-        problems.append(f"{case.op}: a parameterless operation needs missing_query "
+        problems.append(f"{op}: a parameterless operation needs missing_query "
                         "(or missing_body) for the not-found control")
     if case.missing_query is not None:
         absent = [q for q in spec.required_query if q not in case.missing_query]
         if absent:
-            problems.append(f"{case.op}: missing_query lacks required {absent}; the client "
+            problems.append(f"{op}: missing_query lacks required {absent}; the client "
                             "would refuse it before the server sees it")
     if spec.body == "none" and (case.body is not None or case.missing_body is not None):
-        problems.append(f"{case.op}: takes no body")
+        problems.append(f"{op}: takes no body")
     statuses = case.missing_statuses
-    if (not statuses or not all(isinstance(s, int) and 400 <= s < 500 for s in statuses)
-            or set(statuses) & _UNINFORMATIVE):
-        problems.append(f"{case.op}: missing_statuses must be 4xx not-found statuses "
-                        f"(not {sorted(_UNINFORMATIVE)}), got {statuses!r}")
+    if not (isinstance(statuses, tuple) and statuses and set(statuses) <= NOT_FOUND_STATUSES):
+        problems.append(f"{op}: missing_statuses must be a non-empty subset of "
+                        f"{sorted(NOT_FOUND_STATUSES)}, got {statuses!r}")
     if not all(isinstance(g, str) and g.strip() for g in case.needs):
-        problems.append(f"{case.op}: needs must be non-empty group names")
+        problems.append(f"{op}: needs must be non-empty group names")
+    problems += _content_problems(case, spec)
+    return problems
+
+
+def _content_problems(case: ReadCase, spec: OpSpec) -> list[str]:
+    """Anchors, and the HEAD/OPTIONS extras that stand in for a body."""
+    op, problems = case.op, []
+    if not (isinstance(case.anchors, tuple) and all(callable(a) for a in case.anchors)):
+        problems.append(f"{op}: anchors must be a tuple of callables taking the world")
+    reason = case.anchor_free_reason
+    if reason is not None and not (isinstance(reason, str) and reason.strip()):
+        problems.append(f"{op}: anchor_free_reason must be a non-empty explanation")
+    if not case.anchors and not case.allow_empty and reason is None:
+        problems.append(f"{op}: anchors (world ids/names the response must contain) are "
+                        "required, or an anchor_free_reason")
+    if spec.http_method == "HEAD":
+        sibling = OPERATIONS.get(case.compare_with) if case.compare_with else None
+        if case.compare_with is None and reason is None:
+            problems.append(f"{op}: a HEAD case needs compare_with (its GET), or an "
+                            "anchor_free_reason")
+        elif case.compare_with is not None and not (
+                sibling and sibling.http_method == "GET" and sibling.kind == "read"
+                and sibling.path == spec.path):
+            problems.append(f"{op}: compare_with {case.compare_with!r} is not the GET "
+                            f"of {spec.path}")
+    elif case.compare_with is not None:
+        problems.append(f"{op}: compare_with is for HEAD cases only")
+    if spec.http_method == "OPTIONS":
+        if not callable(case.contrast_args):
+            problems.append(f"{op}: an OPTIONS case needs contrast_args (other ids whose "
+                            "Allow differs)")
+    elif case.contrast_args is not None:
+        problems.append(f"{op}: contrast_args is for OPTIONS cases only")
     return problems
 
 
@@ -402,15 +599,15 @@ def default_world(ctx: VerifyContext) -> World:
 
 def reads_recipe(name: str, cases: Sequence[ReadCase], *,
                  world_factory: Callable[[VerifyContext], World] = default_world) -> Recipe:
-    """A ``read-content`` recipe proving each case's operation.
+    """A ``read-content`` recipe proving each case's operation (``Recipe.reads`` set).
 
-    Raises ValueError at construction for a non-read or unknown operation, a case
-    without a callable ``expect``, an operation repeated other than as
-    ``allow_empty`` variants, or a case whose not-found control cannot be built.
-    ``run`` builds the world with the union of the cases' ``needs``, runs populated
-    cases before ``allow_empty`` ones and raises one AssertionError listing every
-    failing case. The world's fixtures live in ``ctx.fixtures``, which the runner
-    tears down strictly.
+    Raises ValueError at construction for any case ``run_case`` would refuse, an
+    operation repeated other than as ``allow_empty`` variants, or too many cases.
+    ``run`` builds the world once with the union of the cases' ``needs``, then seals
+    it: cases see only its ``ids`` and ``names`` and cannot build more. Populated
+    cases run before ``allow_empty`` ones; one AssertionError lists every failing
+    case. The world's fixtures live in ``ctx.fixtures``, torn down by the runner.
+    A HEAD case's sibling GET is called but not declared, so it is not verified here.
     """
     cases = tuple(cases)
     problems = _recipe_problems(cases)
@@ -424,19 +621,20 @@ def reads_recipe(name: str, cases: Sequence[ReadCase], *,
         world = world_factory(ctx)
         if needs:
             world.need(*needs)
-        populated: set[str] = set()
+        view = seal(world)
+        populated: dict[str, tuple[dict, Any]] = {}
         failures = []
         for case in ordered:
             try:
-                _run_case(ctx, world, case, frozenset(populated))
+                done = _run_case(ctx, view, case, MappingProxyType(dict(populated)))
             except Exception as e:  # noqa: BLE001 - collect every failing case
                 kind = "" if isinstance(e, AssertionError) else f"{type(e).__name__}: "
                 failures.append(f"{case.op}: {kind}{_snippet(e)}")
                 continue
             if not case.allow_empty:
-                populated.add(case.op)
+                populated[case.op] = done
         if failures:
             raise AssertionError(f"{len(failures)} of {len(cases)} read cases failed:\n  "
                                  + "\n  ".join(failures))
 
-    return Recipe(name, ops, "read-content", run)
+    return Recipe(name, ops, "read-content", run, reads=True)

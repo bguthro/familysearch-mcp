@@ -252,8 +252,9 @@ def test_expect_changed_on_context_counts_controls(reg_path):
 @pytest.fixture
 def fake_recipes(monkeypatch):
     ran = []
+    # reads=True stands in for reads_recipe so validate_recipes admits the stub.
     recipe = Recipe("read-user", ("readCurrentUser",), "read-content",
-                    lambda ctx: ran.append(ctx))
+                    lambda ctx: ran.append(ctx), reads=True)
     monkeypatch.setattr(runner, "RECIPES", {"read-user": recipe})
     return ran
 
@@ -314,8 +315,9 @@ def test_runner_main_runs_on_verified_beta(reg_path, fake_recipes, no_cookies, c
         fake_recipes.append(ctx)
         assert ctx.api.read_current_user().status == 200
 
+    # reads=True stands in for reads_recipe so validate_recipes admits the stub.
     monkeypatch.setitem(runner.RECIPES, "read-user", Recipe(
-        "read-user", ("readCurrentUser",), "read-content", body))
+        "read-user", ("readCurrentUser",), "read-content", body, reads=True))
     code = runner.main(["run", "--recipe", "read-user", "--registry", str(reg_path)])
     out = capsys.readouterr()
     assert code == 0, out

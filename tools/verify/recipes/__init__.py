@@ -28,6 +28,9 @@ def validate_recipes(recipes: dict[str, Recipe]) -> list[str]:
         evidence = evidence_problem(recipe.ops, recipe.evidence)
         if evidence:
             problems.append(f"{key}: {evidence}")
+        if recipe.evidence == "read-content" and recipe.reads is not True:
+            problems.append(f"{key}: read-content recipes must be built with "
+                            "tools.verify.reads.reads_recipe")
         if not callable(recipe.run):
             problems.append(f"{key}: run is not callable")
     return problems
