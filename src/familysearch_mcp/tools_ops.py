@@ -186,7 +186,8 @@ def register_op_tools(mcp: Any, ctx: Any, registry: dict | None = None) -> None:
         query: str | None = None,
         limit: int = 50,
     ) -> list[dict]:
-        """List the generated FamilySearch API operations (operation_id, area, method,
+        """Read-only; needs no network or authentication. Lists the generated
+        FamilySearch API operations (all 203 the library can call; operation_id, area, method,
         path, kind read/write, destructive, status verified/unverified/stale/
         unverifiable/excluded). Filter by area, kind or status (exact, case-insensitive)
         and `query` (substring of id, summary or path). Up to `limit` (1-200) rows,
@@ -210,7 +211,8 @@ def register_op_tools(mcp: Any, ctx: Any, registry: dict | None = None) -> None:
 
     @mcp.tool()
     def describe_operation(operation_id: str) -> dict:
-        """Describe one API operation: its parameters (path_params, required_query,
+        """Read-only; needs no network or authentication; covers only the 203
+        operations the library can call. Describes one API operation: its parameters (path_params, required_query,
         accepts, body none/json/upload), whether it needs a reason, and whether a call
         with no flags can run here (can_run_here, blocked_reason)."""
         spec = _lookup(operation_id)

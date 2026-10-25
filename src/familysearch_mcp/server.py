@@ -18,27 +18,28 @@ from .tools_write import register_write_tools
 SERVER_INSTRUCTIONS = """\
 FamilySearch tools for Ben's family tree work.
 
-Start with auth_status: it shows which environment (beta or production) is in use and
-whether writes are enabled. Production writes are opt-in; if disabled, tell Ben.
+Start with auth_status: it shows the environment (beta or production) and whether
+writes are enabled. Production writes are opt-in; if disabled, tell Ben.
 
 Before creating anything, search (search_tree, search_records) and check get_matches.
 Show Ben the evidence. Never create a duplicate.
 
-The flags create_despite_matches, confirm_deceased and override_rights are Ben's
-explicit decisions. NEVER set them on your own or to get past a refusal: report the
-refusal to Ben and let him say so.
+The flags create_despite_matches, confirm_deceased, override_rights, allow_unverified
+and confirm_destructive are Ben's explicit decisions. NEVER set them on your own or to
+get past a refusal: report the refusal to Ben and let him say so.
 
-Living people are created private. Documents need a `provenance` citation; images
-sourced from aggregators (Fold3, Ancestry, Newspapers.com, MyHeritage, Findagrave) are
-refused. upload_memory only works when the administrator has configured FS_UPLOAD_ROOT;
-if a tool says it is missing, tell Ben and never try to set it yourself.
-upload_memory(person_id=...) uploads and attaches in one step; to put one document on
-several people upload ONCE, then link_memory for the others (never re-upload).
-create_parent_child takes both parents in ONE call; the couple link is derived.
-Documents are attached to deceased persons only (living_person_blocked); no override.
+Living people are created private. Documents need a `provenance` citation; aggregator
+images (Fold3, Ancestry, Newspapers.com, MyHeritage, Findagrave) are refused.
+upload_memory needs the administrator to set FS_UPLOAD_ROOT; if missing, tell Ben, never
+set it. upload_memory(person_id=...) uploads and attaches; for several people upload
+ONCE, then link_memory (never re-upload). create_parent_child takes both parents in ONE
+call. Documents attach to deceased persons only; no override.
 
-There is no delete or merge tool. Every write needs a short `reason` (the change
-message recorded in FamilySearch).
+list_operations, describe_operation and call_operation reach any API operation.
+call_operation writes run on beta only; on production use the guarded tools above.
+Uploads always use upload_memory. There is no delete or merge tool on production; on
+beta call_operation can run destructive operations only with Ben's confirm_destructive.
+Every write needs a short `reason`.
 """
 
 

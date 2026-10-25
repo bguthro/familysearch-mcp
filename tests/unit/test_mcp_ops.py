@@ -440,3 +440,40 @@ def test_tools_registered():
     names = {t.name for t in asyncio.run(build_server(FakeCtx()).list_tools())}
     assert {"list_operations", "describe_operation", "call_operation"} <= names
     assert len(names) == 19
+
+
+# ---- instructions and docs ----
+
+def test_instructions_cover_generic_tools():
+    from familysearch_mcp.server import SERVER_INSTRUCTIONS as s
+    assert len(s) <= 1500
+    for w in ("list_operations", "describe_operation", "call_operation",
+              "allow_unverified", "confirm_destructive", "upload_memory", "beta"):
+        assert w in s
+    assert "There is no delete or merge tool." not in s
+    assert "no delete or merge tool on production" in s
+    assert "guarded tools" in s
+
+
+def test_tools_write_docstring_not_absolute():
+    from familysearch_mcp import tools_write
+    assert "There is deliberately no delete or merge tool." not in tools_write.__doc__
+    assert "call_operation" in tools_write.__doc__
+
+
+def test_list_and_describe_docstrings_read_only():
+    t = tools()
+    for name in ("list_operations", "describe_operation"):
+        d = " ".join((t[name].__doc__ or "").split()).lower()
+        assert "read-only" in d and "no network" in d and "203" in d
+
+
+def test_readme_documents_generic_tools():
+    from pathlib import Path
+    readme = (Path(__file__).resolve().parents[2] / "README.md").read_text()
+    for w in ("list_operations", "describe_operation", "call_operation", "19 tools",
+              "allow_unverified", "confirm_destructive", "createPerson", "readPerson",
+              "deletePerson", "restorePerson", "upload_memory"):
+        assert w in readme
+    assert "beta only" in readme
+    assert "No delete or merge tools exist" not in readme

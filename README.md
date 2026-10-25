@@ -4,8 +4,8 @@ Two things live in this repo:
 
 - `familysearch`: a Python client library for the FamilySearch API. The distribution depends on
   `requests`, `browser_cookie3` and `mcp==1.30.0`, so library users also pull in the MCP SDK.
-- `familysearch_mcp`: an MCP server (stdio) that exposes 8 read tools and 8 guarded
-  write tools over that library, for use from Claude Code and other MCP clients.
+- `familysearch_mcp`: an MCP server (stdio) that exposes 19 tools (8 read tools, 8 guarded
+  write tools and 3 generic operation tools) over that library, for use from Claude Code and other MCP clients.
 
 **Platform:** macOS and the Brave browser only today. Authentication reads your
 FamilySearch session from Brave's cookie store.
@@ -69,14 +69,16 @@ separate, and the server checks that Brave is signed into the environment you co
   unknown provenance; supply a `provenance` citation.
 - **Upload root:** only files under `FS_UPLOAD_ROOT` can be uploaded (PNG, JPEG, TIFF,
   PDF, up to 15 MB).
-- **No delete or merge tools exist.**
+- **No guarded delete or merge tools exist.** On production nothing can delete or merge;
+  on beta only `call_operation` can, and only with Ben's `confirm_destructive`.
 - **Change messages:** every write requires a `reason`, recorded in FamilySearch's
   change history.
 - **Write gate:** production writes are off unless `FS_ALLOW_PROD_WRITES` is set.
 
 ### Confirmation authority
 
-`create_despite_matches`, `confirm_deceased` and `override_rights` are meant to be Ben's
+`create_despite_matches`, `confirm_deceased`, `override_rights`, `allow_unverified` and
+`confirm_destructive` are meant to be Ben's
 explicit decisions. The assistant must surface the evidence and ask, never set them on
 its own. The server instructions and tool descriptions say this.
 
@@ -100,6 +102,28 @@ its own. The server instructions and tool descriptions say this.
 | `link_memory` | Attach an existing memory to another person (upload once, link to each other person; never re-upload) | write |
 | `create_source` | Create a source description | write |
 | `attach_source` | Attach an existing source to a person | write |
+
+### Generic operation tools
+
+Three more tools (19 tools in all) reach every operation the library can call (203):
+
+| Tool | What it does | Kind |
+|---|---|---|
+| `list_operations` | Filter operations by area, kind, status or text (read-only, offline) | read |
+| `describe_operation` | One operation's parameters, whether it needs a reason, and whether it can run here (read-only, offline) | read |
+| `call_operation` | Call an operation by `operation_id` with `path_args`, `query`, `body`, `reason` | read/write |
+
+Rules:
+
+- Reads run in any environment. Writes through `call_operation` run on beta only; on
+  production every write is refused, so use the guarded tools above (they carry the
+  duplicate, living-person, provenance and upload-root checks).
+- Writes need a `reason` and pass the library's verification lock. Only the four pilot
+  operations (`createPerson`, `readPerson`, `deletePerson`, `restorePerson`) are verified;
+  any other operation needs `allow_unverified`.
+- `allow_unverified` and `confirm_destructive` (deletes and other destructive operations)
+  are Ben's explicit decisions; the assistant never sets them on its own.
+- Uploads are refused: use `upload_memory`.
 
 ### Residual risks (read these)
 

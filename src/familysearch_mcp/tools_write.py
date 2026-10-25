@@ -6,7 +6,8 @@ boundary, and only then reaches the library through ctx.call. Errors from the
 library or Context are deliberately not caught (fail closed); the ONLY caught
 exception is the ContextError from the write gate itself.
 
-There is deliberately no delete or merge tool.
+There is deliberately no delete or merge tool here. call_operation (tools_ops) can run
+destructive operations on beta only, and only with Ben's confirm_destructive.
 """
 
 from __future__ import annotations
