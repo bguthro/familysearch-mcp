@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from familysearch.api import OPERATIONS
 from familysearch.api.registry import (
     OperationLockedError, check_call, effective_status, load_registry,
 )
@@ -73,13 +74,23 @@ def test_status_values_valid_and_reasons_present(registry):
                 assert isinstance(e.get("reason"), str) and e["reason"], (oid, impl)
 
 
-def test_initial_statuses(registry):
+def test_generated_statuses(registry):
+    recipes = _recipes()
     for oid, entry in registry["operations"].items():
-        status = entry["generated"]["status"]
+        gen = entry["generated"]
+        status = gen["status"]
+        assert status in GENERATED_STATUSES, oid
         if oid in ("getAuthorizationPage", "getAccessToken"):
-            assert status == "excluded"
+            assert status == "excluded", oid
         elif oid in UNVERIFIABLE:
-            assert status == "unverifiable"
+            assert status == "unverifiable", oid
+        elif status == "verified":
+            assert gen.get("evidence") in ("state-change", "read-content"), oid
+            assert gen.get("commit") and gen.get("verified_on"), oid
+            assert gen.get("recipe"), oid
+            if recipes is not None:
+                assert gen["recipe"] in recipes, oid
+            assert gen.get("fingerprint") == OPERATIONS[oid].fingerprint, f"{oid} is stale"
         else:
             assert status == "unverified", oid
 
@@ -123,9 +134,15 @@ def test_verified_generated_entry_has_fingerprint_and_evidence(registry, resolve
         assert gen.get("commit") and gen.get("verified_on") and gen.get("recipe"), oid
 
 
-def test_registry_matches_bootstrap_output(snapshot, overrides):
-    assert build_registry(snapshot, overrides) == build_registry(snapshot, overrides)
-    assert REGISTRY_PATH.read_text() == render(build_registry(snapshot, overrides))
+def test_registry_matches_bootstrap_output(registry, snapshot, overrides):
+    built = build_registry(snapshot, overrides)
+    assert built == build_registry(snapshot, overrides)
+    expected = copy.deepcopy(built)
+    for oid, entry in registry["operations"].items():
+        if entry["generated"]["status"] == "verified":
+            expected["operations"][oid]["generated"] = entry["generated"]
+    assert registry == expected
+    assert REGISTRY_PATH.read_text() == render(registry)
 
 
 def _spec_for(op) -> OpSpec:

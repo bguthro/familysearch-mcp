@@ -378,11 +378,29 @@ def test_record_unverifiable_requires_known_operation(reg_path):
         record.record_unverifiable("noSuchOperation", "x", path=reg_path)
 
 
-def test_record_unverifiable_replaces_generated_and_keeps_handwritten(reg_path):
-    record.record_unverifiable("createPerson", "cannot prove it", path=reg_path)
-    entry = json.loads(reg_path.read_text())["operations"]["createPerson"]
+def test_record_unverifiable_replaces_generated_and_keeps_handwritten(tmp_path):
+    p = tmp_path / "r.json"
+    p.write_text(render({"schema": 1, "operations": {"createPerson": {
+        "generated": {"status": "unverified"},
+        "handwritten": {"status": "verified", "recipe": "t.py::test_x"}}}}))
+    record.record_unverifiable("createPerson", "cannot prove it", path=p)
+    entry = json.loads(p.read_text())["operations"]["createPerson"]
     assert entry["generated"] == {"status": "unverifiable", "reason": "cannot prove it"}
     assert entry["handwritten"]["status"] == "verified"
+
+
+def test_record_unverifiable_refuses_verified_without_force(tmp_path):
+    p = tmp_path / "r.json"
+    verified = {"status": "verified", "fingerprint": "fp", "evidence": "state-change",
+                "commit": "abc", "verified_on": "2026-01-01", "recipe": "r"}
+    p.write_text(render({"schema": 1, "operations": {"createPerson": {"generated": verified}}}))
+    raw = p.read_bytes()
+    with pytest.raises(ValueError):
+        record.record_unverifiable("createPerson", "x", path=p)
+    assert p.read_bytes() == raw
+    record.record_unverifiable("createPerson", "x", path=p, force=True)
+    gen = json.loads(p.read_text())["operations"]["createPerson"]["generated"]
+    assert gen == {"status": "unverifiable", "reason": "x"}
 
 
 def test_record_never_leaves_flat_or_extra_keys(reg_path):
