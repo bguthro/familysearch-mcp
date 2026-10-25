@@ -5,6 +5,7 @@ import importlib
 import io
 import json
 import os
+import subprocess
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -146,6 +147,48 @@ def test_property_types():
     assert _types(um["title"]) == {"string", "null"}
 
 
+S, N = "string", "null"
+EXPECTED_TYPES = {
+    "auth_status": {},
+    "search_tree": {"given": {S, N}, "surname": {S, N}, "birth_date": {S, N},
+                    "birth_place": {S, N}, "count": {"integer"}},
+    "search_records": {"given": {S, N}, "surname": {S, N}, "count": {"integer"},
+                       "offset": {"integer"}},
+    "get_person": {"person_id": {S}},
+    "get_relatives": {"person_id": {S}},
+    "get_person_sources": {"person_id": {S}},
+    "get_person_memories": {"person_id": {S}},
+    "get_matches": {"person_id": {S}},
+    "create_person": {"given": {S}, "surname": {S}, "gender": {S}, "reason": {S},
+                      "birth_date": {S, N}, "birth_place": {S, N}, "death_date": {S, N},
+                      "living": {"boolean", N}, "create_despite_matches": {"boolean"},
+                      "confirm_deceased": {"boolean"}},
+    "add_fact": {"person_id": {S}, "fact_type": {S}, "reason": {S}, "date": {S, N},
+                 "place": {S, N}},
+    "create_couple": {"person1_id": {S}, "person2_id": {S}, "reason": {S}},
+    "create_parent_child": {"child_id": {S}, "parent_ids": {"array"}, "reason": {S}},
+    "upload_memory": {"file_path": {S}, "reason": {S}, "title": {S, N},
+                      "provenance": {S, N}, "override_rights": {"boolean"}},
+    "link_memory": {"person_id": {S}, "memory_id": {S}, "reason": {S}},
+    "create_source": {"about_url": {S}, "title": {S}, "citation": {S}, "reason": {S}},
+    "attach_source": {"person_id": {S}, "source_id": {S}, "reason": {S}},
+}
+
+
+def test_expected_types_table_covers_all_tools():
+    assert set(EXPECTED_TYPES) == ALL
+
+
+@pytest.mark.parametrize("name", sorted(ALL))
+def test_property_types_all_tools(name):
+    props = tools_of(build_server(FakeCtx(Obj())))[name].inputSchema["properties"]
+    assert set(props) == set(EXPECTED_TYPES[name])
+    for prop, want in EXPECTED_TYPES[name].items():
+        assert _types(props[prop]) == want, (name, prop, props[prop])
+    if name == "create_parent_child":
+        assert props["parent_ids"]["items"]["type"] == "string"
+
+
 # ---- stdout hygiene / lazy build / main (G3, G6) ----
 
 def test_import_and_build_print_nothing(monkeypatch, capsys):
@@ -156,6 +199,13 @@ def test_import_and_build_print_nothing(monkeypatch, capsys):
         mod.build_server()
     assert buf.getvalue() == ""
     assert capsys.readouterr().out == ""
+
+
+def test_import_prints_nothing_in_subprocess():
+    proc = subprocess.run([sys.executable, "-c", "import familysearch_mcp.server"],
+                          capture_output=True, timeout=60)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == b""
 
 
 def test_build_is_lazy(monkeypatch):
@@ -195,7 +245,7 @@ def test_main_runs_server(monkeypatch):
 # ---- instructions (G4) ----
 
 def test_instructions_content():
-    assert len(SERVER_INSTRUCTIONS) < 1600
+    assert len(SERVER_INSTRUCTIONS) <= 1500
     for word in ("Ben", "create_despite_matches", "confirm_deceased", "override_rights",
                  "auth_status", "FS_UPLOAD_ROOT", "provenance"):
         assert word in SERVER_INSTRUCTIONS

@@ -224,9 +224,10 @@ def test_upload_explicit_title_and_strip(tmp_path):
 def test_upload_tilde_expansion(tmp_path, monkeypatch):
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))
-    mk(home, "a.pdf")
+    mk(home / "arch", "a.pdf")
+    monkeypatch.setenv("FS_UPLOAD_ROOT", str(home / "arch"))  # narrow root inside home
     tools, svc, _ = build()
-    assert upload(tools, "~/a.pdf")["status"] == "uploaded"
+    assert upload(tools, "~/arch/a.pdf")["status"] == "uploaded"
 
 
 def test_upload_filename_with_space(tmp_path):
@@ -576,6 +577,61 @@ def test_upload_root_checked_before_other_validation(tmp_path, monkeypatch):
     monkeypatch.delenv("FS_UPLOAD_ROOT", raising=False)
     out = tools["upload_memory"]("\x00junk", "", override_rights="yes")
     assert out["status"] == NOT_CONFIGURED
+
+
+def _real_home():
+    import pwd
+    return os.path.realpath(pwd.getpwuid(os.getuid()).pw_dir)
+
+
+def test_upload_root_rejects_parent_of_home(tmp_path, monkeypatch):
+    tools, svc, ctx = build()
+    home = tmp_path / "users" / "ben"
+    home.mkdir(parents=True)
+    f = mk(home, "a.pdf")
+    monkeypatch.setenv("HOME", str(home))
+    for root in (tmp_path / "users", tmp_path, home):
+        monkeypatch.setenv("FS_UPLOAD_ROOT", str(root))
+        out = upload(tools, f)
+        assert out["status"] == INVALID, root
+        assert "home" in out["message"]
+    assert svc.memories.upload.calls == [] and ctx.call_count == 0
+
+
+def test_upload_root_parent_of_home_message_is_distinct(tmp_path, monkeypatch):
+    tools, _, _ = build()
+    home = tmp_path / "users" / "ben"
+    home.mkdir(parents=True)
+    f = mk(home, "a.pdf")
+    monkeypatch.setenv("HOME", str(home))
+    msgs = set()
+    for root in ("/", home, tmp_path / "users"):
+        monkeypatch.setenv("FS_UPLOAD_ROOT", str(root))
+        msgs.add(upload(tools, f)["message"])
+    assert len(msgs) == 3
+
+
+def test_upload_root_real_home_and_parents_rejected_when_home_env_differs(
+        tmp_path, monkeypatch):
+    tools, svc, _ = build()
+    real = _real_home()
+    monkeypatch.setenv("HOME", str(tmp_path))  # points elsewhere than the real home
+    f = mk(tmp_path, "a.pdf")
+    for root in (real, os.path.dirname(real)):
+        if root == os.path.realpath(os.sep):
+            continue
+        monkeypatch.setenv("FS_UPLOAD_ROOT", root)
+        assert upload(tools, f)["status"] == INVALID, root
+    assert svc.memories.upload.calls == []
+
+
+def test_upload_root_subdirectory_of_home_ok(tmp_path, monkeypatch):
+    tools, svc, _ = build()
+    home = tmp_path / "ben"
+    (home / "archive").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("FS_UPLOAD_ROOT", str(home / "archive"))
+    assert upload(tools, mk(home / "archive", "a.pdf"))["status"] == "uploaded"
 
 
 def test_upload_root_after_write_gate(monkeypatch):

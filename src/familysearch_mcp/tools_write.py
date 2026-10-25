@@ -349,10 +349,33 @@ def _upload_root() -> tuple[str | None, dict | None]:
         return invalid("is not a directory")
     if root == os.path.realpath(os.sep):
         return invalid("is the filesystem root, which is too broad")
-    home = os.path.expanduser("~")
-    if home != "~" and root == os.path.realpath(home):
-        return invalid("is the home directory, which is too broad")
+    for home in _home_dirs():
+        if root == home:
+            return invalid("is the home directory, which is too broad")
+        if _is_ancestor(root, home):
+            return invalid("is a parent of the home directory, which is too broad")
     return root, None
+
+
+def _is_ancestor(root: str, path: str) -> bool:
+    try:
+        return os.path.commonpath([root, path]) == root
+    except ValueError:
+        return False
+
+
+def _home_dirs() -> list[str]:
+    """Real paths of $HOME and of the account's passwd home (when they exist)."""
+    homes = []
+    expanded = os.path.expanduser("~")
+    if expanded != "~":
+        homes.append(os.path.realpath(expanded))
+    try:
+        import pwd
+        homes.append(os.path.realpath(pwd.getpwuid(os.getuid()).pw_dir))
+    except (KeyError, ImportError, OSError):
+        pass
+    return homes
 
 
 def _validate_upload_file(file_path: str, root: str) -> tuple[str, str, os.stat_result]:
