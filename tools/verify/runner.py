@@ -98,6 +98,11 @@ def build_beta_client() -> FSClient:
     return client
 
 
+def registry_in_repo() -> bool:
+    """The imported registry must be this repo's, or the recorded commit would lie."""
+    return REPO_ROOT in Path(REGISTRY_PATH).resolve().parents
+
+
 def git_status_porcelain() -> str:
     return subprocess.run(["git", "status", "--porcelain", "--untracked-files=normal"], cwd=REPO_ROOT,
                           capture_output=True, text=True, check=True).stdout
@@ -145,6 +150,10 @@ def _run(args) -> int:
         return 2
     selected = _select(args)
     if selected is None:
+        return 2
+    if not args.dry_run and not registry_in_repo():
+        print(f"abort: familysearch is imported from outside this repo (registry at "
+              f"{REGISTRY_PATH}); install it editable from {REPO_ROOT}", file=sys.stderr)
         return 2
     if args.dry_run:
         print(f"would run {len(selected)} recipe(s) on beta:")

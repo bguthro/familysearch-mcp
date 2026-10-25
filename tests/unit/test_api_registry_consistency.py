@@ -1,7 +1,10 @@
 import ast
 import copy
+import datetime
 import importlib.util
 import json
+import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -13,7 +16,7 @@ from familysearch.api.registry import (
 from familysearch.api.spec import OpSpec
 from familysearch.auth import Environment
 from tools.spec.bootstrap_registry import (
-    HANDWRITTEN, REGISTRY_PATH, UNVERIFIABLE, build_registry, render,
+    HANDWRITTEN, REGISTRY_PATH, UNVERIFIABLE, build_registry, merge_registry, render,
 )
 from tools.spec.resolve import SNAPSHOT_PATH, load_overrides, resolve
 
@@ -84,7 +87,15 @@ def test_generated_statuses(registry):
             assert status == "excluded", oid
         elif oid in UNVERIFIABLE:
             assert status == "unverifiable", oid
+        elif status == "unverifiable":
+            assert isinstance(gen.get("reason"), str) and gen["reason"].strip(), oid
         elif status == "verified":
+            assert oid in _recipe_ops(recipes, gen.get("recipe")), f"{oid} not in recipe ops"
+            if recipes is not None:
+                assert gen.get("evidence") == recipes[gen["recipe"]].evidence, oid
+            assert re.fullmatch(r"[0-9a-f]{40}", str(gen.get("commit"))), oid
+            datetime.date.fromisoformat(gen.get("verified_on"))
+            _assert_commit_in_history(gen["commit"])
             assert gen.get("evidence") in ("state-change", "read-content"), oid
             assert gen.get("commit") and gen.get("verified_on"), oid
             assert gen.get("recipe"), oid
@@ -93,6 +104,20 @@ def test_generated_statuses(registry):
             assert gen.get("fingerprint") == OPERATIONS[oid].fingerprint, f"{oid} is stale"
         else:
             assert status == "unverified", oid
+
+
+def _recipe_ops(recipes, name):
+    if recipes is None or name not in recipes:
+        return ()
+    return recipes[name].ops
+
+
+def _assert_commit_in_history(commit):
+    if not (ROOT / ".git").exists():
+        pytest.skip("not a git checkout")
+    done = subprocess.run(["git", "merge-base", "--is-ancestor", commit, "HEAD"], cwd=ROOT,
+                          capture_output=True)
+    assert done.returncode == 0, f"{commit} is not an ancestor of HEAD"
 
 
 def _function_exists(path: Path, name: str) -> bool:
@@ -137,12 +162,33 @@ def test_verified_generated_entry_has_fingerprint_and_evidence(registry, resolve
 def test_registry_matches_bootstrap_output(registry, snapshot, overrides):
     built = build_registry(snapshot, overrides)
     assert built == build_registry(snapshot, overrides)
-    expected = copy.deepcopy(built)
-    for oid, entry in registry["operations"].items():
-        if entry["generated"]["status"] == "verified":
-            expected["operations"][oid]["generated"] = entry["generated"]
-    assert registry == expected
+    assert merge_registry(built, registry) == registry
     assert REGISTRY_PATH.read_text() == render(registry)
+
+
+def test_merge_preserves_work_adds_new_ops_and_is_idempotent(snapshot, overrides):
+    built = build_registry(snapshot, overrides)
+    committed = copy.deepcopy(built)
+    ops = committed["operations"]
+    verified = {"status": "verified", "fingerprint": "f", "recipe": "r"}
+    ops["readPerson"]["generated"] = verified
+    ops["allowPersonMerge"]["generated"] = {"status": "unverifiable", "reason": "classified"}
+    del ops["checkPlaceIsChild"]
+    merged = merge_registry(built, committed)
+    assert merged["operations"]["readPerson"]["generated"] == verified
+    assert merged["operations"]["readPerson"]["handwritten"] == (
+        built["operations"]["readPerson"]["handwritten"])
+    assert merged["operations"]["allowPersonMerge"]["generated"]["status"] == "unverifiable"
+    assert merged["operations"]["checkPlaceIsChild"]["generated"] == {"status": "unverified"}
+    assert merge_registry(built, merged) == merged
+
+
+def test_merge_refuses_entries_for_vanished_operations(snapshot, overrides):
+    built = build_registry(snapshot, overrides)
+    committed = copy.deepcopy(built)
+    committed["operations"]["noLongerExists"] = {"generated": {"status": "unverified"}}
+    with pytest.raises(ValueError, match="noLongerExists"):
+        merge_registry(built, committed)
 
 
 def _spec_for(op) -> OpSpec:

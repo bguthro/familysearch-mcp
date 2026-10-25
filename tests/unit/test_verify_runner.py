@@ -409,6 +409,17 @@ def test_git_status_includes_untracked_files(monkeypatch):
 
 
 @responses.activate
+def test_runner_main_refuses_registry_outside_repo(reg_path, fake_recipes, no_cookies,
+                                                   clean_tree, monkeypatch, tmp_path, capsys):
+    assert runner.registry_in_repo()
+    monkeypatch.setattr(runner, "REGISTRY_PATH", tmp_path / "registry.json")
+    assert not runner.registry_in_repo()
+    assert runner.main(["run", "--all", "--registry", str(reg_path)]) == 2
+    assert "outside this repo" in capsys.readouterr().err
+    assert fake_recipes == [] and no_cookies == [] and len(responses.calls) == 0
+
+
+@responses.activate
 def test_runner_main_refuses_dirty_tree(reg_path, fake_recipes, no_cookies, monkeypatch,
                                         capsys):
     monkeypatch.setattr(runner, "git_status_porcelain", lambda: " M tools/verify/core.py\n")

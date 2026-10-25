@@ -1,5 +1,8 @@
 """Bootstrap ``registry.json``: one entry per operation, all unverified to start.
 
+Running it again MERGES into the committed registry (see ``merge_registry``); it
+never discards verified or classified entries.
+
 Registry keys are the post-rename operation id for generated operations and the
 source id for excluded ones. Each entry holds only ``generated`` and, where a
 hand-written implementation has a live test, ``handwritten``.
@@ -75,13 +78,44 @@ def build_registry(snapshot: dict, overrides: dict) -> dict:
     return {"schema": 1, "operations": operations}
 
 
+def merge_registry(bootstrap: dict, committed: dict | None) -> dict:
+    """Merge a fresh bootstrap into the committed registry without losing work.
+
+    Existing generated entries (verified, classified unverifiable, ...) and
+    handwritten entries are preserved; operations new to the spec are added from
+    the bootstrap (unverified). Excluded status always follows the overrides. An
+    entry for an operation that no longer exists raises, never silently dropped.
+    """
+    if not committed:
+        return bootstrap
+    old = committed.get("operations", {})
+    new = bootstrap["operations"]
+    gone = sorted(set(old) - set(new))
+    if gone:
+        raise ValueError(f"registry has entries for operations no longer in the spec: {gone}")
+    merged = {}
+    for oid, fresh in new.items():
+        kept = old.get(oid)
+        if kept is None:
+            merged[oid] = fresh
+            continue
+        entry = dict(kept)
+        if fresh["generated"]["status"] == "excluded" or kept["generated"].get("status") == "excluded":
+            entry["generated"] = fresh["generated"]
+        if "handwritten" not in entry and "handwritten" in fresh:
+            entry["handwritten"] = fresh["handwritten"]
+        merged[oid] = entry
+    return {"schema": 1, "operations": merged}
+
+
 def render(registry: dict) -> str:
     return json.dumps(registry, sort_keys=True, indent=1) + "\n"
 
 
 def main() -> None:
     snapshot = json.loads(SNAPSHOT_PATH.read_text())
-    registry = build_registry(snapshot, load_overrides())
+    committed = json.loads(REGISTRY_PATH.read_text()) if REGISTRY_PATH.exists() else None
+    registry = merge_registry(build_registry(snapshot, load_overrides()), committed)
     REGISTRY_PATH.write_text(render(registry))
 
 
