@@ -8,6 +8,11 @@ projects). Every endpoint and request shape in this library was discovered and
 coded. This document records the method so future endpoints can be added the same
 way, with the same confidence.
 
+> **Methodology rule: a 2xx proves nothing.** Every write endpoint is proven only by
+> READING THE RESULTING STATE BACK (e.g. fetch the child's parents; fetch the person's
+> memory list). The original parent-child and memory-link entries returned 2xx and
+> were wrong (see "Corrections" below).
+
 > Golden rule: **never add an endpoint to this library that you have not watched
 > return the expected status against beta.** The FamilySearch REST surface is
 > undocumented for our purposes and can change without notice. Treat every response
@@ -84,8 +89,11 @@ For every capability, on beta, with a freshly lifted token:
    the right path (see "gotchas" below). As a last resort, capture the beta website's
    own request in DevTools → Network while performing the action in the UI, and
    replay it — the website's traffic is the authoritative spec.
-4. **Replay create + delete.** Create a clearly-labelled throwaway object, read it
-   back, then delete it. Confirm the status codes and that beta is left clean.
+4. **Replay create + delete, and READ THE STATE BACK.** Create a clearly-labelled
+   throwaway object, then fetch the resulting state through a *different* read
+   (the child's `parents`/`spouses` links; the person's memory list) and confirm it
+   is what you intended. A 2xx is not proof. Then delete it and confirm the status
+   codes and that beta is left clean.
 5. **Codify** the proven host/path/body/headers/status into the library, and add a
    case to the beta integration suite (`tests/integration/`) so it stays proven.
 
@@ -100,9 +108,13 @@ For every capability, on beta, with a freshly lifted token:
 | Create person | `POST` the `persons` rel | `{"persons":[<person>]}` | 201 (id in `X-ENTITY-ID`) |
 | Add fact to existing person | `POST /platform/tree/persons/{id}` (the person resource itself) | `{"persons":[{"facts":[<fact>]}]}` | 200 |
 | Couple relationship | `POST` the `relationships` rel | `{"relationships":[{"type":"http://gedcomx.org/Couple","person1":{resource,resourceId},"person2":{…}}]}` | 201 |
-| Parent-child relationship | `POST` the `relationships` rel, one per parent | `{"relationships":[{"type":"http://gedcomx.org/ParentChild","person1":<parent>,"person2":<child>}]}` | 201 |
-| Upload memory (document) | `POST` the `artifacts` rel | multipart `files={"artifact":(name,bytes,type)}` + `filename`/`title` params | 201 (id in `X-ENTITY-ID`) |
-| Link memory → person | `POST /platform/memories/memories/{memId}/personas` | `{"persons":[{"id": personId}]}` | 204 |
+| Parent-child relationship | `POST` the `relationships` rel, ONE request holding BOTH parents | `{"childAndParentsRelationships":[{"parent1":{resource,resourceId},"parent2":{…},"child":{…}}]}` (omit `parent2` for a single parent; `resource` URIs are clean, no query string) | 201 (id in `X-ENTITY-ID`; `Location` is `<base>/platform/tree/child-and-parents-relationships/{id}`). Read-back: the child's `parents` link lists both parents; its `spouses`/`children` are 204; the two parents list each other as `spouse` (FamilySearch derives the couple from a two-parent relationship) |
+| Delete couple relationship | `DELETE <relationships rel>/{id}` | — | 204 |
+| Delete child-and-parents relationship | `DELETE <base>/platform/tree/child-and-parents-relationships/{id}` (not a discovery rel; learned from the POST's `Location`) | — | 204 (`<relationships rel>/{id}` is 404 for these ids) |
+| Upload memory (standalone, "floating") | `POST` the `artifacts` rel | multipart `files={"artifact":(name,bytes,type)}` + `filename`/`title` params | 201 (id in `X-ENTITY-ID`) |
+| Upload memory AND attach to a person (one step) | `POST` the PERSON's own `artifacts` link (`person_links(pid)["artifacts"]`, `…/persons/{pid}/memories?flag=fsh`) | same multipart as above | 201 (id in `X-ENTITY-ID`; `Location` is `…/persons/{pid}/memory-references/{memId}-{n}`). Read-back: GET that link lists the memory |
+| Attach an EXISTING memory to another person | `POST <base>/platform/memories/memories/{memId}/personas` | `{"persons":[{"media":[{"description":"<base>/platform/memories/memories/{memId}"}],"identifiers":{"http://familysearch.org/v1/FamilyTreePerson":["<base>/ark:/61903/4:1:{PID}"]}}]}` | 201 (persona id `{memId}-{n}` in `X-ENTITY-ID`). Read-back: both persons' memory lists contain the one memory |
+| Person matches | `GET` the person's `matches` rel with `Accept: application/x-gedcomx-atom+json` | — | 200 with `entries`, or 204 with no body when none (`x-fs-v1+json` and `x-gedcomx-v1+json` give 406) |
 | Create source description | `POST` the `source-descriptions` rel | `{"sourceDescriptions":[{"about":…,"titles":[{"value":…}],"citations":[{"value":…}]}]}` | 201 |
 | Attach source → person | `POST /platform/tree/persons/{id}` (the person resource itself) | `{"persons":[{"sources":[{"description": <descUrl>}]}]}` | 200 |
 | Delete person | `DELETE /platform/tree/persons/{id}` | — | 204 |
@@ -115,15 +127,22 @@ throttled (see `FSClient`).
 - **Names need `parts`.** Creating a person whose name has only `fullText` and no
   `parts` (Given/Surname) silently fails — no id returned. `build_name` always emits
   parts.
-- **Parent-child uses the generic `relationships` rel** with `type` `ParentChild`
-  (one per parent). The hyphenated `/platform/tree/child-and-parents-relationships`
-  path **404s** — do not use it.
+- **Parent-child is a child-and-parents relationship**, POSTed to the generic
+  `relationships` rel with a `childAndParentsRelationships` body (both parents in one
+  request). Posting `type` `ParentChild` to that rel returns 201 but creates COUPLE
+  links (see Corrections). The hyphenated
+  `/platform/tree/child-and-parents-relationships/{id}` path is where such a
+  relationship lives (the `Location` header) and is the DELETE path; POSTing to it
+  404s.
 - **Add-fact and attach-source POST to the *person resource itself***
   (`/platform/tree/persons/{id}`), not to a sub-path. `/persons/{id}/sources` is
   GET-only (`405`); `/persons/{id}/source-references` is `404`.
-- **Linking a memory uses the memory's `personas` collection**
-  (`/memories/{id}/personas`), not the person's `/persons/{id}/memories` link — that
-  link is an *upload* endpoint and returns `400` for a link attempt.
+- **Two ways to attach a memory.** (a) Upload through the PERSON's own `artifacts`
+  link: that multipart POST uploads and attaches in one step. (b) Attach an existing
+  memory by POSTing a persona (ark + `media.description`) to
+  `/memories/{id}/personas`; `{"persons":[{"id": …}]}` there returns 204 and does
+  nothing. The person's `/persons/{id}/memories` link is a *list* (GET) and an
+  *upload-and-attach* (multipart POST) endpoint; it returns `400` for a JSON link.
 - **Record search is not on the `/platform` tree API**; it is the website service
   `/service/search/hr/v2/personas`, with its own `results`/`entries`/`links.next`
   shape.
@@ -139,6 +158,18 @@ throttled (see `FSClient`).
 - **The auth probe must send a browser `User-Agent`**: python-requests' default gets an
   HTTP 403 from the edge on both hosts.
 
+## 6a. Corrections (2026-10-24)
+
+The earlier catalogue entries for **parent-child** (`relationships` + type
+`ParentChild`, one per parent) and **memory link** (`{"persons":[{"id":…}]}` to
+`/memories/{id}/personas`) were WRONG. Both returned success (201 / 204), but a live
+read-back on beta showed the parent-child POST created COUPLE links between the child
+and each parent (child: parents `[]`, spouses `[dad, mom]`), and the memory link
+created nothing (the person's memory list stayed empty). Both were corrected after
+that read-back; `get_matches` (HTTP 406 without the atom `Accept`) was fixed in the
+same pass. The unit tests passed throughout because they only asserted the request we
+sent, never the resulting state: hence the methodology rule at the top.
+
 ## 7. Adding a new endpoint later — the recipe
 
 1. Lift a fresh **beta** token (`extract_brave_token`, or copy it from DevTools).
@@ -146,12 +177,15 @@ throttled (see `FSClient`).
    the beta website performing the action in DevTools → Network.
 3. Probe it against beta with a throwaway object; confirm the status and body shape.
    On a 4xx, re-check the link rels rather than guessing paths.
-4. Clean up any test object you created.
-5. Add the method to the right module (`tree.py`, `memories.py`, `sources.py`, …),
+4. **Read the resulting state back** with an independent GET (parents, spouses,
+   memory list, ...) and confirm it matches your intent. A 2xx alone is not proof.
+5. Clean up any test object you created (for relationships, use the delete path that
+   matches the kind).
+6. Add the method to the right module (`tree.py`, `memories.py`, `sources.py`, …),
    resolving the path via `Discovery` where a rel exists, and pass `reason` through to
    `X-Reason` for writes.
-6. Add a case to the **beta integration suite** so the new endpoint stays proven, and
-   record any new gotcha in §6 above.
+7. Add a case to the **beta integration suite**, WITH the read-back assertion, so the
+   new endpoint stays proven, and record any new gotcha in §6 above.
 
 Do experiments on **beta**. Only the sync engine writes to production, and only behind
 a dry-run, explicit approval, and a supervised pilot.

@@ -215,35 +215,65 @@ def test_relationships(call, cleanup):
     mom = make_person(call, cleanup, "Female", "1852")
     couple = call("create_couple", person1_id=dad, person2_id=mom, reason=REASON)
     if couple.get("relationship_id"):
-        cleanup.relationships.append(couple["relationship_id"])
+        cleanup.couples.append(couple["relationship_id"])
     assert couple["status"] == "created" and couple["relationship_id"], couple
     child = make_person(call, cleanup, "Male", "1875")
     pc = call("create_parent_child", child_id=child, parent_ids=[dad, mom], reason=REASON)
-    cleanup.relationships.extend(i for i in pc.get("relationship_ids", []) if i)
+    if pc.get("relationship_id"):
+        cleanup.child_and_parents.append(pc["relationship_id"])
     assert pc["status"] == "created", pc
-    assert len(pc["relationship_ids"]) == 2 and all(pc["relationship_ids"])
+    assert isinstance(pc["relationship_id"], str) and pc["relationship_id"]
+    # READ-BACK. A 2xx proves nothing: the old code got 201 and made SPOUSE links.
     rel = call("get_relatives", person_id=child)
     assert {p["id"] for p in rel["parents"]} == {dad, mom}, rel
+    assert rel["spouses"] == [], rel
+    assert rel["children"] == [], rel
+    assert [p["id"] for p in call("get_relatives", person_id=dad)["children"]] == [child]
 
 
-def test_memory_upload_link_list(call, cleanup, upload_root, observe):
-    pid = make_person(call, cleanup)
+def _memory_ids(mems):
+    return [m["id"] for m in mems]
+
+
+def test_memory_upload_attach_and_link(call, cleanup, upload_root, observe):
+    a = make_person(call, cleanup)
     path = write_png(upload_root, "zzspike-clean.png")
+    up = call("upload_memory", file_path=path, person_id=a,
+              provenance="ZZSPIKE generated locally for testing", reason=REASON)
+    if up.get("memory_id"):
+        cleanup.memory_ids.append(up["memory_id"])
+    assert up["status"] == "uploaded" and up["person_id"] == a, up
+    mid = up["memory_id"]
+    assert mid.isdigit()
+    mems = call("get_person_memories", person_id=a)
+    observe("memory_list_items", mems)
+    match = [m for m in mems if m["id"] == mid]
+    assert match, f"memory {mid} not in {mems}"
+    assert match[0]["id"] is not None
+    assert match[0]["media_type"] == "image/png", match[0]
+    assert match[0]["link"] is not None, match[0]
+    # Attach the SAME memory to a second person (persona link; no re-upload).
+    b = make_person(call, cleanup, "Female", "1852")
+    link = call("link_memory", person_id=b, memory_id=mid, reason=REASON)
+    assert link["status"] == "linked", link
+    assert mid in _memory_ids(call("get_person_memories", person_id=b))
+    assert mid in _memory_ids(call("get_person_memories", person_id=a))
+
+
+def test_memory_standalone_upload_then_link(call, cleanup, upload_root, observe):
+    pid = make_person(call, cleanup)
+    path = write_png(upload_root, "zzspike-floating.png")
     up = call("upload_memory", file_path=path,
               provenance="ZZSPIKE generated locally for testing", reason=REASON)
     if up.get("memory_id"):
         cleanup.memory_ids.append(up["memory_id"])
-    assert up["status"] == "uploaded", up
+    assert up["status"] == "uploaded" and up["person_id"] is None, up
     mid = up["memory_id"]
-    assert mid.isdigit()
     link = call("link_memory", person_id=pid, memory_id=mid, reason=REASON)
     assert link["status"] == "linked", link
     mems = call("get_person_memories", person_id=pid)
-    observe("memory_list_items", mems)
-    assert isinstance(mems, list)
-    match = [m for m in mems if m["id"] == mid]
-    assert match, f"memory {mid} not in {mems}"
-    assert match[0]["id"] is not None
+    observe("memory_list_items_standalone", mems)
+    assert mid in _memory_ids(mems), mems
 
 
 def test_provenance_gates_live(call, cleanup, upload_root, monkeypatch):
@@ -287,7 +317,7 @@ def test_source_create_attach_list(call, cleanup, observe):
 
 def test_matches_and_record_search(call, cleanup, ctx, observe):
     pid = make_person(call, cleanup)
-    own = call("get_matches", person_id=pid)
+    own = call("get_matches", person_id=pid)  # was HTTP 406 before the atom Accept fix
     assert isinstance(own, list)
 
     rec = call("search_records", surname="Anderson", given="August", count=3)

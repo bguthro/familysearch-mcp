@@ -2,7 +2,7 @@
 
 There is deliberately no MCP delete tool, so cleanup goes through the library
 using the live Context. Everything created is registered the moment it exists;
-run() deletes relationships, sources and memories first and persons last,
+run() deletes relationships (each kind with its own delete method), sources and memories first and persons last,
 tolerating 404/410, and collects anything that could not be removed.
 """
 from familysearch import FSHTTPError
@@ -14,7 +14,9 @@ CLEANUP_REASON = "ZZSPIKE automated integration test cleanup"
 class Tracker:
     def __init__(self, ctx):
         self.ctx = ctx
-        self.relationships: list[str] = []
+        # Relationship ids by KIND: each kind has its own delete endpoint.
+        self.couples: list[str] = []
+        self.child_and_parents: list[str] = []
         self.source_ids: list[str] = []
         self.memory_ids: list[str] = []
         self.persons: list[str] = []
@@ -30,12 +32,14 @@ class Tracker:
             self.errors.append(f"{label}: {e}")
 
     def run(self) -> None:
-        for rid in reversed(self.relationships):
+        for rid in reversed(self.child_and_parents):
             self._try(
-                lambda s, r=rid: s.client.delete(
-                    join_path(s.discovery.href("relationships"), r),
-                    reason=CLEANUP_REASON),
-                f"relationship {rid}")
+                lambda s, r=rid: s.writer.delete_child_and_parents(r, reason=CLEANUP_REASON),
+                f"child-and-parents {rid}")
+        for rid in reversed(self.couples):
+            self._try(
+                lambda s, r=rid: s.writer.delete_couple(r, reason=CLEANUP_REASON),
+                f"couple {rid}")
         for sid in reversed(self.source_ids):
             self._try(
                 lambda s, i=sid: s.client.delete(
