@@ -357,7 +357,12 @@
   },
   "findRelationship": {
    "generated": {
-    "status": "unverified"
+    "commit": "5ff1f41cc812a28e7fba8cb2c0340d4120d56257",
+    "evidence": "read-content",
+    "fingerprint": "76283731af4931ff923c2a412b9d3d4573121adc96974748d90e6dbfbe8f85df",
+    "recipe": "reads.tree.relatives",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "getAccessToken": {
@@ -671,7 +676,12 @@
   },
   "readPersonChildren": {
    "generated": {
-    "status": "unverified"
+    "commit": "5ff1f41cc812a28e7fba8cb2c0340d4120d56257",
+    "evidence": "read-content",
+    "fingerprint": "bff9e90fd8628c4aa11b4128b7fead47aedb9e000879f16e8f5179bf684fa9b5",
+    "recipe": "reads.tree.relatives",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    },
    "handwritten": {
     "recipe": "tests/integration/test_beta_roundtrip.py::test_create_parent_child_relationship",
@@ -680,7 +690,12 @@
   },
   "readPersonFamilies": {
    "generated": {
-    "status": "unverified"
+    "commit": "5ff1f41cc812a28e7fba8cb2c0340d4120d56257",
+    "evidence": "read-content",
+    "fingerprint": "8d7031bf3138d3308e287f435850cb1c3c051403e49d7f88e6286502eccf115f",
+    "recipe": "reads.tree.relatives",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readPersonMerge": {
@@ -705,7 +720,12 @@
   },
   "readPersonParents": {
    "generated": {
-    "status": "unverified"
+    "commit": "5ff1f41cc812a28e7fba8cb2c0340d4120d56257",
+    "evidence": "read-content",
+    "fingerprint": "6ca8273d118f43c8ec4cc62229cb99cda42450c95a0e082ce7087def4e0afe2c",
+    "recipe": "reads.tree.relatives",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    },
    "handwritten": {
     "recipe": "tests/integration/test_beta_roundtrip.py::test_create_parent_child_relationship",
@@ -733,7 +753,12 @@
   },
   "readPersonSpouses": {
    "generated": {
-    "status": "unverified"
+    "commit": "5ff1f41cc812a28e7fba8cb2c0340d4120d56257",
+    "evidence": "read-content",
+    "fingerprint": "46751ce25f2aa7c981389935c172e4133ed3519bf67d18fc93e872d0e09838f1",
+    "recipe": "reads.tree.relatives",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    },
    "handwritten": {
     "recipe": "tests/integration/test_beta_roundtrip.py::test_create_couple_relationship",
