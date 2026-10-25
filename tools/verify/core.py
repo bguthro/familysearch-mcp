@@ -7,7 +7,7 @@ from typing import Any
 
 from familysearch.api import OPERATIONS, FamilySearchApi
 from familysearch.api._runtime import ApiResult
-from familysearch.api.spec import OpSpec
+from familysearch.api.spec import OpSpec, is_write
 from familysearch.auth import Environment
 from familysearch.client import FSClient
 from familysearch.errors import FSError
@@ -29,6 +29,19 @@ def evidence_problem(ops: Iterable[str], evidence: str) -> str | None:
             return (f"ops {', '.join(writes)} are not reads; they need state-change "
                     "evidence, not read-content")
     return None
+
+
+def reads_only(ops: Iterable[str]) -> bool:
+    """Every op is a known read that is not a write (read POSTs count as reads)."""
+    ops = tuple(ops)
+    return bool(ops) and all(op in OPERATIONS and not is_write(OPERATIONS[op]) for op in ops)
+
+
+def called_writes(ops: Iterable[str], called: Iterable[str]) -> list[str]:
+    """The writes in ``called`` when ``ops`` are all reads (a read recipe calls no write)."""
+    if not reads_only(ops):
+        return []
+    return sorted(op for op in called if op not in OPERATIONS or is_write(OPERATIONS[op]))
 
 
 @dataclass(frozen=True)
@@ -53,18 +66,26 @@ class VerifyApi(FamilySearchApi):
     ``confirm_destructive``; for any other write it forces both False, whatever the
     caller passed; it never passes ``allow_production``. The lock still
     runs for every write, so unverifiable and excluded operations stay refused, as
-    does any undeclared unverified write. ``called`` holds every operation that
-    completed without raising.
+    does any undeclared unverified write. With ``read_only`` (a recipe whose ops are
+    all reads) every write is refused before the lock. ``called`` holds every
+    operation that completed without raising.
     """
 
-    def __init__(self, client: FSClient, *, ops: Iterable[str], registry: dict | None = None):
+    def __init__(self, client: FSClient, *, ops: Iterable[str], registry: dict | None = None,
+                 read_only: bool = False):
         _require_beta(client)
         super().__init__(client, registry=registry)
         self._unlocked = frozenset(ops)
+        self.read_only = read_only
         self.called: set[str] = set()
 
     def _call(self, spec: OpSpec, path_args: Mapping[str, Any], **kwargs) -> ApiResult:
         _require_beta(self._client)
+        # A read-only recipe's API sends no write at all, even one the lock would pass
+        # (a verified write is unlocked for everyone).
+        if self.read_only and is_write(spec):
+            raise FSError(f"{spec.operation_id} is a write; this read-only recipe "
+                          "may call only read operations")
         # The caller's flags never count: unlocking is decided here and only here.
         unlock = spec.kind != "read" and spec.operation_id in self._unlocked
         kwargs["allow_production"] = False

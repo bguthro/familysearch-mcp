@@ -26,7 +26,8 @@ from familysearch.client import FSClient
 from familysearch.errors import FSError
 
 from . import record
-from .core import Recipe, VerifyApi, VerifyContext, evidence_problem
+from .core import (Recipe, VerifyApi, VerifyContext, called_writes, evidence_problem,
+                   reads_only)
 from .fixtures import FixtureSet
 from .recipes import RECIPES, validate_recipes
 
@@ -41,7 +42,8 @@ def make_context(client: FSClient, recipe: Recipe, *, registry_path: Path = REGI
     """A fresh API, fixture set and unique tag for one recipe run."""
     unique = "ZZSPIKE" + uuid.uuid4().hex[:8]
     reason = reason or f"ZZSPIKE automated API verification {unique}"
-    api = VerifyApi(client, ops=recipe.ops, registry=load_registry(registry_path))
+    api = VerifyApi(client, ops=recipe.ops, registry=load_registry(registry_path),
+                    read_only=reads_only(recipe.ops))
     return VerifyContext(api=api, fixtures=FixtureSet(client, reason=reason), client=client,
                          reason=reason, unique=unique)
 
@@ -64,6 +66,9 @@ def run_recipe(recipe: Recipe, ctx: VerifyContext, *, registry_path: Path, commi
     missing = sorted(set(recipe.ops) - ctx.api.called)
     if missing:
         problems.append(f"claimed but never successfully called: {', '.join(missing)}")
+    writes = called_writes(recipe.ops, ctx.api.called)
+    if writes:
+        problems.append(f"read-only recipe called write operation(s): {', '.join(writes)}")
     evidence = evidence_problem(recipe.ops, recipe.evidence)
     if evidence:
         problems.append(evidence)
