@@ -126,6 +126,100 @@ its own. The server instructions and tool descriptions say this.
 - Privacy: `auth_status` returns only id, displayName and personId, nothing else from
   your account.
 
+## Generated API
+
+`familysearch.api.FamilySearchApi` is a typed, generated wrapper over the whole
+FamilySearch API (205 operations in a committed spec snapshot, two of them excluded).
+Each operation is a method, for example:
+
+    from familysearch import FSClient
+    from familysearch.api import FamilySearchApi
+
+    api = FamilySearchApi(client)            # client: an FSClient
+    person = api.read_person("ABCD-123")     # reads always run
+    api.create_person(reason="why", body=payload, allow_unverified=True)  # beta only
+
+Every method returns an `ApiResult` (status, headers, content type, parsed body, text).
+The source of truth is `src/familysearch/api/` (generated: never edit it by hand) and
+`src/familysearch/api/registry.json`.
+
+### The lock
+
+Reads always run. A write (anything that is not a read) is checked against the
+registry before any network call and raises `OperationLockedError` unless permitted:
+
+| Registry status | Meaning | Write on beta | Write on production |
+|---|---|---|---|
+| `verified` | proven on beta by a recipe, and the spec fingerprint still matches | yes | needs `allow_production=True` |
+| `stale` (computed) | was verified, but the spec for it has since changed | needs `allow_unverified=True` | refused |
+| `unverified` | never proven | needs `allow_unverified=True` | refused |
+| `unverifiable` | cannot be proven safely; a reason is recorded | never | never |
+| `excluded` | deliberately not offered; a reason is recorded | never | never |
+| `unknown` (computed) | unrecognised registry data | never (fails closed) | never |
+
+A destructive operation additionally needs `confirm_destructive=True`. The three flags are
+`allow_unverified`, `allow_production` and `confirm_destructive`; each counts only when
+it is exactly `True`.
+
+**What the lock does NOT cover.** It guards only `FamilySearchApi`. The raw `FSClient`
+(`client.get`, `client.post`, `client.request`, ...) is unlocked, and so are the
+hand-written library modules and the MCP server's tools, which have their own guards
+(see Guardrails). It also cannot prove a human approved a flag. Treat the flags as
+decisions for a person to make.
+
+### Verified means proven on beta, not production
+
+`verified` means a recipe exercised the operation against FamilySearch **beta** and
+read the resulting state back. It says nothing about production: no production write has
+ever been exercised, which is why production still needs `allow_production=True` even
+for a verified operation. Run the first production writes as a supervised pilot.
+
+### Regenerating
+
+    .venv/bin/python -m tools.spec.generate           # rewrite the generated code from the snapshot
+    .venv/bin/python -m tools.spec.generate --check   # fail if the code on disk differs
+
+New endpoints are added by changing the spec inputs (`tools/spec/snapshot.json`,
+`tools/spec/overrides.json`) and regenerating, never by editing generated files.
+
+### Verifying an operation
+
+1. Write a recipe in `tools/verify/recipes/` (see `pilot.py`). A recipe lists the
+   operations it proves, creates its own `ZZSPIKE` fixtures, and asserts on what a
+   later read returns, never on a write's status code. State-change recipes also need
+   a negative control.
+2. Run it on **beta** with a fresh beta login in Brave (macOS Keychain prompt):
+
+        .venv/bin/python -m tools.verify list
+        .venv/bin/python -m tools.verify run --recipe NAME [--dry-run]
+        .venv/bin/python -m tools.verify classify OPERATION_ID --status unverifiable --reason "why"
+
+   The runner is beta only: it aborts unless beta accepts the session, never contacts
+   production, and requires a clean git tree (apart from `registry.json`) so that the
+   commit it records is the code that ran. It marks operations `verified` only when the
+   recipe raised nothing, teardown was clean, every claimed operation was called and any
+   negative control passed; otherwise `registry.json` is untouched. `classify` records an
+   operation that cannot be verified safely as `unverifiable`, with a reason.
+3. Commit the changed `registry.json`.
+
+### Reading the coverage report
+
+    .venv/bin/python -m tools.spec.coverage                  # counts per area and status, plus every pending operation
+    .venv/bin/python -m tools.spec.coverage --require-done   # exit 1 while anything is pending
+
+Anything that is not `verified`, or `unverifiable` / `excluded` with a non-blank recorded
+reason, is pending (a `stale` operation counts as pending). An unreadable or invalid
+registry makes the command exit 2 with a message on stderr. `--require-done` is the
+completion gate.
+
+### Pilot status
+
+Pilot recipes are written for person create/read and person delete/restore
+(`createPerson`, `readPerson`, `deletePerson`, `restorePerson`). The **live beta run is
+still pending**: no generated operation is recorded as verified yet. The registry holds
+zero generated `verified` entries until the live step is run, so every generated write
+currently needs `allow_unverified=True` and runs on beta only.
+
 ## Running the tests
 
 **Unit suite** (offline, no credentials; includes the MCP server tests):

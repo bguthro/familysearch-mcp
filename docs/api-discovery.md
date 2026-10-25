@@ -18,6 +18,13 @@ way, with the same confidence.
 > undocumented for our purposes and can change without notice. Treat every response
 > as untrusted data.
 
+> **Generated API.** The whole API surface is now also available as the generated,
+> lock-guarded `FamilySearchApi`; see the "Generated API" section of the
+> [README](../README.md) for the lock, the registry statuses and how to verify an
+> operation. **New endpoints are added by regenerating (`python -m tools.spec.generate`
+> after updating the spec inputs), not by hand.** The manual recipe in section 7 applies
+> to the hand-written library modules only.
+
 ## 1. The environments
 
 | Environment | Website | Purpose |
