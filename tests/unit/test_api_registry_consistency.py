@@ -1,0 +1,174 @@
+import ast
+import copy
+import importlib.util
+import json
+from pathlib import Path
+
+import pytest
+
+from familysearch.api.registry import (
+    OperationLockedError, check_call, effective_status, load_registry,
+)
+from familysearch.api.spec import OpSpec
+from familysearch.auth import Environment
+from tools.spec.bootstrap_registry import (
+    HANDWRITTEN, REGISTRY_PATH, UNVERIFIABLE, build_registry, render,
+)
+from tools.spec.resolve import SNAPSHOT_PATH, load_overrides, resolve
+
+ROOT = Path(__file__).resolve().parents[2]
+GENERATED_STATUSES = {"unverified", "verified", "unverifiable", "excluded"}
+
+
+@pytest.fixture(scope="module")
+def snapshot():
+    return json.loads(SNAPSHOT_PATH.read_text())
+
+
+@pytest.fixture(scope="module")
+def overrides():
+    return load_overrides()
+
+
+@pytest.fixture(scope="module")
+def registry():
+    return load_registry()
+
+
+@pytest.fixture(scope="module")
+def resolved(snapshot, overrides):
+    return resolve(snapshot, overrides)
+
+
+def _recipes():
+    try:
+        found = importlib.util.find_spec("tools.verify.recipes")
+    except ModuleNotFoundError:  # tools.verify does not exist yet
+        found = None
+    if found is None:
+        return None
+    from tools.verify.recipes import RECIPES
+    return RECIPES
+
+
+def test_every_snapshot_operation_is_accounted_for(registry, resolved, snapshot):
+    ops, excluded = resolved
+    expected = [o.operation_id for o in ops] + list(excluded)
+    assert len(expected) == len(snapshot["operations"]) == 205
+    assert len(set(expected)) == 205
+    assert sorted(registry["operations"]) == sorted(expected)
+
+
+def test_entries_have_only_generated_and_handwritten_keys(registry):
+    for oid, entry in registry["operations"].items():
+        assert set(entry) <= {"generated", "handwritten"}, oid
+        assert "generated" in entry, oid
+
+
+def test_status_values_valid_and_reasons_present(registry):
+    for oid, entry in registry["operations"].items():
+        assert entry["generated"]["status"] in GENERATED_STATUSES, oid
+        for impl, e in entry.items():
+            if e["status"] in ("unverifiable", "excluded"):
+                assert isinstance(e.get("reason"), str) and e["reason"], (oid, impl)
+
+
+def test_initial_statuses(registry):
+    for oid, entry in registry["operations"].items():
+        status = entry["generated"]["status"]
+        if oid in ("getAuthorizationPage", "getAccessToken"):
+            assert status == "excluded"
+        elif oid in UNVERIFIABLE:
+            assert status == "unverifiable"
+        else:
+            assert status == "unverified", oid
+
+
+def _function_exists(path: Path, name: str) -> bool:
+    tree = ast.parse(path.read_text())
+    return any(
+        isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name
+        for n in ast.walk(tree)
+    )
+
+
+def test_verified_entries_reference_existing_recipes(registry):
+    recipes = _recipes()
+    for oid, entry in registry["operations"].items():
+        hw = entry.get("handwritten")
+        if hw is not None:
+            assert hw["status"] == "verified", oid
+            path, _, func = hw["recipe"].partition("::")
+            assert func, oid
+            assert (ROOT / path).is_file(), (oid, path)
+            assert _function_exists(ROOT / path, func), (oid, hw["recipe"])
+        gen = entry["generated"]
+        if gen["status"] == "verified" and recipes is not None:
+            assert gen.get("recipe") in recipes, oid
+
+
+def test_handwritten_entries_match_mapping(registry):
+    assert {o for o, e in registry["operations"].items() if "handwritten" in e} == set(HANDWRITTEN)
+
+
+def test_verified_generated_entry_has_fingerprint_and_evidence(registry, resolved):
+    ops, _ = resolved
+    fingerprints = {o.operation_id: o.fingerprint for o in ops}
+    for oid, entry in registry["operations"].items():
+        gen = entry["generated"]
+        if gen["status"] != "verified":
+            continue
+        assert gen.get("fingerprint") == fingerprints[oid], oid
+        assert gen.get("evidence") in ("state-change", "read-content"), oid
+        assert gen.get("commit") and gen.get("verified_on") and gen.get("recipe"), oid
+
+
+def test_registry_matches_bootstrap_output(snapshot, overrides):
+    assert build_registry(snapshot, overrides) == build_registry(snapshot, overrides)
+    assert REGISTRY_PATH.read_text() == render(build_registry(snapshot, overrides))
+
+
+def _spec_for(op) -> OpSpec:
+    return OpSpec(
+        operation_id=op.operation_id, method_name=op.method_name, area=op.area,
+        http_method=op.http_method, path=op.path, summary=op.summary, kind=op.kind,
+        destructive=op.destructive, path_params=op.path_params,
+        required_query=op.required_query, accepts=op.accepts, body=op.body,
+        fingerprint=op.fingerprint,
+    )
+
+
+def _first_write(resolved):
+    ops, _ = resolved
+    return next(o for o in ops if o.kind == "write" and o.operation_id not in UNVERIFIABLE)
+
+
+def test_stale_detected_when_spec_changes(registry, resolved):
+    op = _first_write(resolved)
+    reg = copy.deepcopy(registry)
+    reg["operations"][op.operation_id]["generated"] = {
+        "status": "verified", "fingerprint": "not-the-real-fingerprint",
+    }
+    assert effective_status(op.operation_id, op.fingerprint, reg) == "stale"
+    with pytest.raises(OperationLockedError):
+        check_call(_spec_for(op), Environment.BETA, reg, confirm_destructive=True)
+    # allow_unverified is the only way through on beta
+    check_call(_spec_for(op), Environment.BETA, reg, allow_unverified=True,
+               confirm_destructive=True)
+
+
+def test_unverifiable_ops_have_no_generated_method_unlock(registry, resolved):
+    ops, _ = resolved
+    by_id = {o.operation_id: o for o in ops}
+    assert set(UNVERIFIABLE) <= set(by_id)
+    for oid in UNVERIFIABLE:
+        spec = _spec_for(by_id[oid])
+        for env in (Environment.BETA, Environment.PRODUCTION):
+            for au in (False, True):
+                for ap in (False, True):
+                    for cd in (False, True):
+                        with pytest.raises(OperationLockedError):
+                            check_call(
+                                spec, env, registry, allow_unverified=au,
+                                allow_production=ap, confirm_destructive=cd,
+                            )

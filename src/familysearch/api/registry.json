@@ -1,1 +1,1120 @@
-{"schema": 1, "operations": {}}
+{
+ "operations": {
+  "allowPersonMerge": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "checkPlaceIsChild": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "createChildAndParentsRelationshipNote": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "createChildAndParentsRelationshipSourceReference": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "createCoupleRelationshipNote": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "createCoupleRelationshipSourceReference": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "createDiscussion": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "createGenealogiesPerson": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "createGenealogiesSourceDescription": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "createGenealogiesTree": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "createGroup": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "createMemories": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_standalone_upload_is_floating_until_linked",
+    "status": "verified"
+   }
+  },
+  "createMemoryComments": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "createMemoryPersona": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_upload_to_person_then_link_to_second_person",
+    "status": "verified"
+   }
+  },
+  "createNameSegments": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "createPartnerAccount": {
+   "generated": {
+    "reason": "partner-only account feature; never executed",
+    "status": "unverifiable"
+   }
+  },
+  "createPerson": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_create_addfact_delete_person",
+    "status": "verified"
+   }
+  },
+  "createPersonMemory": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_upload_to_person_then_link_to_second_person",
+    "status": "verified"
+   }
+  },
+  "createPersonNote": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "createRelationship": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_create_parent_child_relationship",
+    "status": "verified"
+   }
+  },
+  "createSourceDescription": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_source_create_and_attach",
+    "status": "verified"
+   }
+  },
+  "createSourceFolder": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "createTree": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteChildAndParentsRelationship": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_create_parent_child_relationship",
+    "status": "verified"
+   }
+  },
+  "deleteChildAndParentsRelationshipConclusion": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteChildAndParentsRelationshipNote": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteChildAndParentsRelationshipParent": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteChildAndParentsRelationshipSourceReference": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteComment": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteCoupleRelationship": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_create_couple_relationship",
+    "status": "verified"
+   }
+  },
+  "deleteCoupleRelationshipConclusion": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteCoupleRelationshipNote": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteCoupleRelationshipSourceReference": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteGenealogiesConclusion": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteGenealogiesPerson": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteGenealogiesRelationship": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteGenealogiesSourceDescription": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteGenealogiesTree": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteGroup": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteMemory": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_upload_to_person_then_link_to_second_person",
+    "status": "verified"
+   }
+  },
+  "deleteMemoryArtifactCoverage": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteMemoryComment": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteMemoryPersona": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deletePerson": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_create_addfact_delete_person",
+    "status": "verified"
+   }
+  },
+  "deletePersonConclusion": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deletePersonDiscussionReference": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deletePersonMemoriesPersonaReference": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deletePersonNotAMatch": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deletePersonNotAMatches": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deletePersonNote": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deletePersonPortrait": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deletePersonSourceReference": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deletePreferredParentRelationship": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deletePreferredSpouseRelationship": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteSourceDescription": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_source_create_and_attach",
+    "status": "verified"
+   }
+  },
+  "deleteSourceDescriptionsFromCollections": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteTree": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteTreePersonReference": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteUserDefinedCollection": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "deleteUserHistoryEntry": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "findRelationship": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "getAccessToken": {
+   "generated": {
+    "reason": "OAuth endpoint on the identity host; this project authenticates with the browser session",
+    "status": "excluded"
+   }
+  },
+  "getAuthorizationPage": {
+   "generated": {
+    "reason": "OAuth endpoint on the identity host; this project authenticates with the browser session",
+    "status": "excluded"
+   }
+  },
+  "getChildAndParentsRelationship": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "getChildAndParentsRelationshipNotes": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "getChildAndParentsRelationshipSourceReferences": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "getChildAndParentsRelationshipSources": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "getCoupleRelationshipNotes": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "getGroups": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "getMemories": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "getNameScript": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "getNameSegments": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "getPersonMemories": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_upload_to_person_then_link_to_second_person",
+    "status": "verified"
+   }
+  },
+  "getPreferredParentRelationship": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "getSourceDescriptionChanges": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "headChildAndParentRelationshipHistory": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "headPerson": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "headPersonChangeHistory": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "mergePerson": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "performPersonMatchesByExample": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readAgent": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readAncestry": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readChildAndParentRelationship": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readChildAndParentRelationshipNote": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readChildAndParentsRelationshipHeaders": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readComments": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readCoupleRelationship": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readCoupleRelationshipChangeHistory": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readCoupleRelationshipChangeHistoryHeaders": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readCoupleRelationshipHeaders": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readCoupleRelationshipNote": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readCoupleRelationshipSourceReferences": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readCoupleRelationshipSources": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readCurrentTree": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readCurrentTreePerson": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readCurrentUser": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_read_current_user",
+    "status": "verified"
+   }
+  },
+  "readDescendancy": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readDiscussion": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readDiscussionHeaders": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readGenealogiesBulkMatch": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readGenealogiesNote": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readGenealogiesPerson": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readGenealogiesPersonMatches": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readGenealogiesPersons": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readGenealogiesSourceDescription": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readGenealogiesTree": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readGenealogiesTrees": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readGroup": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readMemory": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readMemoryComments": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readMemoryPersona": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readMemoryPersonas": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPartnerEligibility": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPendingModifications": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPerson": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_create_addfact_delete_person",
+    "status": "verified"
+   }
+  },
+  "readPersonChangeHistory": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPersonChildren": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_create_parent_child_relationship",
+    "status": "verified"
+   }
+  },
+  "readPersonFamilies": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPersonMerge": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPersonNotAMatches": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPersonNote": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPersonNotes": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPersonParents": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_create_parent_child_relationship",
+    "status": "verified"
+   }
+  },
+  "readPersonPortrait": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPersonPortraits": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPersonSources": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_source_create_and_attach",
+    "status": "verified"
+   }
+  },
+  "readPersonSpouses": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_create_parent_child_relationship",
+    "status": "verified"
+   }
+  },
+  "readPersons": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPlace": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPlaceAttributes": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPlaceChildren": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPlaceDescription": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPlaceDescriptionWithRelated": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPlaceDescriptions": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPlaceDescriptionsGroup": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPlaceType": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPlaceTypeGroup": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPlaceTypeGroups": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPlaceTypes": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPlaces": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readPreferredSpouseRelationship": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readSourceDescription": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readSourceDescriptionHead": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readSourceDescriptions": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readSourceFolders": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readSourceReferences": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readTree": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readTreeChanges": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readTreeMatches": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readTreePersonMatches": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_mcp_beta.py::test_matches_and_record_search",
+    "status": "verified"
+   }
+  },
+  "readTreePersonMatchesHeaders": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readUserDefinedCollection": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readUserDefinedCollectionSourceDescriptions": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readUserHistory": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readUserMemories": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readUserSourceDescriptions": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readUserSourceFolders": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readUserTreePersons": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readVocabConceptDefinition": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readVocabConceptV2": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readVocabConceptsSearch": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readVocabList": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readVocabTerm": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "readVocabTermTranslation": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "restoreChange": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "restoreChildAndParentsRelationship": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "restoreCoupleRelationship": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "restoreGenealogiesPerson": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "restorePerson": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "searchForParentPlaces": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "searchTreePersons": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_tree_search_runs",
+    "status": "verified"
+   }
+  },
+  "setCurrentTree": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "standardizeDate": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateChildAndParentsRelationship": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateChildAndParentsRelationshipNote": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateChildAndParentsRelationshipParentsOrder": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateComments": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateCoupleRelationship": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateCoupleRelationshipNote": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateCoupleRelationshipSpousesOrder": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateDiscussion": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateGenealogiesPerson": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateGenealogiesRelationship": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateGenealogiesSourceDescription": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateGenealogiesTree": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateGroup": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateMatchResolution": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateMemory": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateMemoryArtifact": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateMemoryPersona": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updatePartnerAccount": {
+   "generated": {
+    "reason": "partner-only account feature; never executed",
+    "status": "unverifiable"
+   }
+  },
+  "updatePerson": {
+   "generated": {
+    "status": "unverified"
+   },
+   "handwritten": {
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_create_addfact_delete_person",
+    "status": "verified"
+   }
+  },
+  "updatePersonNotAMatches": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updatePersonNote": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updatePersonPortraits": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updatePreferredParentRelationship": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updatePreferredSpouseRelationship": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updatePublished": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateSourceDescription": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateSourceDescriptionsToCollection": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateTree": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateUserDefinedCollection": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateUserHistory": {
+   "generated": {
+    "status": "unverified"
+   }
+  },
+  "updateVocabConceptDefinition": {
+   "generated": {
+    "reason": "edits shared reference data; never executed",
+    "status": "unverifiable"
+   }
+  },
+  "updateVocabTranslation": {
+   "generated": {
+    "reason": "edits shared reference data; never executed",
+    "status": "unverifiable"
+   }
+  }
+ },
+ "schema": 1
+}

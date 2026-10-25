@@ -226,9 +226,9 @@ def test_error_is_fserror():
     assert issubclass(OperationLockedError, FSError)
 
 
-def test_load_registry_default_ships_empty_schema_1():
+def test_load_registry_default_is_schema_1_with_operations():
     reg = load_registry()
-    assert reg["schema"] == 1 and reg["operations"] == {}
+    assert reg["schema"] == 1 and isinstance(reg["operations"], dict) and reg["operations"]
 
 
 def test_opspec_is_frozen():
