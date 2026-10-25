@@ -91,7 +91,12 @@
   },
   "createPerson": {
    "generated": {
-    "status": "unverified"
+    "commit": "01f3a1b88700392b51c0e1260025388a9788561d",
+    "evidence": "state-change",
+    "fingerprint": "774fe33b3f65155203e8a2b3c98c063eed0c23f0b27d8fd6024aae6b0623bf05",
+    "recipe": "family_tree.person_create_read",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    },
    "handwritten": {
     "recipe": "tests/integration/test_beta_roundtrip.py::test_create_addfact_delete_person",
@@ -254,7 +259,12 @@
   },
   "deletePerson": {
    "generated": {
-    "status": "unverified"
+    "commit": "01f3a1b88700392b51c0e1260025388a9788561d",
+    "evidence": "state-change",
+    "fingerprint": "690b915315864fcace93147f123dd06730bb20111fb244a327750cc437e9cb48",
+    "recipe": "family_tree.person_delete_restore",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    },
    "handwritten": {
     "recipe": "tests/integration/test_beta_roundtrip.py::test_create_addfact_delete_person",
@@ -627,7 +637,12 @@
   },
   "readPerson": {
    "generated": {
-    "status": "unverified"
+    "commit": "01f3a1b88700392b51c0e1260025388a9788561d",
+    "evidence": "state-change",
+    "fingerprint": "8542acc3f7af725264663079048194e5d6a463d70eb56277c2bd900914493a83",
+    "recipe": "family_tree.person_create_read",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    },
    "handwritten": {
     "recipe": "tests/integration/test_beta_roundtrip.py::test_create_addfact_delete_person",
@@ -921,7 +936,12 @@
   },
   "restorePerson": {
    "generated": {
-    "status": "unverified"
+    "commit": "01f3a1b88700392b51c0e1260025388a9788561d",
+    "evidence": "state-change",
+    "fingerprint": "0b20598c155744dea1a7827196f47abf614eaa8907e5f36134f98dac33b4c797",
+    "recipe": "family_tree.person_delete_restore",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "searchForParentPlaces": {
