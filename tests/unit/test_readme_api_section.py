@@ -36,6 +36,14 @@ def test_section_states_the_status_vocabulary_and_beta_only_meaning():
     assert "not production" in section
 
 
+def test_section_names_the_verified_operations_and_production_flag():
+    section = _section()
+    for op in ("createPerson", "readPerson", "deletePerson", "restorePerson"):
+        assert op in section, op
+    assert "allow_production=True" in section
+    assert "still pending" not in section
+
+
 def test_every_named_module_command_is_importable():
     commands = set(re.findall(r"python -m (tools(?:\.\w+)+)", README + DISCOVERY))
     assert {"tools.spec.generate", "tools.spec.coverage", "tools.verify"} <= commands

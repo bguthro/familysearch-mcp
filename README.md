@@ -137,9 +137,14 @@ Each operation is a method, for example:
 
     api = FamilySearchApi(client)            # client: an FSClient
     person = api.read_person("ABCD-123")     # reads always run
-    api.create_person(reason="why", body=payload, allow_unverified=True)  # beta only
+    # createPerson is verified (on beta only): runs on beta as is, on production only
+    # with allow_production=True. An unverified write needs allow_unverified=True (beta only).
+    api.create_person(reason="why", body=payload)
+    api.create_person(reason="why", body=payload, allow_production=True)  # production
 
-Every method returns an `ApiResult` (status, headers, content type, parsed body, text).
+Requires Python >= 3.11. Every method returns an `ApiResult` (status, headers, content
+type, parsed body, text) for a 2xx answer. On a 4xx/5xx it raises `FSHTTPError` (or
+`TokenExpiredError` for a 401) instead of returning the response.
 The source of truth is `src/familysearch/api/` (generated: never edit it by hand) and
 `src/familysearch/api/registry.json`.
 
@@ -165,7 +170,8 @@ it is exactly `True`.
 (`client.get`, `client.post`, `client.request`, ...) is unlocked, and so are the
 hand-written library modules and the MCP server's tools, which have their own guards
 (see Guardrails). It also cannot prove a human approved a flag. Treat the flags as
-decisions for a person to make.
+decisions for a person to make. `FamilySearchApi(client, registry=...)` accepts a caller's
+own registry, so the lock is a safety net against mistakes, not a security boundary.
 
 ### Verified means proven on beta, not production
 
@@ -214,11 +220,13 @@ completion gate.
 
 ### Pilot status
 
-Pilot recipes are written for person create/read and person delete/restore
-(`createPerson`, `readPerson`, `deletePerson`, `restorePerson`). The **live beta run is
-still pending**: no generated operation is recorded as verified yet. The registry holds
-zero generated `verified` entries until the live step is run, so every generated write
-currently needs `allow_unverified=True` and runs on beta only.
+Four generated operations are `verified`: `createPerson`, `readPerson`, `deletePerson`
+and `restorePerson`, proven on **beta only** by the recipes `family_tree.person_create_read`
+and `family_tree.person_delete_restore` (2026-10-25). Because they are verified, they can
+run on production, but only with `allow_production=True` (plus `confirm_destructive=True`
+for the destructive ones), even though they were proven on beta only. Every other
+generated write is still unverified: it needs `allow_unverified=True` and runs on beta
+only.
 
 ## Running the tests
 
