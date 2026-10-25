@@ -74,6 +74,16 @@ COUPLE_PATH = "/platform/tree/couple-relationships"
 CHILD_AND_PARENTS_PATH = "/platform/tree/child-and-parents-relationships"
 
 
+def couple_url(base_url: str, relationship_id: str) -> str:
+    """The couple relationship resource (GET and DELETE)."""
+    return join_path(base_url + COUPLE_PATH, relationship_id)
+
+
+def child_and_parents_url(base_url: str, relationship_id: str) -> str:
+    """The child-and-parents relationship resource (GET and DELETE)."""
+    return join_path(base_url + CHILD_AND_PARENTS_PATH, relationship_id)
+
+
 def _new_id(resp) -> str:
     headers = getattr(resp, "headers", None) or {}
     eid = headers.get("X-ENTITY-ID")
@@ -133,11 +143,11 @@ class TreeWriter:
         return _new_id(resp)
 
     def delete_couple(self, relationship_id: str, *, reason: str) -> None:
-        url = join_path(self._client.base_url + COUPLE_PATH, relationship_id)
+        url = couple_url(self._client.base_url, relationship_id)
         self._client.delete(url, reason=reason)
 
     def delete_child_and_parents(self, relationship_id: str, *, reason: str) -> None:
-        url = join_path(self._client.base_url + CHILD_AND_PARENTS_PATH, relationship_id)
+        url = child_and_parents_url(self._client.base_url, relationship_id)
         self._client.delete(url, reason=reason)
 
     def delete_person(self, person_id: str, *, reason: str) -> None:

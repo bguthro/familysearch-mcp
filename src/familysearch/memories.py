@@ -66,5 +66,9 @@ class Memories:
         }]}
         self._client.post(memory_url + "/personas", json=body, reason=reason)
 
+    def memory_url(self, memory_id: str) -> str:
+        """The memory resource URL used for GET and DELETE."""
+        return join_path(self._artifacts(), memory_id)
+
     def delete(self, memory_id: str, *, reason: str) -> None:
-        self._client.delete(join_path(self._artifacts(), memory_id), reason=reason)
+        self._client.delete(self.memory_url(memory_id), reason=reason)

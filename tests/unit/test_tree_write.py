@@ -156,3 +156,9 @@ def test_delete_person_204_ok():
     assert _writer().delete_person("P1", reason="dup") is None
     assert _path_query(0) == ("/platform/tree/persons/P1", "flag=fsh")
     assert responses.calls[0].request.headers["X-Reason"] == "dup"
+
+
+def test_relationship_url_helpers_match_delete_urls():
+    from familysearch.tree import child_and_parents_url, couple_url
+    assert couple_url(BASE, "R-1") == COUPLE + "/R-1"
+    assert child_and_parents_url(BASE, "a/b") == CP + "/a%2Fb"

@@ -89,7 +89,7 @@ def call(server, beta_verified):
 
 @pytest.fixture
 def cleanup(ctx, beta_verified):
-    t = Tracker(ctx)
+    t = Tracker(ctx.call)
     yield t
     t.run()
     assert not t.errors, f"LEFTOVER ZZSPIKE data on beta: {t.errors}"
@@ -229,6 +229,8 @@ def test_relationships(call, cleanup):
     assert rel["spouses"] == [], rel
     assert rel["children"] == [], rel
     assert [p["id"] for p in call("get_relatives", person_id=dad)["children"]] == [child]
+    # The derived couple link must not duplicate the explicit one: mom exactly once.
+    assert [p["id"] for p in call("get_relatives", person_id=dad)["spouses"]] == [mom]
 
 
 def _memory_ids(mems):
@@ -274,6 +276,34 @@ def test_memory_standalone_upload_then_link(call, cleanup, upload_root, observe)
     mems = call("get_person_memories", person_id=pid)
     observe("memory_list_items_standalone", mems)
     assert mid in _memory_ids(mems), mems
+
+
+def test_documents_never_attach_to_living_persons(call, cleanup, upload_root):
+    # A tracked, deceased-attached memory to try to link.
+    dead = make_person(call, cleanup)
+    up = call("upload_memory", file_path=write_png(upload_root, "zzspike-dead.png"),
+              person_id=dead, provenance="ZZSPIKE generated locally for testing",
+              reason=REASON)
+    if up.get("memory_id"):
+        cleanup.memory_ids.append(up["memory_id"])
+    assert up["status"] == "uploaded", up
+    # A LIVING ZZSPIKE person (created private).
+    out = call("create_person", given="Test", surname=uniq(), gender="Female",
+               birth_date="1990", living=True, reason=REASON)
+    if out.get("id"):
+        cleanup.persons.append(out["id"])
+    assert out["status"] == "created" and out["living"] is True, out
+    alive = out["id"]
+    blocked = call("upload_memory", file_path=write_png(upload_root, "zzspike-live.png"),
+                   person_id=alive, provenance="ZZSPIKE generated locally for testing",
+                   reason=REASON)
+    if blocked.get("memory_id"):
+        cleanup.memory_ids.append(blocked["memory_id"])
+    assert blocked["status"] == "living_person_blocked", blocked
+    assert "memory_id" not in blocked
+    linked = call("link_memory", person_id=alive, memory_id=up["memory_id"], reason=REASON)
+    assert linked["status"] == "living_person_blocked", linked
+    assert call("get_person_memories", person_id=alive) == []
 
 
 def test_provenance_gates_live(call, cleanup, upload_root, monkeypatch):

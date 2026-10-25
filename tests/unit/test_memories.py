@@ -123,6 +123,11 @@ def test_link_to_person_posts_persona_with_ark_and_media_description():
     assert req.headers["X-Reason"] == "r2"
 
 
+def test_memory_url_is_the_url_delete_uses():
+    mem = _mem()
+    assert mem.memory_url("MEM-1") == ART + "/MEM-1" + Q
+
+
 @responses.activate
 def test_delete():
     responses.add(responses.DELETE, ART + "/MEM-1" + Q, status=204)

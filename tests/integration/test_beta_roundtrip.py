@@ -5,6 +5,7 @@ Every test creates ZZSPIKE throwaway data and removes all of it, even on failure
 import base64
 import os
 import uuid
+from types import SimpleNamespace
 
 import pytest
 
@@ -17,9 +18,7 @@ from familysearch import (
 if not (os.environ.get("FS_BETA_TOKEN") or os.environ.get("FS_USE_BRAVE") == "1"):
     pytest.skip("no beta token (FS_BETA_TOKEN or FS_USE_BRAVE=1)", allow_module_level=True)
 
-from _tracker import (  # noqa: E402
-    CHILD_AND_PARENTS_PATH, COUPLE_PATH, MEMORY_PATH, verified_delete,
-)
+from _tracker import Tracker  # noqa: E402
 
 REASON = "ZZSPIKE automated integration test"
 PNG = base64.b64decode(
@@ -27,19 +26,16 @@ PNG = base64.b64decode(
 )
 
 
-class Cleanup:
-    """Tracks created resources; deletes them (best effort) at teardown."""
+class Cleanup(Tracker):
+    """The shared strict Tracker plus person-creation helpers for this suite."""
 
-    def __init__(self, client, writer, memories, discovery):
+    def __init__(self, client, writer, memories, discovery, reader):
         self.client, self.writer, self.memories = client, writer, memories
         self.discovery = discovery
-        # Relationship ids by KIND: each kind has its own delete endpoint.
-        self.couples: list[str] = []
-        self.child_and_parents: list[str] = []
-        self.persons: list[str] = []
-        self.memory_ids: list[str] = []
-        self.source_urls: list[str] = []
-        self.errors: list[str] = []
+        services = SimpleNamespace(
+            client=client, discovery=discovery, writer=writer, memories=memories,
+            tree=reader)
+        super().__init__(lambda fn: fn(services))
 
     def person(self, gender="Male") -> str:
         pid = self.writer.create_person(
@@ -52,45 +48,12 @@ class Cleanup:
         self.persons.append(pid)
         return pid
 
-    def _verified(self, label, path, delete, *, verify=True):
-        url = self.client.base_url + path
-        verified_delete(label, (lambda: self.client.get(url)) if verify else None,
-                        delete, self.errors, delete_404_ok=not verify)
-
-    def run(self):
-        # Teardown VERIFIES deletion by read-back; a tolerated 404 once hid a wrong URL.
-        for rid in reversed(self.child_and_parents):
-            self._verified(f"child-and-parents {rid}", join_path(CHILD_AND_PARENTS_PATH, rid),
-                           lambda r=rid: self.writer.delete_child_and_parents(r, reason=REASON))
-        for rid in reversed(self.couples):
-            self._verified(f"couple {rid}", join_path(COUPLE_PATH, rid),
-                           lambda r=rid: self.writer.delete_couple(r, reason=REASON))
-        for url in reversed(self.source_urls):
-            # Source-description GET Accept is not established: DELETE-only, 404 ok.
-            verified_delete(f"source {url}", None,
-                            lambda u=url: self.client.delete(u, reason=REASON),
-                            self.errors, delete_404_ok=True)
-        for mid in reversed(self.memory_ids):
-            self._verified(f"memory {mid}", join_path(MEMORY_PATH, mid),
-                           lambda m=mid: self.memories.delete(m, reason=REASON))
-        for pid in reversed(self.persons):
-            self._try(lambda p=pid: self.writer.delete_person(p, reason=REASON), f"person {pid}")
-
-    def _try(self, fn, label):
-        try:
-            fn()
-        except FSHTTPError as e:
-            if e.status not in (404, 410):  # already gone is fine
-                self.errors.append(f"{label}: {e}")
-        except Exception as e:  # noqa: BLE001 - keep cleaning up
-            self.errors.append(f"{label}: {e}")
-
 
 @pytest.fixture
 def cleanup(beta_client, discovery):
     c = Cleanup(
         beta_client, TreeWriter(beta_client, discovery), Memories(beta_client, discovery),
-        discovery,
+        discovery, TreeReader(beta_client, discovery),
     )
     yield c
     c.run()
@@ -118,6 +81,7 @@ def test_create_addfact_delete_person(cleanup, reader):
     assert births, f"birth fact missing: {person}"
     assert "changeMessage" in births[0].get("attribution", {}), births[0]
     cleanup.writer.delete_person(pid, reason=REASON)
+    cleanup.mark_deleted(pid)  # deleted inline; asserted gone just below
     with pytest.raises(FSHTTPError) as exc:
         reader.get_person(pid)
     assert exc.value.status in (404, 410)
@@ -201,7 +165,7 @@ def test_source_create_and_attach(cleanup, beta_client, discovery):
         "https://example.org/zzspike", "ZZSPIKE source", "ZZSPIKE citation", reason=REASON
     )
     sd_url = join_path(discovery.href('source-descriptions').split('?')[0], sd_id)
-    cleanup.source_urls.append(sd_url)
+    cleanup.source_ids.append(sd_id)
     assert sd_id
     sources.attach_to_person(pid, sd_url, reason=REASON)
 
