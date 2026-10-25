@@ -1,0 +1,6756 @@
+[
+ {
+  "area": "Authentication Endpoints",
+  "title": "Get Authorization Page",
+  "method": "GET",
+  "path": "/oauth2/v3/authorization",
+  "operationId": "getAuthorizationPage",
+  "tags": [
+   "Identity"
+  ],
+  "summary": "Get Authorization Page",
+  "server": "https://identbeta.familysearch.org/cis-web",
+  "path_params": [],
+  "query_params": [
+   "response_type",
+   "client_id",
+   "redirect_uri",
+   "scope",
+   "code_challenge",
+   "code_challenge_method",
+   "state",
+   "prompt"
+  ],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "400",
+   "500"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/getauthorizationpage.md"
+ },
+ {
+  "area": "Authentication Endpoints",
+  "title": "Request an OAuth 2.0 Access Token",
+  "method": "POST",
+  "path": "/oauth2/v3/token",
+  "operationId": "getAccessToken",
+  "tags": [
+   "Identity"
+  ],
+  "summary": "Request an OAuth 2.0 Access Token",
+  "server": "https://identbeta.familysearch.org/cis-web",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Accept",
+   "Content-Type"
+  ],
+  "accept": [
+   "application/json"
+  ],
+  "request_media": [
+   "application/x-www-form-urlencoded"
+  ],
+  "responses": [
+   "200",
+   "400"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/getaccesstoken.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Current User's Tree Person",
+  "method": "GET",
+  "path": "/tree/current-person",
+  "operationId": "readCurrentTreePerson",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Read Current User's Tree Person",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "303",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readcurrenttreeperson.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Persons List",
+  "method": "GET",
+  "path": "/tree/persons",
+  "operationId": "readPersons",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Read Persons List",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [
+   "pids"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "400",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readpersons.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Create Person",
+  "method": "POST",
+  "path": "/tree/persons",
+  "operationId": "createPerson",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Create Person",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "201",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/createperson.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Person",
+  "method": "GET",
+  "path": "/tree/persons/{pid}",
+  "operationId": "readPerson",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Read Person",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [
+   "relatives",
+   "sourceDescriptions",
+   "failOnError"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readperson.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Update Person",
+  "method": "POST",
+  "path": "/tree/persons/{pid}",
+  "operationId": "updatePerson",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Update Person",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type",
+   "Accept",
+   "X-Reason"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml"
+  ],
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "200",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updateperson.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Person",
+  "method": "DELETE",
+  "path": "/tree/persons/{pid}",
+  "operationId": "deletePerson",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Delete Person",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "403",
+   "404",
+   "409",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deleteperson.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Person Headers",
+  "method": "HEAD",
+  "path": "/tree/persons/{pid}",
+  "operationId": "headPerson",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Read Person Headers",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [
+   "relatives",
+   "sourceDescriptions",
+   "failOnError"
+  ],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/headperson.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Children",
+  "method": "GET",
+  "path": "/tree/persons/{pid}/children",
+  "operationId": "readPersonChildren",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Read Children",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readpersonchildren.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Tree Person Reference",
+  "method": "DELETE",
+  "path": "/tree/persons/{pid}/tree-person-reference/{tprid}",
+  "operationId": "deleteTreePersonReference",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Delete Tree Person Reference",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid",
+   "tprid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "301",
+   "400",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletetreepersonreference.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Conclusion",
+  "method": "DELETE",
+  "path": "/tree/persons/{pid}/conclusions/{cid}",
+  "operationId": "deletePersonConclusion",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Delete Conclusion",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid",
+   "cid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletepersonconclusion.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Families",
+  "method": "GET",
+  "path": "/tree/persons/{pid}/families",
+  "operationId": "readPersonFamilies",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Read Families",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [
+   "sourceDescriptions"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readpersonfamilies.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Person Merge",
+  "method": "GET",
+  "path": "/tree/persons/{pid}/merges/{dpid}",
+  "operationId": "readPersonMerge",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Read Person Merge",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid",
+   "dpid"
+  ],
+  "query_params": [
+   "filter"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readpersonmerge.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Merge Person",
+  "method": "POST",
+  "path": "/tree/persons/{pid}/merges/{dpid}",
+  "operationId": "mergePerson",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Merge Person",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid",
+   "dpid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type",
+   "reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/mergeperson.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Allow Person Merge",
+  "method": "OPTIONS",
+  "path": "/tree/persons/{pid}/merges/{dpid}",
+  "operationId": "allowPersonMerge",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Allow Person Merge",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid",
+   "dpid"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/allowpersonmerge.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Parents",
+  "method": "GET",
+  "path": "/tree/persons/{pid}/parents",
+  "operationId": "readPersonParents",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Read Parents",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readpersonparents.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Restore Person",
+  "method": "POST",
+  "path": "/tree/persons/{pid}/restore",
+  "operationId": "restorePerson",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Restore Person",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/restoreperson.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Spouses",
+  "method": "GET",
+  "path": "/tree/persons/{pid}/spouses",
+  "operationId": "readPersonSpouses",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Read Spouses",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readpersonspouses.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Discussion Reference",
+  "method": "DELETE",
+  "path": "/tree/persons/{pid}/discussion-references/{drid}",
+  "operationId": "deletePersonDiscussionReference",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Delete Discussion Reference",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid",
+   "drid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletepersondiscussionreference.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Get Person Memory Descriptions",
+  "method": "GET",
+  "path": "/tree/persons/{pid}/memories",
+  "operationId": "getPersonMemories",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Get Person Memory Descriptions",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [
+   "start",
+   "count",
+   "type"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/getpersonmemories.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Create Person Memory",
+  "method": "POST",
+  "path": "/tree/persons/{pid}/memories",
+  "operationId": "createPersonMemory",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Create Person Memory",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [
+   "title",
+   "description",
+   "filename",
+   "type",
+   "personName"
+  ],
+  "header_params": [
+   "Content-Disposition"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/pdf",
+   "image/gif",
+   "image/jpeg",
+   "image/png",
+   "multipart/form-data",
+   "multipart/mixed",
+   "text/plain"
+  ],
+  "responses": [
+   "201",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/createpersonmemory.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Memory Persona Reference",
+  "method": "DELETE",
+  "path": "/tree/persons/{pid}/memory-references/{erid}",
+  "operationId": "deletePersonMemoriesPersonaReference",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Delete Memory Persona Reference",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid",
+   "erid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletepersonmemoriespersonareference.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Update Tree Person Published State",
+  "method": "POST",
+  "path": "/tree/persons/{pid}/published",
+  "operationId": "updatePublished",
+  "tags": [
+   "Persons"
+  ],
+  "summary": "Update Tree Person Published State",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [
+   "published"
+  ],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "403",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatepublished.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Ancestry",
+  "method": "GET",
+  "path": "/tree/ancestry",
+  "operationId": "readAncestry",
+  "tags": [
+   "Pedigrees"
+  ],
+  "summary": "Read Ancestry",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [
+   "person",
+   "spouse",
+   "generations",
+   "personDetails",
+   "marriageDetails",
+   "descendants"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "301",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readancestry.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Descendancy",
+  "method": "GET",
+  "path": "/tree/descendancy",
+  "operationId": "readDescendancy",
+  "tags": [
+   "Pedigrees"
+  ],
+  "summary": "Read Descendancy",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [
+   "person",
+   "generations",
+   "personDetails",
+   "marriageDetails"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "301",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readdescendancy.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Search Tree Persons",
+  "method": "GET",
+  "path": "/tree/search",
+  "operationId": "searchTreePersons",
+  "tags": [
+   "Search"
+  ],
+  "summary": "Search Tree Persons",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [
+   "q.givenName",
+   "q.surname",
+   "q.sex",
+   "q.birthLikeDate",
+   "q.birthLikePlace",
+   "q.*",
+   "m.defaultFacets",
+   "c.collectionId",
+   "c.treeId",
+   "c.sex",
+   "f.sex",
+   "c.birthYear0",
+   "f.birthYear0",
+   "c.birthPlace2",
+   "f.birthPlace2",
+   "c.*",
+   "f.*",
+   "offset",
+   "count"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-gedcomx-atom+json",
+   "application/json",
+   "application/atom+xml",
+   "application/xml"
+  ],
+  "request_media": [],
+  "responses": [
+   "200",
+   "204",
+   "400",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/searchtreepersons.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Person Matches by ID",
+  "method": "GET",
+  "path": "/tree/persons/{pid}/matches",
+  "operationId": "readTreePersonMatches",
+  "tags": [
+   "Matches"
+  ],
+  "summary": "Read Person Matches by ID",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [
+   "collection",
+   "confidence",
+   "count",
+   "status",
+   "treeId"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-gedcomx-atom+json",
+   "application/json",
+   "application/atom+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readtreepersonmatches.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Update Match Resolution",
+  "method": "POST",
+  "path": "/tree/persons/{pid}/matches",
+  "operationId": "updateMatchResolution",
+  "tags": [
+   "Matches"
+  ],
+  "summary": "Update Match Resolution",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [
+   "collection",
+   "status"
+  ],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatematchresolution.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Person Matches by ID Headers",
+  "method": "HEAD",
+  "path": "/tree/persons/{pid}/matches",
+  "operationId": "readTreePersonMatchesHeaders",
+  "tags": [
+   "Matches"
+  ],
+  "summary": "Read Person Matches by ID Headers",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [
+   "collection",
+   "confidence",
+   "count",
+   "status",
+   "treeId"
+  ],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readtreepersonmatchesheaders.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Person Matches by Example",
+  "method": "POST",
+  "path": "/tree/matches",
+  "operationId": "performPersonMatchesByExample",
+  "tags": [
+   "Matches"
+  ],
+  "summary": "Read Person Matches by Example",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [
+   "count",
+   "confidence",
+   "collection",
+   "treeId"
+  ],
+  "header_params": [
+   "Accept",
+   "Content-Type"
+  ],
+  "accept": [
+   "application/x-gedcomx-atom+json",
+   "application/json",
+   "application/atom+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "400",
+   "414",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/performpersonmatchesbyexample.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Not-a-Match Declarations",
+  "method": "GET",
+  "path": "/tree/persons/{pid}/not-a-match",
+  "operationId": "readPersonNotAMatches",
+  "tags": [
+   "Matches"
+  ],
+  "summary": "Read Not-a-Match Declarations",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readpersonnotamatches.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Update Not-a-Match Declaration",
+  "method": "POST",
+  "path": "/tree/persons/{pid}/not-a-match",
+  "operationId": "updatePersonNotAMatches",
+  "tags": [
+   "Matches"
+  ],
+  "summary": "Update Not-a-Match Declaration",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatepersonnotamatches.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Not-a-Match Declarations",
+  "method": "DELETE",
+  "path": "/tree/persons/{pid}/not-a-match",
+  "operationId": "deletePersonNotAMatches",
+  "tags": [
+   "Matches"
+  ],
+  "summary": "Delete Not-a-Match Declarations",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [
+   "id"
+  ],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletepersonnotamatches.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Not-a-Match Declaration",
+  "method": "DELETE",
+  "path": "/tree/persons/{pid}/not-a-match/{nmid}",
+  "operationId": "deletePersonNotAMatch",
+  "tags": [
+   "Matches"
+  ],
+  "summary": "Delete Not-a-Match Declaration",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid",
+   "nmid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletepersonnotamatch.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Child and Parents Relationship Conclusion",
+  "method": "DELETE",
+  "path": "/tree/child-and-parents-relationships/{caprid}/{role}/conclusions/{cid}",
+  "operationId": "deleteChildAndParentsRelationshipConclusion",
+  "tags": [
+   "Relationships: Child and Parents"
+  ],
+  "summary": "Delete Child and Parents Relationship Conclusion",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "caprid",
+   "role",
+   "cid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletechildandparentsrelationshipconclusion.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Parent from Child and Parents Relationship",
+  "method": "DELETE",
+  "path": "/tree/child-and-parents-relationships/{caprid}/{role}",
+  "operationId": "deleteChildAndParentsRelationshipParent",
+  "tags": [
+   "Relationships: Child and Parents"
+  ],
+  "summary": "Delete Parent from Child and Parents Relationship",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "caprid",
+   "role"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletechildandparentsrelationshipparent.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Set Parent Order",
+  "method": "POST",
+  "path": "/tree/child-and-parents-relationships/{caprid}/parents/order",
+  "operationId": "updateChildAndParentsRelationshipParentsOrder",
+  "tags": [
+   "Relationships: Child and Parents"
+  ],
+  "summary": "Set Parent Order",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "caprid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json"
+  ],
+  "responses": [
+   "204",
+   "400",
+   "403",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatechildandparentsrelationshipparentsorder.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Child and Parents Relationship",
+  "method": "GET",
+  "path": "/tree/child-and-parents-relationships/{caprid}",
+  "operationId": "getChildAndParentsRelationship",
+  "tags": [
+   "Relationships: Child and Parents"
+  ],
+  "summary": "Read Child and Parents Relationship",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "caprid"
+  ],
+  "query_params": [
+   "persons"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/getchildandparentsrelationship.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Update Child and Parents Relationship",
+  "method": "POST",
+  "path": "/tree/child-and-parents-relationships/{caprid}",
+  "operationId": "updateChildAndParentsRelationship",
+  "tags": [
+   "Relationships: Child and Parents"
+  ],
+  "summary": "Update Child and Parents Relationship",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "caprid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept",
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "application/x-fs-v1+json"
+  ],
+  "responses": [
+   "201",
+   "204",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatechildandparentsrelationship.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Child and Parents Relationship",
+  "method": "DELETE",
+  "path": "/tree/child-and-parents-relationships/{caprid}",
+  "operationId": "deleteChildAndParentsRelationship",
+  "tags": [
+   "Relationships: Child and Parents"
+  ],
+  "summary": "Delete Child and Parents Relationship",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "caprid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "409",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletechildandparentsrelationship.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Child and Parents Relationship Headers",
+  "method": "HEAD",
+  "path": "/tree/child-and-parents-relationships/{caprid}",
+  "operationId": "readChildAndParentsRelationshipHeaders",
+  "tags": [
+   "Relationships: Child and Parents"
+  ],
+  "summary": "Read Child and Parents Relationship Headers",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "caprid"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404",
+   "410"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readchildandparentsrelationshipheaders.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Restore Child and Parents Relationship",
+  "method": "POST",
+  "path": "/tree/child-and-parents-relationships/{caprid}/restore",
+  "operationId": "restoreChildAndParentsRelationship",
+  "tags": [
+   "Relationships: Child and Parents"
+  ],
+  "summary": "Restore Child and Parents Relationship",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "caprid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/restorechildandparentsrelationship.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Preferred Parent Relationship",
+  "method": "DELETE",
+  "path": "/tree/users/{uid}/preferred-parent-relationships/{pid}",
+  "operationId": "deletePreferredParentRelationship",
+  "tags": [
+   "Relationships: Child and Parents"
+  ],
+  "summary": "Delete Preferred Parent Relationship",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "uid",
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletepreferredparentrelationship.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Preferred Parent Relationship",
+  "method": "GET",
+  "path": "/tree/users/{uid}/preferred-parent-relationships/{pid}/tree/users/{uid}/preferred-parent-relationships/{pid}",
+  "operationId": "getPreferredParentRelationship",
+  "tags": [
+   "Relationships: Child and Parents"
+  ],
+  "summary": "Read Preferred Parent Relationship",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "uid",
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "301",
+   "303",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/getpreferredparentrelationship.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Update Preferred Parent Relationship",
+  "method": "PUT",
+  "path": "/tree/users/{uid}/preferred-parent-relationships/{pid}/tree/users/{uid}/preferred-parent-relationships/{pid}",
+  "operationId": "updatePreferredParentRelationship",
+  "tags": [
+   "Relationships: Child and Parents"
+  ],
+  "summary": "Update Preferred Parent Relationship",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "uid",
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Location"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatepreferredparentrelationship.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Couple Relationship Conclusion",
+  "method": "DELETE",
+  "path": "/tree/couple-relationships/{crid}/conclusions/{cid}",
+  "operationId": "deleteCoupleRelationshipConclusion",
+  "tags": [
+   "Relationships: Couple"
+  ],
+  "summary": "Delete Couple Relationship Conclusion",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "crid",
+   "cid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletecouplerelationshipconclusion.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Couple Relationship",
+  "method": "GET",
+  "path": "/tree/couple-relationships/{crid}",
+  "operationId": "readCoupleRelationship",
+  "tags": [
+   "Relationships: Couple"
+  ],
+  "summary": "Read Couple Relationship",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "crid"
+  ],
+  "query_params": [
+   "persons"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readcouplerelationship.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Update Couple Relationship",
+  "method": "POST",
+  "path": "/tree/couple-relationships/{crid}",
+  "operationId": "updateCoupleRelationship",
+  "tags": [
+   "Relationships: Couple"
+  ],
+  "summary": "Update Couple Relationship",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "crid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept",
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "201",
+   "204",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatecouplerelationship.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Couple Relationship",
+  "method": "DELETE",
+  "path": "/tree/couple-relationships/{crid}",
+  "operationId": "deleteCoupleRelationship",
+  "tags": [
+   "Relationships: Couple"
+  ],
+  "summary": "Delete Couple Relationship",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "crid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "409",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletecouplerelationship.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Couple Relationship Headers",
+  "method": "HEAD",
+  "path": "/tree/couple-relationships/{crid}",
+  "operationId": "readCoupleRelationshipHeaders",
+  "tags": [
+   "Relationships: Couple"
+  ],
+  "summary": "Read Couple Relationship Headers",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "crid"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readcouplerelationshipheaders.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Restore Couple Relationship",
+  "method": "POST",
+  "path": "/tree/couple-relationships/{crid}/restore",
+  "operationId": "restoreCoupleRelationship",
+  "tags": [
+   "Relationships: Couple"
+  ],
+  "summary": "Restore Couple Relationship",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "crid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/restorecouplerelationship.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Set Couple Relationship Spouses Order",
+  "method": "POST",
+  "path": "/tree/couple-relationships/{crid}/spouses/order",
+  "operationId": "updateCoupleRelationshipSpousesOrder",
+  "tags": [
+   "Relationships: Couple"
+  ],
+  "summary": "Set Couple Relationship Spouses Order",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "crid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json"
+  ],
+  "responses": [
+   "204",
+   "400",
+   "403",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatecouplerelationshipspousesorder.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Preferred Spouse Relationship",
+  "method": "GET",
+  "path": "/tree/users/{uid}/preferred-spouse-relationships/{pid}",
+  "operationId": "readPreferredSpouseRelationship",
+  "tags": [
+   "Relationships: Couple"
+  ],
+  "summary": "Read Preferred Spouse Relationship",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "uid",
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "301",
+   "303",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readpreferredspouserelationship.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Set Preferred Spouse Relationship",
+  "method": "PUT",
+  "path": "/tree/users/{uid}/preferred-spouse-relationships/{pid}",
+  "operationId": "updatePreferredSpouseRelationship",
+  "tags": [
+   "Relationships: Couple"
+  ],
+  "summary": "Set Preferred Spouse Relationship",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "uid",
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Location"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatepreferredspouserelationship.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Preferred Spouse Relationship",
+  "method": "DELETE",
+  "path": "/tree/users/{uid}/preferred-spouse-relationships/{pid}",
+  "operationId": "deletePreferredSpouseRelationship",
+  "tags": [
+   "Relationships: Couple"
+  ],
+  "summary": "Delete Preferred Spouse Relationship",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "uid",
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletepreferredspouserelationship.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Find Relationship",
+  "method": "GET",
+  "path": "/tree/persons/{pid}/relationships/{opid}",
+  "operationId": "findRelationship",
+  "tags": [
+   "Relationships"
+  ],
+  "summary": "Find Relationship",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid",
+   "opid"
+  ],
+  "query_params": [
+   "personDetails"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "400",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/findrelationship.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Create Relationship",
+  "method": "POST",
+  "path": "/tree/relationships",
+  "operationId": "createRelationship",
+  "tags": [
+   "Relationships"
+  ],
+  "summary": "Create Relationship",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "201",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/createrelationship.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Child and Parents Source Reference",
+  "method": "DELETE",
+  "path": "/tree/child-and-parents-relationships/{caprid}/source-references/{srid}",
+  "operationId": "deleteChildAndParentsRelationshipSourceReference",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Delete Child and Parents Source Reference",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "caprid",
+   "srid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletechildandparentsrelationshipsourcereference.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Child and Parents Source References",
+  "method": "GET",
+  "path": "/tree/child-and-parents-relationships/{caprid}/source-references",
+  "operationId": "getChildAndParentsRelationshipSourceReferences",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Read Child and Parents Source References",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "caprid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/getchildandparentsrelationshipsourcereferences.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Create Child and Parents Source Reference",
+  "method": "POST",
+  "path": "/tree/child-and-parents-relationships/{caprid}/source-references",
+  "operationId": "createChildAndParentsRelationshipSourceReference",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Create Child and Parents Source Reference",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "caprid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json"
+  ],
+  "responses": [
+   "201",
+   "400",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/createchildandparentsrelationshipsourcereference.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Child and Parents Relationship Sources",
+  "method": "GET",
+  "path": "/tree/child-and-parents-relationships/{caprid}/sources",
+  "operationId": "getChildAndParentsRelationshipSources",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Read Child and Parents Relationship Sources",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "caprid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/getchildandparentsrelationshipsources.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Couple Relationship Source Reference",
+  "method": "DELETE",
+  "path": "/tree/couple-relationships/{crid}/source-references/{srid}",
+  "operationId": "deleteCoupleRelationshipSourceReference",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Delete Couple Relationship Source Reference",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "crid",
+   "srid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletecouplerelationshipsourcereference.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Couple Relationship Source References",
+  "method": "GET",
+  "path": "/tree/couple-relationships/{crid}/source-references",
+  "operationId": "readCoupleRelationshipSourceReferences",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Read Couple Relationship Source References",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "crid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readcouplerelationshipsourcereferences.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Create Couple Relationship Source Reference",
+  "method": "POST",
+  "path": "/tree/couple-relationships/{crid}/source-references",
+  "operationId": "createCoupleRelationshipSourceReference",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Create Couple Relationship Source Reference",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "crid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "201",
+   "400",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/createcouplerelationshipsourcereference.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Couple Relationship Sources",
+  "method": "GET",
+  "path": "/tree/couple-relationships/{crid}/sources",
+  "operationId": "readCoupleRelationshipSources",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Read Couple Relationship Sources",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "crid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readcouplerelationshipsources.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Person Source Reference",
+  "method": "DELETE",
+  "path": "/tree/persons/{pid}/source-references/{srid}",
+  "operationId": "deletePersonSourceReference",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Delete Person Source Reference",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid",
+   "srid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletepersonsourcereference.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Person Sources",
+  "method": "GET",
+  "path": "/tree/persons/{pid}/sources",
+  "operationId": "readPersonSources",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Read Person Sources",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readpersonsources.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Source References",
+  "method": "GET",
+  "path": "/tree/source-references",
+  "operationId": "readSourceReferences",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Read Source References",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [
+   "description",
+   "source"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readsourcereferences.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Source Description",
+  "method": "GET",
+  "path": "/sources/descriptions/{sdid}",
+  "operationId": "readSourceDescription",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Read Source Description",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "sdid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "301",
+   "307",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readsourcedescription.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Update Source Description",
+  "method": "POST",
+  "path": "/sources/descriptions/{sdid}",
+  "operationId": "updateSourceDescription",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Update Source Description",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "sdid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+json",
+   "application/x-gedcomx-v1+xml"
+  ],
+  "responses": [
+   "204",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatesourcedescription.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Source Description",
+  "method": "DELETE",
+  "path": "/sources/descriptions/{sdid}",
+  "operationId": "deleteSourceDescription",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Delete Source Description",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "sdid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletesourcedescription.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Source Description Headers",
+  "method": "HEAD",
+  "path": "/sources/descriptions/{sdid}",
+  "operationId": "readSourceDescriptionHead",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Read Source Description Headers",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "sdid"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readsourcedescriptionhead.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Get Source Description Changes",
+  "method": "POST",
+  "path": "/sources/descriptions/changes",
+  "operationId": "getSourceDescriptionChanges",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Get Source Description Changes",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [
+   "since"
+  ],
+  "header_params": [
+   "Accept",
+   "Content-Type"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "400",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/getsourcedescriptionchanges.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Create Source Description",
+  "method": "POST",
+  "path": "/sources/descriptions",
+  "operationId": "createSourceDescription",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Create Source Description",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+json",
+   "application/x-gedcomx-v1+xml"
+  ],
+  "responses": [
+   "201",
+   "400"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/createsourcedescription.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Child and Parents Relationship Note",
+  "method": "GET",
+  "path": "/tree/child-and-parents-relationships/{caprid}/notes/{nid}",
+  "operationId": "readChildAndParentRelationshipNote",
+  "tags": [
+   "Notes"
+  ],
+  "summary": "Read Child and Parents Relationship Note",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "caprid",
+   "nid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readchildandparentrelationshipnote.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Update Child and Parents Relationship Note",
+  "method": "POST",
+  "path": "/tree/child-and-parents-relationships/{caprid}/notes/{nid}",
+  "operationId": "updateChildAndParentsRelationshipNote",
+  "tags": [
+   "Notes"
+  ],
+  "summary": "Update Child and Parents Relationship Note",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "caprid",
+   "nid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatechildandparentsrelationshipnote.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Child and Parents Relationship Note",
+  "method": "DELETE",
+  "path": "/tree/child-and-parents-relationships/{caprid}/notes/{nid}",
+  "operationId": "deleteChildAndParentsRelationshipNote",
+  "tags": [
+   "Notes"
+  ],
+  "summary": "Delete Child and Parents Relationship Note",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "caprid",
+   "nid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletechildandparentsrelationshipnote.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Child and Parents Relationship Notes",
+  "method": "GET",
+  "path": "/tree/child-and-parents-relationships/{caprid}/notes",
+  "operationId": "getChildAndParentsRelationshipNotes",
+  "tags": [
+   "Notes"
+  ],
+  "summary": "Read Child and Parents Relationship Notes",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "caprid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/getchildandparentsrelationshipnotes.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Create Child and Parents Relationship Note",
+  "method": "POST",
+  "path": "/tree/child-and-parents-relationships/{caprid}/notes",
+  "operationId": "createChildAndParentsRelationshipNote",
+  "tags": [
+   "Notes"
+  ],
+  "summary": "Create Child and Parents Relationship Note",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "caprid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json"
+  ],
+  "responses": [
+   "201",
+   "400",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/createchildandparentsrelationshipnote.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Couple Relationship Note",
+  "method": "GET",
+  "path": "/tree/couple-relationships/{crid}/notes/{nid}",
+  "operationId": "readCoupleRelationshipNote",
+  "tags": [
+   "Notes"
+  ],
+  "summary": "Read Couple Relationship Note",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "crid",
+   "nid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readcouplerelationshipnote.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Update Couple Relationship Note",
+  "method": "POST",
+  "path": "/tree/couple-relationships/{crid}/notes/{nid}",
+  "operationId": "updateCoupleRelationshipNote",
+  "tags": [
+   "Notes"
+  ],
+  "summary": "Update Couple Relationship Note",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "crid",
+   "nid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatecouplerelationshipnote.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Couple Relationship Note",
+  "method": "DELETE",
+  "path": "/tree/couple-relationships/{crid}/notes/{nid}",
+  "operationId": "deleteCoupleRelationshipNote",
+  "tags": [
+   "Notes"
+  ],
+  "summary": "Delete Couple Relationship Note",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "crid",
+   "nid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletecouplerelationshipnote.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Couple Relationship Notes",
+  "method": "GET",
+  "path": "/tree/couple-relationships/{crid}/notes",
+  "operationId": "getCoupleRelationshipNotes",
+  "tags": [
+   "Notes"
+  ],
+  "summary": "Read Couple Relationship Notes",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "crid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/getcouplerelationshipnotes.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Create Couple Relationship Note",
+  "method": "POST",
+  "path": "/tree/couple-relationships/{crid}/notes",
+  "operationId": "createCoupleRelationshipNote",
+  "tags": [
+   "Notes"
+  ],
+  "summary": "Create Couple Relationship Note",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "crid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "201",
+   "400",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/createcouplerelationshipnote.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Person Note",
+  "method": "GET",
+  "path": "/tree/persons/{pid}/notes/{nid}",
+  "operationId": "readPersonNote",
+  "tags": [
+   "Notes"
+  ],
+  "summary": "Read Person Note",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid",
+   "nid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readpersonnote.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Update Person Note",
+  "method": "POST",
+  "path": "/tree/persons/{pid}/notes/{nid}",
+  "operationId": "updatePersonNote",
+  "tags": [
+   "Notes"
+  ],
+  "summary": "Update Person Note",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid",
+   "nid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatepersonnote.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Person Note",
+  "method": "DELETE",
+  "path": "/tree/persons/{pid}/notes/{nid}",
+  "operationId": "deletePersonNote",
+  "tags": [
+   "Notes"
+  ],
+  "summary": "Delete Person Note",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid",
+   "nid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletepersonnote.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Person Notes",
+  "method": "GET",
+  "path": "/tree/persons/{pid}/notes",
+  "operationId": "readPersonNotes",
+  "tags": [
+   "Notes"
+  ],
+  "summary": "Read Person Notes",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readpersonnotes.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Create Person Note",
+  "method": "POST",
+  "path": "/tree/persons/{pid}/notes",
+  "operationId": "createPersonNote",
+  "tags": [
+   "Notes"
+  ],
+  "summary": "Create Person Note",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "201",
+   "400",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/createpersonnote.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Child and Parents Change History",
+  "method": "GET",
+  "path": "/tree/child-and-parents-relationships/{caprid}/changes",
+  "operationId": "readChildAndParentRelationship",
+  "tags": [
+   "Change History"
+  ],
+  "summary": "Read Child and Parents Change History",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "caprid"
+  ],
+  "query_params": [
+   "from"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-gedcomx-atom+json",
+   "application/json",
+   "application/atom+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readchildandparentrelationship.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Child and Parents Change History Headers",
+  "method": "HEAD",
+  "path": "/tree/child-and-parents-relationships/{caprid}/changes",
+  "operationId": "headChildAndParentRelationshipHistory",
+  "tags": [
+   "Change History"
+  ],
+  "summary": "Read Child and Parents Change History Headers",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "caprid"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/headchildandparentrelationshiphistory.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Couple Relationship Change History",
+  "method": "GET",
+  "path": "/tree/couple-relationships/{crid}/changes",
+  "operationId": "readCoupleRelationshipChangeHistory",
+  "tags": [
+   "Change History"
+  ],
+  "summary": "Read Couple Relationship Change History",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "crid"
+  ],
+  "query_params": [
+   "from"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-gedcomx-atom+json",
+   "application/json",
+   "application/atom+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readcouplerelationshipchangehistory.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Couple Relationship Change History Headers",
+  "method": "HEAD",
+  "path": "/tree/couple-relationships/{crid}/changes",
+  "operationId": "readCoupleRelationshipChangeHistoryHeaders",
+  "tags": [
+   "Change History"
+  ],
+  "summary": "Read Couple Relationship Change History Headers",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "crid"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readcouplerelationshipchangehistoryheaders.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Person Change History",
+  "method": "GET",
+  "path": "/tree/persons/{pid}/changes",
+  "operationId": "readPersonChangeHistory",
+  "tags": [
+   "Change History"
+  ],
+  "summary": "Read Person Change History",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [
+   "from"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-gedcomx-atom+json",
+   "application/json",
+   "application/atom+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readpersonchangehistory.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Person Change History Headers",
+  "method": "HEAD",
+  "path": "/tree/persons/{pid}/changes",
+  "operationId": "headPersonChangeHistory",
+  "tags": [
+   "Change History"
+  ],
+  "summary": "Read Person Change History Headers",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [
+   "from"
+  ],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/headpersonchangehistory.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Restore Change",
+  "method": "POST",
+  "path": "/tree/changes/{chid}/restore",
+  "operationId": "restoreChange",
+  "tags": [
+   "Change History"
+  ],
+  "summary": "Restore Change",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "chid"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/restorechange.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Person Portrait",
+  "method": "GET",
+  "path": "/tree/persons/{pid}/portrait",
+  "operationId": "readPersonPortrait",
+  "tags": [
+   "Portraits"
+  ],
+  "summary": "Read Person Portrait",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [
+   "default"
+  ],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "301",
+   "307",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readpersonportrait.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Person Portrait",
+  "method": "DELETE",
+  "path": "/tree/persons/{pid}/portrait",
+  "operationId": "deletePersonPortrait",
+  "tags": [
+   "Portraits"
+  ],
+  "summary": "Delete Person Portrait",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletepersonportrait.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Person Portraits",
+  "method": "GET",
+  "path": "/tree/persons/{pid}/portraits",
+  "operationId": "readPersonPortraits",
+  "tags": [
+   "Portraits"
+  ],
+  "summary": "Read Person Portraits",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readpersonportraits.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Update Person Portraits",
+  "method": "POST",
+  "path": "/tree/persons/{pid}/portraits",
+  "operationId": "updatePersonPortraits",
+  "tags": [
+   "Portraits"
+  ],
+  "summary": "Update Person Portraits",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "204",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatepersonportraits.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Create Discussion",
+  "method": "POST",
+  "path": "/discussions/discussions",
+  "operationId": "createDiscussion",
+  "tags": [
+   "Discussions"
+  ],
+  "summary": "Create Discussion",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json"
+  ],
+  "responses": [
+   "201"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/creatediscussion.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Discussion",
+  "method": "GET",
+  "path": "/discussions/discussions/{did}",
+  "operationId": "readDiscussion",
+  "tags": [
+   "Discussions"
+  ],
+  "summary": "Read Discussion",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "did"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readdiscussion.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Update Discussion",
+  "method": "POST",
+  "path": "/discussions/discussions/{did}",
+  "operationId": "updateDiscussion",
+  "tags": [
+   "Discussions"
+  ],
+  "summary": "Update Discussion",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "did"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json"
+  ],
+  "responses": [
+   "204",
+   "400",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatediscussion.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Discussion Headers",
+  "method": "HEAD",
+  "path": "/discussions/discussions/{did}",
+  "operationId": "readDiscussionHeaders",
+  "tags": [
+   "Discussions"
+  ],
+  "summary": "Read Discussion Headers",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "did"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readdiscussionheaders.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Comments",
+  "method": "GET",
+  "path": "/discussions/discussions/{did}/comments",
+  "operationId": "readComments",
+  "tags": [
+   "Discussions"
+  ],
+  "summary": "Read Comments",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "did"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readcomments.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Update Comments",
+  "method": "POST",
+  "path": "/discussions/discussions/{did}/comments",
+  "operationId": "updateComments",
+  "tags": [
+   "Discussions"
+  ],
+  "summary": "Update Comments",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "did"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json"
+  ],
+  "responses": [
+   "201",
+   "204",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatecomments.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Comment",
+  "method": "DELETE",
+  "path": "/discussions/discussions/{did}/comments/{cmid}",
+  "operationId": "deleteComment",
+  "tags": [
+   "Discussions"
+  ],
+  "summary": "Delete Comment",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "did",
+   "cmid"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletecomment.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read User Source Folders",
+  "method": "GET",
+  "path": "/sources/{uid}/collections",
+  "operationId": "readUserSourceFolders",
+  "tags": [
+   "Source Box"
+  ],
+  "summary": "Read User Source Folders",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "uid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "400"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readusersourcefolders.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read User Source Descriptions",
+  "method": "GET",
+  "path": "/sources/{uid}/collections/descriptions",
+  "operationId": "readUserSourceDescriptions",
+  "tags": [
+   "Source Box"
+  ],
+  "summary": "Read User Source Descriptions",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "uid"
+  ],
+  "query_params": [
+   "start",
+   "count"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "301",
+   "307",
+   "400",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readusersourcedescriptions.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete Source Descriptions From Collections",
+  "method": "DELETE",
+  "path": "/sources/{uid}/collections/descriptions",
+  "operationId": "deleteSourceDescriptionsFromCollections",
+  "tags": [
+   "Source Box"
+  ],
+  "summary": "Delete Source Descriptions From Collections",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "uid"
+  ],
+  "query_params": [
+   "id"
+  ],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "400"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletesourcedescriptionsfromcollections.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Source Folders",
+  "method": "GET",
+  "path": "/sources/collections",
+  "operationId": "readSourceFolders",
+  "tags": [
+   "Source Box"
+  ],
+  "summary": "Read Source Folders",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "307"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readsourcefolders.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Create Source Folder",
+  "method": "POST",
+  "path": "/sources/collections",
+  "operationId": "createSourceFolder",
+  "tags": [
+   "Source Box"
+  ],
+  "summary": "Create Source Folder",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+json",
+   "application/x-gedcomx-v1+xml"
+  ],
+  "responses": [
+   "201",
+   "400"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/createsourcefolder.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read Current User Source Descriptions",
+  "method": "GET",
+  "path": "/sources/descriptions",
+  "operationId": "readSourceDescriptions",
+  "tags": [
+   "Source Box"
+  ],
+  "summary": "Read Current User Source Descriptions",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [
+   "sdids"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "303"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readsourcedescriptions.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read User Defined Collection",
+  "method": "GET",
+  "path": "/sources/collections/{udcid}",
+  "operationId": "readUserDefinedCollection",
+  "tags": [
+   "Source Box"
+  ],
+  "summary": "Read User Defined Collection",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "udcid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readuserdefinedcollection.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Update User Defined Collection",
+  "method": "POST",
+  "path": "/sources/collections/{udcid}",
+  "operationId": "updateUserDefinedCollection",
+  "tags": [
+   "Source Box"
+  ],
+  "summary": "Update User Defined Collection",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "udcid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+json",
+   "application/x-gedcomx-v1+xml"
+  ],
+  "responses": [
+   "204",
+   "400",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updateuserdefinedcollection.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Delete User Defined Collection",
+  "method": "DELETE",
+  "path": "/sources/collections/{udcid}",
+  "operationId": "deleteUserDefinedCollection",
+  "tags": [
+   "Source Box"
+  ],
+  "summary": "Delete User Defined Collection",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "udcid"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "400",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deleteuserdefinedcollection.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Read User Defined Collection Descriptions",
+  "method": "GET",
+  "path": "/sources/collections/{udcid}/descriptions",
+  "operationId": "readUserDefinedCollectionSourceDescriptions",
+  "tags": [
+   "Source Box"
+  ],
+  "summary": "Read User Defined Collection Descriptions",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "udcid"
+  ],
+  "query_params": [
+   "start",
+   "count"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "400",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readuserdefinedcollectionsourcedescriptions.md"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "title": "Update Source Descriptions To Collection",
+  "method": "POST",
+  "path": "/sources/collections/{udcid}/descriptions",
+  "operationId": "updateSourceDescriptionsToCollection",
+  "tags": [
+   "Source Box"
+  ],
+  "summary": "Update Source Descriptions To Collection",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "udcid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+json",
+   "application/x-gedcomx-v1+xml"
+  ],
+  "responses": [
+   "204",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatesourcedescriptionstocollection.md"
+ },
+ {
+  "area": "Memories Endpoints",
+  "title": "Create Memory",
+  "method": "POST",
+  "path": "/memories/memories",
+  "operationId": "createMemories",
+  "tags": [
+   "Memories"
+  ],
+  "summary": "Create Memory",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [
+   "title",
+   "description",
+   "filename",
+   "type"
+  ],
+  "header_params": [
+   "Content-Type",
+   "Content-Disposition"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/pdf",
+   "image/jpeg",
+   "image/png",
+   "multipart/form-data",
+   "text/plain"
+  ],
+  "responses": [
+   "201",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/creatememories.md"
+ },
+ {
+  "area": "Memories Endpoints",
+  "title": "Read Memory",
+  "method": "GET",
+  "path": "/memories/memories/{mid}",
+  "operationId": "readMemory",
+  "tags": [
+   "Memories"
+  ],
+  "summary": "Read Memory",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "mid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readmemory.md"
+ },
+ {
+  "area": "Memories Endpoints",
+  "title": "Read Memories",
+  "method": "GET",
+  "path": "/memories/memories",
+  "operationId": "getMemories",
+  "tags": [
+   "Memories"
+  ],
+  "summary": "Read Memories",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [
+   "mids"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/getmemories.md"
+ },
+ {
+  "area": "Memories Endpoints",
+  "title": "Read User Memories",
+  "method": "GET",
+  "path": "/memories/users/{uid}/memories",
+  "operationId": "readUserMemories",
+  "tags": [
+   "Memories"
+  ],
+  "summary": "Read User Memories",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "uid"
+  ],
+  "query_params": [
+   "start",
+   "count"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readusermemories.md"
+ },
+ {
+  "area": "Memories Endpoints",
+  "title": "Update Memory",
+  "method": "POST",
+  "path": "/memories/memories/{mid}",
+  "operationId": "updateMemory",
+  "tags": [
+   "Memories"
+  ],
+  "summary": "Update Memory",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "mid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatememory.md"
+ },
+ {
+  "area": "Memories Endpoints",
+  "title": "Delete Memory",
+  "method": "DELETE",
+  "path": "/memories/memories/{mid}",
+  "operationId": "deleteMemory",
+  "tags": [
+   "Memories"
+  ],
+  "summary": "Delete Memory",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "mid"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletememory.md"
+ },
+ {
+  "area": "Memories Endpoints",
+  "title": "Update Memory Artifact",
+  "method": "POST",
+  "path": "/memories/memories/{mid}/artifacts/{aid}",
+  "operationId": "updateMemoryArtifact",
+  "tags": [
+   "Artifacts"
+  ],
+  "summary": "Update Memory Artifact",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "mid",
+   "aid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type",
+   "Content-Disposition"
+  ],
+  "accept": null,
+  "request_media": [
+   "multipart/form-data",
+   "text/plain"
+  ],
+  "responses": [
+   "204",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatememoryartifact.md"
+ },
+ {
+  "area": "Memories Endpoints",
+  "title": "Delete Memory Artifact Coverage",
+  "method": "DELETE",
+  "path": "/memories/memories/{mid}/artifacts/{aid}/coverage",
+  "operationId": "deleteMemoryArtifactCoverage",
+  "tags": [
+   "Artifacts"
+  ],
+  "summary": "Delete Memory Artifact Coverage",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "mid",
+   "aid"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletememoryartifactcoverage.md"
+ },
+ {
+  "area": "Memories Endpoints",
+  "title": "Create Memory Persona",
+  "method": "POST",
+  "path": "/memories/memories/{mid}/personas",
+  "operationId": "createMemoryPersona",
+  "tags": [
+   "Personas"
+  ],
+  "summary": "Create Memory Persona",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "mid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "201",
+   "204",
+   "400",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/creatememorypersona.md"
+ },
+ {
+  "area": "Memories Endpoints",
+  "title": "Read Memory Persona",
+  "method": "GET",
+  "path": "/memories/memories/{mid}/personas/{pid}",
+  "operationId": "readMemoryPersona",
+  "tags": [
+   "Personas"
+  ],
+  "summary": "Read Memory Persona",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "mid",
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readmemorypersona.md"
+ },
+ {
+  "area": "Memories Endpoints",
+  "title": "Read Memory Personas",
+  "method": "GET",
+  "path": "/memories/memories/{mid}/personas",
+  "operationId": "readMemoryPersonas",
+  "tags": [
+   "Personas"
+  ],
+  "summary": "Read Memory Personas",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "mid"
+  ],
+  "query_params": [
+   "includeTreeIdentifier"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readmemorypersonas.md"
+ },
+ {
+  "area": "Memories Endpoints",
+  "title": "Update Memory Persona",
+  "method": "POST",
+  "path": "/memories/memories/{mid}/personas/{pid}",
+  "operationId": "updateMemoryPersona",
+  "tags": [
+   "Personas"
+  ],
+  "summary": "Update Memory Persona",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "mid",
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatememorypersona.md"
+ },
+ {
+  "area": "Memories Endpoints",
+  "title": "Delete Memory Persona",
+  "method": "DELETE",
+  "path": "/memories/memories/{mid}/personas/{pid}",
+  "operationId": "deleteMemoryPersona",
+  "tags": [
+   "Personas"
+  ],
+  "summary": "Delete Memory Persona",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "mid",
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletememorypersona.md"
+ },
+ {
+  "area": "Memories Endpoints",
+  "title": "Create Memory Comments",
+  "method": "POST",
+  "path": "/memories/memories/{mid}/comments",
+  "operationId": "createMemoryComments",
+  "tags": [
+   "Comments"
+  ],
+  "summary": "Create Memory Comments",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "mid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/creatememorycomments.md"
+ },
+ {
+  "area": "Memories Endpoints",
+  "title": "Read Memory Comments",
+  "method": "GET",
+  "path": "/memories/memories/{mid}/comments",
+  "operationId": "readMemoryComments",
+  "tags": [
+   "Comments"
+  ],
+  "summary": "Read Memory Comments",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "mid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readmemorycomments.md"
+ },
+ {
+  "area": "Memories Endpoints",
+  "title": "Delete Memory Comment",
+  "method": "DELETE",
+  "path": "/memories/memories/{mid}/comments/{cmid}",
+  "operationId": "deleteMemoryComment",
+  "tags": [
+   "Comments"
+  ],
+  "summary": "Delete Memory Comment",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "mid",
+   "cmid"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletememorycomment.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Standardize Date",
+  "method": "GET",
+  "path": "/dates",
+  "operationId": "standardizeDate",
+  "tags": [
+   "Dates"
+  ],
+  "summary": "Standardize Date",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [
+   "date"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "text/plain"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "400"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/standardizedate.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Read Place Description Attributes",
+  "method": "GET",
+  "path": "/places/description/{pdid}/attributes",
+  "operationId": "readPlaceAttributes",
+  "tags": [
+   "Places"
+  ],
+  "summary": "Read Place Description Attributes",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pdid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/ld+json",
+   "application/rdf+xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readplaceattributes.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Read Place Children",
+  "method": "GET",
+  "path": "/places/description/{pdid}/children",
+  "operationId": "readPlaceChildren",
+  "tags": [
+   "Places"
+  ],
+  "summary": "Read Place Children",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pdid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readplacechildren.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Read Place Description",
+  "method": "GET",
+  "path": "/places/description/{pdid}",
+  "operationId": "readPlaceDescription",
+  "tags": [
+   "Places"
+  ],
+  "summary": "Read Place Description",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pdid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readplacedescription.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Read Place Description With Related",
+  "method": "GET",
+  "path": "/places/description/{pdid}/related",
+  "operationId": "readPlaceDescriptionWithRelated",
+  "tags": [
+   "Places"
+  ],
+  "summary": "Read Place Description With Related",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pdid"
+  ],
+  "query_params": [
+   "deletedSince"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readplacedescriptionwithrelated.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Read Place Descriptions Group",
+  "method": "GET",
+  "path": "/places/groups/{pgid}",
+  "operationId": "readPlaceDescriptionsGroup",
+  "tags": [
+   "Places"
+  ],
+  "summary": "Read Place Descriptions Group",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pgid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readplacedescriptionsgroup.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Read Place Descriptions",
+  "method": "GET",
+  "path": "/places/description",
+  "operationId": "readPlaceDescriptions",
+  "tags": [
+   "Places"
+  ],
+  "summary": "Read Place Descriptions",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [
+   "pdids"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readplacedescriptions.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Read Place",
+  "method": "GET",
+  "path": "/places/{pid}",
+  "operationId": "readPlace",
+  "tags": [
+   "Places"
+  ],
+  "summary": "Read Place",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readplace.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Places Search",
+  "method": "GET",
+  "path": "/places/search",
+  "operationId": "readPlaces",
+  "tags": [
+   "Places"
+  ],
+  "summary": "Places Search",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [
+   "start",
+   "count",
+   "q"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-gedcomx-atom+json",
+   "application/json",
+   "application/atom+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readplaces.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Read Place Type Group",
+  "method": "GET",
+  "path": "/places/type-groups/{ptgid}",
+  "operationId": "readPlaceTypeGroup",
+  "tags": [
+   "Places"
+  ],
+  "summary": "Read Place Type Group",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "ptgid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/ld+json",
+   "application/json",
+   "application/rdf+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readplacetypegroup.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Read Place Type Groups",
+  "method": "GET",
+  "path": "/places/type-groups",
+  "operationId": "readPlaceTypeGroups",
+  "tags": [
+   "Places"
+  ],
+  "summary": "Read Place Type Groups",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/ld+json",
+   "application/json",
+   "application/rdf+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readplacetypegroups.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Read Place Type",
+  "method": "GET",
+  "path": "/places/types/{ptid}",
+  "operationId": "readPlaceType",
+  "tags": [
+   "Places"
+  ],
+  "summary": "Read Place Type",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "ptid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/ld+json",
+   "application/json",
+   "application/rdf+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readplacetype.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Read Place Types",
+  "method": "GET",
+  "path": "/places/types",
+  "operationId": "readPlaceTypes",
+  "tags": [
+   "Places"
+  ],
+  "summary": "Read Place Types",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/ld+json",
+   "application/json",
+   "application/rdf+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readplacetypes.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Parent Places",
+  "method": "GET",
+  "path": "/places/parents",
+  "operationId": "searchForParentPlaces",
+  "tags": [
+   "Places"
+  ],
+  "summary": "Parent Places",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [
+   "value",
+   "pids"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-gedcomx-atom+json",
+   "application/json"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "400"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/searchforparentplaces.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Check If Place IsChild",
+  "method": "GET",
+  "path": "/places/{pid}/ischild",
+  "operationId": "checkPlaceIsChild",
+  "tags": [
+   "Places"
+  ],
+  "summary": "Check If Place IsChild",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [
+   "pids"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/json"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "400",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/checkplaceischild.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Get Name Script",
+  "method": "GET",
+  "path": "/names/script",
+  "operationId": "getNameScript",
+  "tags": [
+   "Names"
+  ],
+  "summary": "Get Name Script",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [
+   "text"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/json"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "400"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/getnamescript.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Segment a Name",
+  "method": "GET",
+  "path": "/names/segments",
+  "operationId": "getNameSegments",
+  "tags": [
+   "Names"
+  ],
+  "summary": "Segment a Name",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [
+   "fullName",
+   "locale",
+   "lang"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "400"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/getnamesegments.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Compose Full Name",
+  "method": "POST",
+  "path": "/names/segments",
+  "operationId": "createNameSegments",
+  "tags": [
+   "Names"
+  ],
+  "summary": "Compose Full Name",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [
+   "locale"
+  ],
+  "header_params": [
+   "Accept",
+   "Content-Type"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json"
+  ],
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "200",
+   "400"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/createnamesegments.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Read Vocabulary Concept Definition",
+  "method": "GET",
+  "path": "/vocab/concepts/{cvcid}/definition/{locale}",
+  "operationId": "readVocabConceptDefinition",
+  "tags": [
+   "Vocabularies"
+  ],
+  "summary": "Read Vocabulary Concept Definition",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "cvcid",
+   "locale"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/json"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readvocabconceptdefinition.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Update Vocabulary Concept Definition",
+  "method": "POST",
+  "path": "/vocab/concepts/{cvcid}/definition/{locale}",
+  "operationId": "updateVocabConceptDefinition",
+  "tags": [
+   "Vocabularies"
+  ],
+  "summary": "Update Vocabulary Concept Definition",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "cvcid",
+   "locale"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json"
+  ],
+  "responses": [
+   "201",
+   "204",
+   "308",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatevocabconceptdefinition.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Read Vocabulary Concept V2",
+  "method": "GET",
+  "path": "/vocab/concepts/{cvcid}",
+  "operationId": "readVocabConceptV2",
+  "tags": [
+   "Vocabularies"
+  ],
+  "summary": "Read Vocabulary Concept V2",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "cvcid"
+  ],
+  "query_params": [
+   "type",
+   "descendancy"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/ld-v2+json",
+   "application/x-fs-v2+json"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readvocabconceptv2.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Search Controlled Vocabulary Terms",
+  "method": "GET",
+  "path": "/vocab/concepts/search",
+  "operationId": "readVocabConceptsSearch",
+  "tags": [
+   "Vocabularies"
+  ],
+  "summary": "Search Controlled Vocabulary Terms",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [
+   "q",
+   "start",
+   "count",
+   "type"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-gedcomx-atom+json",
+   "application/json",
+   "application/atom+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readvocabconceptssearch.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Read Controlled Vocabulary List",
+  "method": "GET",
+  "path": "/vocab/lists/{cvlid}",
+  "operationId": "readVocabList",
+  "tags": [
+   "Vocabularies"
+  ],
+  "summary": "Read Controlled Vocabulary List",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "cvlid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/ld+json",
+   "application/x-fs-v1+json",
+   "application/json",
+   "application/rdf+xml",
+   "application/x-fs-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readvocablist.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Read Controlled Vocabulary Term",
+  "method": "GET",
+  "path": "/vocab/terms/{cvtid}",
+  "operationId": "readVocabTerm",
+  "tags": [
+   "Vocabularies"
+  ],
+  "summary": "Read Controlled Vocabulary Term",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "cvtid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/ld+json",
+   "application/x-fs-v1+json",
+   "application/json",
+   "application/rdf+xml",
+   "application/x-fs-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readvocabterm.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Read Controlled Vocabulary Term Translation",
+  "method": "GET",
+  "path": "/vocab/terms/{cvtid}/translations/{locale}",
+  "operationId": "readVocabTermTranslation",
+  "tags": [
+   "Vocabularies"
+  ],
+  "summary": "Read Controlled Vocabulary Term Translation",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "cvtid",
+   "locale"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/json"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readvocabtermtranslation.md"
+ },
+ {
+  "area": "Standards Endpoints",
+  "title": "Update Controlled Vocabulary Term Translation",
+  "method": "POST",
+  "path": "/vocab/terms/{cvtid}/translations/{locale}",
+  "operationId": "updateVocabTranslation",
+  "tags": [
+   "Vocabularies"
+  ],
+  "summary": "Update Controlled Vocabulary Term Translation",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "cvtid",
+   "locale"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json"
+  ],
+  "responses": [
+   "201",
+   "204",
+   "308",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatevocabtranslation.md"
+ },
+ {
+  "area": "User Endpoints",
+  "title": "Read Agent",
+  "method": "GET",
+  "path": "/users/agents/{uid}",
+  "operationId": "readAgent",
+  "tags": [
+   "Agent"
+  ],
+  "summary": "Read Agent",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "uid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readagent.md"
+ },
+ {
+  "area": "User Endpoints",
+  "title": "Read Current User",
+  "method": "GET",
+  "path": "/users/current",
+  "operationId": "readCurrentUser",
+  "tags": [
+   "Users"
+  ],
+  "summary": "Read Current User",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readcurrentuser.md"
+ },
+ {
+  "area": "User Endpoints",
+  "title": "Create Partner Account",
+  "method": "GET",
+  "path": "/users/current/partner-account-created",
+  "operationId": "createPartnerAccount",
+  "tags": [
+   "Users"
+  ],
+  "summary": "Create Partner Account",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Referer"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/createpartneraccount.md"
+ },
+ {
+  "area": "User Endpoints",
+  "title": "Update Partner Account",
+  "method": "POST",
+  "path": "/users/current/partner-account-created",
+  "operationId": "updatePartnerAccount",
+  "tags": [
+   "Users"
+  ],
+  "summary": "Update Partner Account",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Referer"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatepartneraccount.md"
+ },
+ {
+  "area": "User Endpoints",
+  "title": "Read Partner Eligibility",
+  "method": "GET",
+  "path": "/users/current/partner-eligible",
+  "operationId": "readPartnerEligibility",
+  "tags": [
+   "Users"
+  ],
+  "summary": "Read Partner Eligibility",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "403"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readpartnereligibility.md"
+ },
+ {
+  "area": "User Endpoints",
+  "title": "Delete User History Entry",
+  "method": "DELETE",
+  "path": "/users/{uid}/history/{pid}",
+  "operationId": "delete",
+  "tags": [
+   "Users"
+  ],
+  "summary": "Delete User History Entry",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "uid",
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/delete.md"
+ },
+ {
+  "area": "User Endpoints",
+  "title": "Read User History",
+  "method": "GET",
+  "path": "/users/{uid}/history",
+  "operationId": "readUserHistory",
+  "tags": [
+   "Users"
+  ],
+  "summary": "Read User History",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "uid"
+  ],
+  "query_params": [
+   "tid"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-gedcomx-atom+json",
+   "application/json",
+   "application/atom+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readuserhistory.md"
+ },
+ {
+  "area": "User Endpoints",
+  "title": "Update User History",
+  "method": "POST",
+  "path": "/users/{uid}/history",
+  "operationId": "updateUserHistory",
+  "tags": [
+   "Users"
+  ],
+  "summary": "Update User History",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "uid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept",
+   "Content-Type"
+  ],
+  "accept": [
+   "application/x-gedcomx-atom+json",
+   "application/json",
+   "application/atom+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "application/atom+xml",
+   "application/x-gedcomx-atom+json"
+  ],
+  "responses": [
+   "201",
+   "400"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updateuserhistory.md"
+ },
+ {
+  "area": "Utilities Endpoints",
+  "title": "Read Pending Modifications",
+  "method": "GET",
+  "path": "/pending-modifications",
+  "operationId": "readPendingModifications",
+  "tags": [
+   "Utilities"
+  ],
+  "summary": "Read Pending Modifications",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readpendingmodifications.md"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "title": "Read Group",
+  "method": "GET",
+  "path": "/groups/{groupid}",
+  "operationId": "readGroup",
+  "tags": [
+   "Groups"
+  ],
+  "summary": "Read Group",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "groupid"
+  ],
+  "query_params": [
+   "includeMembers"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/json"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readgroup.md"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "title": "Update Group",
+  "method": "POST",
+  "path": "/groups/{groupid}",
+  "operationId": "updateGroup",
+  "tags": [
+   "Groups"
+  ],
+  "summary": "Update Group",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "groupid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updategroup.md"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "title": "Delete Group",
+  "method": "DELETE",
+  "path": "/groups/{groupid}",
+  "operationId": "deleteGroup",
+  "tags": [
+   "Groups"
+  ],
+  "summary": "Delete Group",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "groupid"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "409",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletegroup.md"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "title": "Read User's Groups",
+  "method": "GET",
+  "path": "/groups",
+  "operationId": "getGroups",
+  "tags": [
+   "Groups"
+  ],
+  "summary": "Read User's Groups",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/json"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/getgroups.md"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "title": "Create Group",
+  "method": "POST",
+  "path": "/groups",
+  "operationId": "createGroup",
+  "tags": [
+   "Groups"
+  ],
+  "summary": "Create Group",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json"
+  ],
+  "responses": [
+   "201",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/creategroup.md"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "title": "Read User Tree Person Ids",
+  "method": "GET",
+  "path": "/trees/{tid}/persons",
+  "operationId": "readUserTreePersons",
+  "tags": [
+   "Trees"
+  ],
+  "summary": "Read User Tree Person Ids",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "tid"
+  ],
+  "query_params": [
+   "count",
+   "from",
+   "view"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-gedcomx-atom+json",
+   "application/json"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "400",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readusertreepersons.md"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "title": "Read Tree Matches",
+  "method": "GET",
+  "path": "/trees/{tid}/matches",
+  "operationId": "readTreeMatches",
+  "tags": [
+   "Trees"
+  ],
+  "summary": "Read Tree Matches",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "tid"
+  ],
+  "query_params": [
+   "sortBy",
+   "from",
+   "candidateTreeId",
+   "collection",
+   "count",
+   "confidence",
+   "status"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-gedcomx-atom+json",
+   "application/json"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "400",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readtreematches.md"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "title": "Read Tree",
+  "method": "GET",
+  "path": "/trees/{tid}",
+  "operationId": "readTree",
+  "tags": [
+   "Trees"
+  ],
+  "summary": "Read Tree",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "tid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/json"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readtree.md"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "title": "Update Tree",
+  "method": "POST",
+  "path": "/trees/{tid}",
+  "operationId": "updateTree",
+  "tags": [
+   "Trees"
+  ],
+  "summary": "Update Tree",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "tid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updatetree.md"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "title": "Delete Tree",
+  "method": "DELETE",
+  "path": "/trees/{tid}",
+  "operationId": "deleteTree",
+  "tags": [
+   "Trees"
+  ],
+  "summary": "Delete Tree",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "tid"
+  ],
+  "query_params": [],
+  "header_params": [],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "409",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletetree.md"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "title": "Read Current Tree Id",
+  "method": "GET",
+  "path": "/trees/current",
+  "operationId": "readCurrentTree",
+  "tags": [
+   "Trees"
+  ],
+  "summary": "Read Current Tree Id",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/json"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readcurrenttree.md"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "title": "Set Current Tree Id",
+  "method": "POST",
+  "path": "/trees/current",
+  "operationId": "setCurrentTree",
+  "tags": [
+   "Trees"
+  ],
+  "summary": "Set Current Tree Id",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json"
+  ],
+  "responses": [
+   "204",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/setcurrenttree.md"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "title": "Create User Tree",
+  "method": "POST",
+  "path": "/trees",
+  "operationId": "createTree",
+  "tags": [
+   "Trees"
+  ],
+  "summary": "Create User Tree",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Content-Type"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-fs-v1+json"
+  ],
+  "responses": [
+   "201",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/createtree.md"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "title": "Read Tree Changes",
+  "method": "GET",
+  "path": "/trees/{tid}/changes",
+  "operationId": "readTreeChanges",
+  "tags": [
+   "Change History"
+  ],
+  "summary": "Read Tree Changes",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "tid"
+  ],
+  "query_params": [
+   "from",
+   "timestamp"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-gedcomx-atom+json",
+   "application/json"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readtreechanges.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Read Genealogies Person",
+  "method": "GET",
+  "path": "/genealogies/persons/{pid}",
+  "operationId": "readGenealogiesPerson",
+  "tags": [
+   "Person"
+  ],
+  "summary": "Read Genealogies Person",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readgenealogiesperson.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Update Genealogies Person",
+  "method": "POST",
+  "path": "/genealogies/persons/{pid}",
+  "operationId": "updateGenealogiesPerson",
+  "tags": [
+   "Person"
+  ],
+  "summary": "Update Genealogies Person",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept",
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "201",
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updategenealogiesperson.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Delete Genealogies Person",
+  "method": "DELETE",
+  "path": "/genealogies/persons/{pid}",
+  "operationId": "deleteGenealogiesPerson",
+  "tags": [
+   "Person"
+  ],
+  "summary": "Delete Genealogies Person",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "412",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletegenealogiesperson.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Read Genealogies Persons",
+  "method": "GET",
+  "path": "/genealogies/trees/{tid}/persons",
+  "operationId": "readGenealogiesPersons",
+  "tags": [
+   "Person"
+  ],
+  "summary": "Read Genealogies Persons",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "tid"
+  ],
+  "query_params": [
+   "context",
+   "count"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readgenealogiespersons.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Create Genealogies Person",
+  "method": "POST",
+  "path": "/genealogies/trees/{tid}/persons",
+  "operationId": "createGenealogiesPerson",
+  "tags": [
+   "Person"
+  ],
+  "summary": "Create Genealogies Person",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "tid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "201",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/creategenealogiesperson.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Delete Genealogies Conclusion",
+  "method": "DELETE",
+  "path": "/genealogies/persons/{pid}/conclusions/{cid}",
+  "operationId": "deleteGenealogiesConclusion",
+  "tags": [
+   "Person"
+  ],
+  "summary": "Delete Genealogies Conclusion",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid",
+   "cid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletegenealogiesconclusion.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Restore Genealogies Person",
+  "method": "POST",
+  "path": "/genealogies/persons/{pid}/restore",
+  "operationId": "restoreGenealogiesPerson",
+  "tags": [
+   "Person"
+  ],
+  "summary": "Restore Genealogies Person",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/restoregenealogiesperson.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Update Genealogies Relationship",
+  "method": "POST",
+  "path": "/genealogies/persons/{pid}/relationships/{cid}",
+  "operationId": "updateGenealogiesRelationship",
+  "tags": [
+   "Relationships"
+  ],
+  "summary": "Update Genealogies Relationship",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid",
+   "cid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "201",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updategenealogiesrelationship.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Delete Genealogies Relationship",
+  "method": "DELETE",
+  "path": "/genealogies/persons/{pid}/relationships/{cid}",
+  "operationId": "deleteGenealogiesRelationship",
+  "tags": [
+   "Relationships"
+  ],
+  "summary": "Delete Genealogies Relationship",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid",
+   "cid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "301",
+   "404",
+   "409",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletegenealogiesrelationship.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Read Genealogies Source Description",
+  "method": "GET",
+  "path": "/genealogies/sources/{sdid}",
+  "operationId": "readGenealogiesSourceDescription",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Read Genealogies Source Description",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "sdid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readgenealogiessourcedescription.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Update Genealogies Source Description",
+  "method": "POST",
+  "path": "/genealogies/sources/{sdid}",
+  "operationId": "updateGenealogiesSourceDescription",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Update Genealogies Source Description",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "sdid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updategenealogiessourcedescription.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Delete Genealogies Source Description",
+  "method": "DELETE",
+  "path": "/genealogies/sources/{sdid}",
+  "operationId": "deleteGenealogiesSourceDescription",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Delete Genealogies Source Description",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "sdid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletegenealogiessourcedescription.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Create Genealogies Source Description",
+  "method": "POST",
+  "path": "/genealogies/trees/{tid}/sources",
+  "operationId": "createGenealogiesSourceDescription",
+  "tags": [
+   "Sources"
+  ],
+  "summary": "Create Genealogies Source Description",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "tid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "201",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/creategenealogiessourcedescription.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Read Genealogies Bulk Matches",
+  "method": "GET",
+  "path": "/genealogies/persons/{gpids}/bulkmatches",
+  "operationId": "readGenealogiesBulkMatch",
+  "tags": [
+   "Matches"
+  ],
+  "summary": "Read Genealogies Bulk Matches",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "gpids"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-gedcomx-atom+json",
+   "application/json",
+   "application/atom+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readgenealogiesbulkmatch.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Read Genealogies Person Matches",
+  "method": "GET",
+  "path": "/genealogies/persons/{pid}/matches",
+  "operationId": "readGenealogiesPersonMatches",
+  "tags": [
+   "Matches"
+  ],
+  "summary": "Read Genealogies Person Matches",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "pid"
+  ],
+  "query_params": [
+   "collection",
+   "confidence",
+   "count",
+   "status"
+  ],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-gedcomx-atom+json",
+   "application/json",
+   "application/atom+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readgenealogiespersonmatches.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Read Genealogies Note",
+  "method": "GET",
+  "path": "/genealogies/notes/{nid}",
+  "operationId": "readGenealogiesNote",
+  "tags": [
+   "Notes"
+  ],
+  "summary": "Read Genealogies Note",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "nid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readgenealogiesnote.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Read Genealogies Tree",
+  "method": "GET",
+  "path": "/genealogies/trees/{tid}",
+  "operationId": "readGenealogiesTree",
+  "tags": [
+   "Trees"
+  ],
+  "summary": "Read Genealogies Tree",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "tid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readgenealogiestree.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Update Genealogies Tree",
+  "method": "POST",
+  "path": "/genealogies/trees/{tid}",
+  "operationId": "updateGenealogiesTree",
+  "tags": [
+   "Trees"
+  ],
+  "summary": "Update Genealogies Tree",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "tid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "Accept",
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/updategenealogiestree.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Delete Genealogies Tree",
+  "method": "DELETE",
+  "path": "/genealogies/trees/{tid}",
+  "operationId": "deleteGenealogiesTree",
+  "tags": [
+   "Trees"
+  ],
+  "summary": "Delete Genealogies Tree",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [
+   "tid"
+  ],
+  "query_params": [],
+  "header_params": [
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "204",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/deletegenealogiestree.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Read Genealogies Trees",
+  "method": "GET",
+  "path": "/genealogies/trees",
+  "operationId": "readGenealogiesTrees",
+  "tags": [
+   "Trees"
+  ],
+  "summary": "Read Genealogies Trees",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Accept"
+  ],
+  "accept": [
+   "application/x-fs-v1+json",
+   "application/x-gedcomx-v1+json",
+   "application/json",
+   "application/x-fs-v1+xml",
+   "application/x-gedcomx-v1+xml",
+   "application/xml"
+  ],
+  "request_media": [
+   "*/*"
+  ],
+  "responses": [
+   "200",
+   "204",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/readgenealogiestrees.md"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "title": "Create Genealogies Tree",
+  "method": "POST",
+  "path": "/genealogies/trees",
+  "operationId": "createGenealogiesTree",
+  "tags": [
+   "Trees"
+  ],
+  "summary": "Create Genealogies Tree",
+  "server": "https://apibeta.familysearch.org/platform",
+  "path_params": [],
+  "query_params": [],
+  "header_params": [
+   "Content-Type",
+   "X-Reason"
+  ],
+  "accept": null,
+  "request_media": [
+   "application/x-gedcomx-v1+json"
+  ],
+  "responses": [
+   "201",
+   "429"
+  ],
+  "url": "https://developers.familysearch.org/main/reference/creategenealogiestree.md"
+ }
+]

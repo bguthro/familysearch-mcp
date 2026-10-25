@@ -1,0 +1,634 @@
+{
+ "/tree/current-person [child]": {
+  "description": "str",
+  "persons": [
+   "list[1]",
+   "{...}"
+  ],
+  "sourceDescriptions": [
+   "list[3]",
+   "{...}"
+  ]
+ },
+ "/tree/persons/{pid} [child]": {
+  "childAndParentsRelationships": [
+   "list[1]",
+   "{...}"
+  ],
+  "description": "str",
+  "persons": [
+   "list[1]",
+   "{...}"
+  ],
+  "relationships": [
+   "list[2]",
+   "{...}"
+  ],
+  "sourceDescriptions": [
+   "list[3]",
+   "{...}"
+  ]
+ },
+ "/tree/persons/{pid} [dad]": {
+  "childAndParentsRelationships": [
+   "list[1]",
+   "{...}"
+  ],
+  "description": "str",
+  "persons": [
+   "list[1]",
+   "{...}"
+  ],
+  "relationships": [
+   "list[3]",
+   "{...}"
+  ],
+  "sourceDescriptions": [
+   "list[3]",
+   "{...}"
+  ]
+ },
+ "/tree/persons/{pid}/children [dad]": {
+  "childAndParentsRelationships": [
+   "list[1]",
+   "{...}"
+  ],
+  "description": "str",
+  "persons": [
+   "list[1]",
+   "{...}"
+  ],
+  "relationships": [
+   "list[1]",
+   "{...}"
+  ],
+  "sourceDescriptions": [
+   "list[5]",
+   "{...}"
+  ]
+ },
+ "/tree/persons/{pid}/families [child]": {
+  "childAndParentsRelationships": [
+   "list[1]",
+   "{...}"
+  ],
+  "description": "str",
+  "links": {
+   "person": "{...}",
+   "collection": "{...}",
+   "portrait": "{...}"
+  },
+  "persons": [
+   "list[3]",
+   "{...}"
+  ],
+  "relationships": [
+   "list[3]",
+   "{...}"
+  ],
+  "sourceDescriptions": [
+   "list[5]",
+   "{...}"
+  ]
+ },
+ "/tree/persons/{pid}/families [dad]": {
+  "childAndParentsRelationships": [
+   "list[1]",
+   "{...}"
+  ],
+  "description": "str",
+  "links": {
+   "person": "{...}",
+   "collection": "{...}",
+   "portrait": "{...}"
+  },
+  "persons": [
+   "list[3]",
+   "{...}"
+  ],
+  "relationships": [
+   "list[3]",
+   "{...}"
+  ],
+  "sourceDescriptions": [
+   "list[5]",
+   "{...}"
+  ]
+ },
+ "/tree/persons/{pid}/parents [child]": {
+  "childAndParentsRelationships": [
+   "list[1]",
+   "{...}"
+  ],
+  "description": "str",
+  "persons": [
+   "list[2]",
+   "{...}"
+  ],
+  "relationships": [
+   "list[3]",
+   "{...}"
+  ],
+  "sourceDescriptions": [
+   "list[5]",
+   "{...}"
+  ]
+ },
+ "/tree/persons/{pid}/spouses [dad]": {
+  "childAndParentsRelationships": [
+   "list[1]",
+   "{...}"
+  ],
+  "description": "str",
+  "persons": [
+   "list[1]",
+   "{...}"
+  ],
+  "relationships": [
+   "list[1]",
+   "{...}"
+  ],
+  "sourceDescriptions": [
+   "list[5]",
+   "{...}"
+  ]
+ },
+ "/tree/persons/{pid}/memories [child]": {
+  "links": {
+   "person": "{...}",
+   "self": "{...}"
+  },
+  "persons": "list[0]",
+  "sourceDescriptions": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/tree/ancestry [child]": {
+  "links": {
+   "collection": "{...}"
+  },
+  "persons": [
+   "list[3]",
+   "{...}"
+  ]
+ },
+ "/tree/descendancy [child]": {
+  "links": {
+   "collection": "{...}"
+  },
+  "persons": [
+   "list[3]",
+   "{...}"
+  ]
+ },
+ "/tree/child-and-parents-relationships/{caprid} [child]": {
+  "childAndParentsRelationships": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/tree/couple-relationships/{crid} [child]": {
+  "relationships": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/tree/persons/{pid}/relationships/{opid} [child]": {
+  "childAndParentsRelationships": [
+   "list[1]",
+   "{...}"
+  ],
+  "description": "str",
+  "persons": [
+   "list[2]",
+   "{...}"
+  ],
+  "relationships": [
+   "list[1]",
+   "{...}"
+  ],
+  "sourceDescriptions": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/tree/persons/{pid}/sources [child]": {
+  "persons": [
+   "list[1]",
+   "{...}"
+  ],
+  "sourceDescriptions": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/sources/descriptions/{sdid} [child]": {
+  "sourceDescriptions": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/tree/persons/{pid}/notes/{nid} [child]": {
+  "persons": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/tree/persons/{pid}/notes [child]": {
+  "persons": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/tree/child-and-parents-relationships/{caprid}/changes [child]": {
+  "entries": [
+   "list[4]",
+   "{...}"
+  ],
+  "links": {
+   "self": "{...}",
+   "relationship": "{...}"
+  },
+  "updated": "int"
+ },
+ "/tree/couple-relationships/{crid}/changes [child]": {
+  "entries": [
+   "list[3]",
+   "{...}"
+  ],
+  "links": {
+   "self": "{...}",
+   "relationship": "{...}"
+  },
+  "updated": "int"
+ },
+ "/tree/persons/{pid}/changes [child]": {
+  "entries": [
+   "list[10]",
+   "{...}"
+  ],
+  "links": {
+   "person": "{...}",
+   "self": "{...}"
+  },
+  "updated": "int"
+ },
+ "/tree/persons/{pid}/changes [dad]": {
+  "entries": [
+   "list[7]",
+   "{...}"
+  ],
+  "links": {
+   "person": "{...}",
+   "self": "{...}"
+  },
+  "updated": "int"
+ },
+ "/sources/{uid}/collections [child]": {
+  "collections": [
+   "list[1]",
+   "{...}"
+  ],
+  "links": {
+   "collection": "{...}"
+  },
+  "sourceDescriptions": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/sources/{uid}/collections/descriptions [child]": {
+  "links": {
+   "self": "{...}"
+  },
+  "sourceDescriptions": [
+   "list[3]",
+   "{...}"
+  ]
+ },
+ "/sources/collections [child]": {
+  "collections": [
+   "list[1]",
+   "{...}"
+  ],
+  "links": {
+   "collection": "{...}"
+  },
+  "sourceDescriptions": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/sources/descriptions [child]": {
+  "links": {
+   "self": "{...}"
+  },
+  "sourceDescriptions": [
+   "list[3]",
+   "{...}"
+  ]
+ },
+ "/memories/memories/{mid} [child]": {
+  "sourceDescriptions": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/memories/memories [child]": {
+  "links": {
+   "self": "{...}"
+  },
+  "sourceDescriptions": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/memories/users/{uid}/memories [child]": {
+  "links": {
+   "self": "{...}"
+  },
+  "sourceDescriptions": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/memories/memories/{mid}/personas/{pid} [child]": {
+  "persons": [
+   "list[1]",
+   "{...}"
+  ],
+  "sourceDescriptions": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/memories/memories/{mid}/personas [child]": {
+  "persons": [
+   "list[1]",
+   "{...}"
+  ],
+  "sourceDescriptions": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/memories/memories/{mid}/comments [child]": {
+  "discussions": [
+   "list[1]",
+   "{...}"
+  ],
+  "sourceDescriptions": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/places/description/{pdid}/attributes [child]": {
+  "@id": "str",
+  "474": [
+   "list[1]",
+   "{...}"
+  ],
+  "504": [
+   "list[2]",
+   "{...}"
+  ],
+  "@context": {
+   "474": "{...}",
+   "504": "{...}",
+   "year": "str",
+   "value": "str"
+  }
+ },
+ "/places/description/{pdid}/children [child]": {
+  "places": [
+   "list[31]",
+   "{...}"
+  ]
+ },
+ "/places/description/{pdid} [child]": {
+  "places": [
+   "list[4]",
+   "{...}"
+  ]
+ },
+ "/places/description/{pdid}/related [child]": {
+  "places": [
+   "list[94]",
+   "{...}"
+  ]
+ },
+ "/places/groups/{pgid} [child]": {
+  "description": "str",
+  "places": [
+   "list[62]",
+   "{...}"
+  ],
+  "sourceDescriptions": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/places/description [child]": {
+  "places": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/places/search [child]": {
+  "entries": [
+   "list[201]",
+   "{...}"
+  ],
+  "subtitle": "str",
+  "title": "str"
+ },
+ "/places/type-groups [child]": {
+  "@id": "str",
+  "title": "str",
+  "description": "str",
+  "elements": [
+   "list[43]",
+   "{...}"
+  ],
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_1": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_2": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_3": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_4": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_5": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_6": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_7": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_8": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_9": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_10": {
+   "@id": "str"
+  }
+ },
+ "/places/types [child]": {
+  "@id": "str",
+  "title": "str",
+  "description": "str",
+  "elements": [
+   "list[74]",
+   "{...}"
+  ],
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_1": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_2": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_3": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_4": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_5": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_6": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_7": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_8": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_9": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_10": {
+   "@id": "str"
+  }
+ },
+ "/places/parents [child]": {
+  "entries": [
+   "list[14]",
+   "{...}"
+  ]
+ },
+ "/names/script [child]": {
+  "Katakana": "str"
+ },
+ "/vocab/concepts/{cvcid} [child]": {
+  "vocabConcepts": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/vocab/concepts/search [child]": {
+  "entries": [
+   "list[512]",
+   "{...}"
+  ],
+  "index": "int",
+  "lang": "str",
+  "links": {
+   "next": "{...}",
+   "self": "{...}"
+  },
+  "title": "str"
+ },
+ "/vocab/lists/{cvlid} [child]": {
+  "id": "str",
+  "@id": "str",
+  "title": "str",
+  "description": "str",
+  "elements": [
+   "list[6]",
+   "{...}"
+  ],
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_1": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_2": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_3": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_4": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_5": {
+   "@id": "str"
+  },
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_6": {
+   "@id": "str"
+  },
+  "@context": {
+   "title": "str",
+   "description": "str",
+   "elements": "{...}",
+   "id": "{...}",
+   "subclassOf": "{...}",
+   "references": "{...}",
+   "type": "{...}",
+   "labels": "{...}",
+   "descriptions": "{...}"
+  }
+ },
+ "/vocab/terms/{cvtid} [child]": {
+  "id": "str",
+  "@id": "str",
+  "subclassOf": "str",
+  "type": "str",
+  "labels": [
+   "list[1]",
+   "{...}"
+  ],
+  "@context": {
+   "id": "{...}",
+   "subclassOf": "{...}",
+   "references": "{...}",
+   "type": "{...}",
+   "labels": "{...}",
+   "descriptions": "{...}"
+  }
+ },
+ "/users/agents/{uid} [child]": {
+  "agents": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/users/current [child]": {
+  "users": [
+   "list[1]",
+   "{...}"
+  ]
+ },
+ "/users/{uid}/history [child]": {},
+ "/pending-modifications [child]": {
+  "features": [
+   "list[3]",
+   "{...}"
+  ]
+ },
+ "/trees/current [child]": {
+  "trees": [
+   "list[1]",
+   "{...}"
+  ]
+ }
+}

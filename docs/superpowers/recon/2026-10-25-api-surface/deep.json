@@ -1,0 +1,5273 @@
+[
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/current-person",
+  "variant": "child",
+  "real_ids": true,
+  "accept": null,
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "303",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "400",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": "Required request parameter 'pids' for method parameter type List is not present"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "400",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": "Required request parameter 'pids' for method parameter type List is not present"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "400",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": "Required request parameter 'pids' for method parameter type List is not present"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "400",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}",
+  "variant": "dad",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/children",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/children",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/children",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/children",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/children",
+  "variant": "dad",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/families",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/families",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/families",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/families",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/families",
+  "variant": "dad",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/merges/{dpid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": "Failure in upstream call: Person is gone. (upstream 400)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/merges/{dpid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": "Failure in upstream call: Person is gone. (upstream 400)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/merges/{dpid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/merges/{dpid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/xml",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/parents",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/parents",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/parents",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/parents",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/parents",
+  "variant": "dad",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/spouses",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/spouses",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/spouses",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/spouses",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/spouses",
+  "variant": "dad",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/memories",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/memories",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/memories",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/memories",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/memories",
+  "variant": "dad",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/ancestry",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "301",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/ancestry",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "301",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/ancestry",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "301",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/ancestry",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "301",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/descendancy",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "301",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/descendancy",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "301",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/descendancy",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "301",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/descendancy",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "301",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/search",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-atom+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "400",
+   "429"
+  ],
+  "note": "Failure in upstream call: Search for tree persons. (upstream 400)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/search",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "400",
+   "429"
+  ],
+  "note": "Failure in upstream call: Search for tree persons. (upstream 400)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/search",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/atom+xml",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "400",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/search",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/xml",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "400",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/matches",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-atom+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/matches",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/matches",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/atom+xml",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/matches",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/xml",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/matches",
+  "variant": "dad",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-atom+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/not-a-match",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/not-a-match",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/not-a-match",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/not-a-match",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/not-a-match",
+  "variant": "dad",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/xml",
+  "status": 200,
+  "ctype": "application/xml",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/users/{uid}/preferred-parent-relationships/{pid}/tree/users/{uid}/preferred-parent-relationships/{pid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": null,
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "204",
+   "301",
+   "303",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/users/{uid}/preferred-spouse-relationships/{pid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": null,
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "204",
+   "301",
+   "303",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/relationships/{opid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "400",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/relationships/{opid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "400",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/relationships/{opid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "204",
+   "400",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}/source-references",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}/source-references",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}/source-references",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}/source-references",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/xml",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}/sources",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}/sources",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}/sources",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}/sources",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/xml",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}/source-references",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}/source-references",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}/source-references",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}/source-references",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}/sources",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}/sources",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}/sources",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}/sources",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/sources",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/sources",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/sources",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/sources",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/sources",
+  "variant": "dad",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/source-references",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/source-references",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/source-references",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/source-references",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/descriptions/{sdid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "301",
+   "307",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/descriptions/{sdid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "301",
+   "307",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/descriptions/{sdid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "301",
+   "307",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/descriptions/{sdid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "301",
+   "307",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}/notes/{nid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": "Failure in upstream call: Unable to read TF note 2e2280e8-3401-4825-a3c4-466f5cfa64f7 for parentChild entity BM7Y-VKW (u"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}/notes/{nid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": "Failure in upstream call: Unable to read TF note 2e2280e8-3401-4825-a3c4-466f5cfa64f7 for parentChild entity BM7Y-VKW (u"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}/notes/{nid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}/notes/{nid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/xml",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}/notes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}/notes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}/notes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}/notes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}/notes/{nid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": "Failure in upstream call: Unable to read TF note 2e2280e8-3401-4825-a3c4-466f5cfa64f7 for couple entity BM3L-Q7Z (upstre"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}/notes/{nid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": "Failure in upstream call: Unable to read TF note 2e2280e8-3401-4825-a3c4-466f5cfa64f7 for couple entity BM3L-Q7Z (upstre"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}/notes/{nid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": "Failure in upstream call: Unable to read TF note 2e2280e8-3401-4825-a3c4-466f5cfa64f7 for couple entity BM3L-Q7Z (upstre"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}/notes/{nid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}/notes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}/notes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}/notes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}/notes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/notes/{nid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/notes/{nid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/notes/{nid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/notes/{nid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/notes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/notes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/notes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/notes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/notes",
+  "variant": "dad",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}/changes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-atom+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-atom+json",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}/changes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}/changes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/atom+xml",
+  "status": 200,
+  "ctype": "application/atom+xml",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/child-and-parents-relationships/{caprid}/changes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/xml",
+  "status": 200,
+  "ctype": "application/xml",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}/changes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-atom+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-atom+json",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}/changes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}/changes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/atom+xml",
+  "status": 200,
+  "ctype": "application/atom+xml",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/couple-relationships/{crid}/changes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/xml",
+  "status": 200,
+  "ctype": "application/xml",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/changes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-atom+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-atom+json",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/changes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/changes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/atom+xml",
+  "status": 200,
+  "ctype": "application/atom+xml",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/changes",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/xml",
+  "status": 200,
+  "ctype": "application/xml",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/changes",
+  "variant": "dad",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-atom+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-atom+json",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/portrait",
+  "variant": "child",
+  "real_ids": true,
+  "accept": null,
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "204",
+   "301",
+   "307",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/portrait",
+  "variant": "dad",
+  "real_ids": true,
+  "accept": null,
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "204",
+   "301",
+   "307",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/portraits",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/portraits",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/portraits",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/portraits",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/tree/persons/{pid}/portraits",
+  "variant": "dad",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/discussions/discussions/{did}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+json",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": "Failure in upstream call: Unable to read discussion. (upstream 404)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/discussions/discussions/{did}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": "Failure in upstream call: Unable to read discussion. (upstream 404)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/discussions/discussions/{did}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+xml",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/discussions/discussions/{did}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/xml",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/discussions/discussions/{did}/comments",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+json",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": "Failure in upstream call: Unable to read discussion comments. (upstream 404)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/discussions/discussions/{did}/comments",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": "Failure in upstream call: Unable to read discussion comments. (upstream 404)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/discussions/discussions/{did}/comments",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+xml",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/discussions/discussions/{did}/comments",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/xml",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/{uid}/collections",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "400"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/{uid}/collections",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "400"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/{uid}/collections",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "400"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/{uid}/collections",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "400"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/{uid}/collections/descriptions",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "301",
+   "307",
+   "400",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/{uid}/collections/descriptions",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "301",
+   "307",
+   "400",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/{uid}/collections/descriptions",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "301",
+   "307",
+   "400",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/{uid}/collections/descriptions",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "301",
+   "307",
+   "400",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/collections",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "307"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/collections",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "307"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/collections",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "307"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/collections",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "307"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/descriptions",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "303"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/descriptions",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "303"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/descriptions",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "204",
+   "303"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/descriptions",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "204",
+   "303"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/collections/{udcid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": "Failure in upstream call: Unable to read collection. (upstream 400)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/collections/{udcid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": "Failure in upstream call: Unable to read collection. (upstream 400)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/collections/{udcid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": "Failure in upstream call: Unable to read collection. (upstream 400)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/collections/{udcid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+xml",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/collections/{udcid}/descriptions",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "400",
+   "404"
+  ],
+  "note": "Failure in upstream call: Unable to load page of sources from source box. (upstream 400)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/collections/{udcid}/descriptions",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "400",
+   "404"
+  ],
+  "note": "Failure in upstream call: Unable to load page of sources from source box. (upstream 400)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/collections/{udcid}/descriptions",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "400",
+   "404"
+  ],
+  "note": "Failure in upstream call: Unable to load page of sources from source box. (upstream 400)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "path": "/sources/collections/{udcid}/descriptions",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+xml",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "400",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/memories/{mid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/memories/{mid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/memories/{mid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/memories/{mid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/memories",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/memories",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/memories",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/memories",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/users/{uid}/memories",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/users/{uid}/memories",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/users/{uid}/memories",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/users/{uid}/memories",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/memories/{mid}/personas/{pid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/memories/{mid}/personas/{pid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/memories/{mid}/personas/{pid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/memories/{mid}/personas/{pid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/memories/{mid}/personas",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/memories/{mid}/personas",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/memories/{mid}/personas",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/memories/{mid}/personas",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/memories/{mid}/comments",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/memories/{mid}/comments",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/memories/{mid}/comments",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "path": "/memories/memories/{mid}/comments",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/dates",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "text/plain",
+  "status": 200,
+  "ctype": "text/plain",
+  "documented": [
+   "200",
+   "400"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/description/{pdid}/attributes",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/ld+json",
+  "status": 200,
+  "ctype": "application/ld+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/description/{pdid}/attributes",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/rdf+xml",
+  "status": 200,
+  "ctype": "application/rdf+xml",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/description/{pdid}/children",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/description/{pdid}/children",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "204",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/description/{pdid}/children",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "204",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/description/{pdid}/children",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "204",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/description/{pdid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/description/{pdid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/description/{pdid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/description/{pdid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/description/{pdid}/related",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/description/{pdid}/related",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/description/{pdid}/related",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/description/{pdid}/related",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/groups/{pgid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/groups/{pgid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/groups/{pgid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/groups/{pgid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/description",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/description",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/description",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/description",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/{pid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": null,
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/search",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-atom+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-atom+json",
+  "documented": [
+   "200",
+   "204"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/search",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "204"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/search",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/atom+xml",
+  "status": 200,
+  "ctype": "application/atom+xml",
+  "documented": [
+   "200",
+   "204"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/search",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/xml",
+  "status": 200,
+  "ctype": "application/xml",
+  "documented": [
+   "200",
+   "204"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/type-groups/{ptgid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/ld+json",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/type-groups/{ptgid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": "Failure in upstream call: Unable to read place group type. (upstream 404)"
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/type-groups/{ptgid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/rdf+xml",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/type-groups/{ptgid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/xml",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/type-groups",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/ld+json",
+  "status": 200,
+  "ctype": "application/ld+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/type-groups",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/type-groups",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/rdf+xml",
+  "status": 200,
+  "ctype": "application/rdf+xml",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/type-groups",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/xml",
+  "status": 200,
+  "ctype": "application/xml",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/types/{ptid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/ld+json",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/types/{ptid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": "Failure in upstream call: Unable to read place type. (upstream 404)"
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/types/{ptid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/rdf+xml",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/types/{ptid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/xml",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/types",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/ld+json",
+  "status": 200,
+  "ctype": "application/ld+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/types",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/types",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/rdf+xml",
+  "status": 200,
+  "ctype": "application/rdf+xml",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/types",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/xml",
+  "status": 200,
+  "ctype": "application/xml",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/parents",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-atom+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-atom+json",
+  "documented": [
+   "200",
+   "204",
+   "400"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/parents",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "204",
+   "400"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/places/{pid}/ischild",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "400",
+   "404"
+  ],
+  "note": "Method parameter 'pid': Failed to convert value of type 'java.lang.String' to required type 'int'; For input string: \\"
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/names/script",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "204",
+   "400"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/names/segments",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "400"
+  ],
+  "note": "A name must be provided."
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/names/segments",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "400"
+  ],
+  "note": "A name must be provided."
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/names/segments",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "400"
+  ],
+  "note": "A name must be provided."
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/vocab/concepts/{cvcid}/definition/{locale}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+json",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/vocab/concepts/{cvcid}/definition/{locale}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/vocab/concepts/{cvcid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/ld-v2+json",
+  "status": 200,
+  "ctype": "application/ld-v2+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/vocab/concepts/{cvcid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v2+json",
+  "status": 200,
+  "ctype": "application/x-fs-v2+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/vocab/concepts/search",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-atom+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-atom+json",
+  "documented": [
+   "200",
+   "204"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/vocab/concepts/search",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "204"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/vocab/concepts/search",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/atom+xml",
+  "status": 200,
+  "ctype": "application/atom+xml",
+  "documented": [
+   "200",
+   "204"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/vocab/concepts/search",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/xml",
+  "status": 200,
+  "ctype": "application/xml",
+  "documented": [
+   "200",
+   "204"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/vocab/lists/{cvlid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/ld+json",
+  "status": 200,
+  "ctype": "application/ld+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/vocab/lists/{cvlid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/vocab/lists/{cvlid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/vocab/lists/{cvlid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/rdf+xml",
+  "status": 200,
+  "ctype": "application/rdf+xml",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/vocab/terms/{cvtid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/ld+json",
+  "status": 200,
+  "ctype": "application/ld+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/vocab/terms/{cvtid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/vocab/terms/{cvtid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/vocab/terms/{cvtid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/rdf+xml",
+  "status": 200,
+  "ctype": "application/rdf+xml",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/vocab/terms/{cvtid}/translations/{locale}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+json",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "path": "/vocab/terms/{cvtid}/translations/{locale}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 404,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Endpoints",
+  "path": "/users/agents/{uid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Endpoints",
+  "path": "/users/agents/{uid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Endpoints",
+  "path": "/users/agents/{uid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Endpoints",
+  "path": "/users/agents/{uid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Endpoints",
+  "path": "/users/current",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Endpoints",
+  "path": "/users/current",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-v1+json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Endpoints",
+  "path": "/users/current",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Endpoints",
+  "path": "/users/current",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200",
+   "404"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Endpoints",
+  "path": "/users/current/partner-eligible",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 403,
+  "ctype": "",
+  "documented": [
+   "204",
+   "403"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Endpoints",
+  "path": "/users/current/partner-eligible",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 403,
+  "ctype": "",
+  "documented": [
+   "204",
+   "403"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Endpoints",
+  "path": "/users/current/partner-eligible",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 403,
+  "ctype": "",
+  "documented": [
+   "204",
+   "403"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Endpoints",
+  "path": "/users/current/partner-eligible",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 403,
+  "ctype": "",
+  "documented": [
+   "204",
+   "403"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Endpoints",
+  "path": "/users/{uid}/history",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-atom+json",
+  "status": 200,
+  "ctype": "application/x-gedcomx-atom+json",
+  "documented": [
+   "200"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Endpoints",
+  "path": "/users/{uid}/history",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Endpoints",
+  "path": "/users/{uid}/history",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/atom+xml",
+  "status": 200,
+  "ctype": "application/atom+xml",
+  "documented": [
+   "200"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Endpoints",
+  "path": "/users/{uid}/history",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/xml",
+  "status": 200,
+  "ctype": "application/xml",
+  "documented": [
+   "200"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Utilities Endpoints",
+  "path": "/pending-modifications",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Utilities Endpoints",
+  "path": "/pending-modifications",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Utilities Endpoints",
+  "path": "/pending-modifications",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 200,
+  "ctype": "application/x-fs-v1+xml",
+  "documented": [
+   "200"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Utilities Endpoints",
+  "path": "/pending-modifications",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/xml",
+  "status": 200,
+  "ctype": "application/xml",
+  "documented": [
+   "200"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Tree Endpoints",
+  "path": "/groups/{groupid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": "Failure in upstream call: Unable to read user tree group (upstream 400)"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "path": "/groups/{groupid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": "Failure in upstream call: Unable to read user tree group (upstream 400)"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "path": "/groups",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Tree Endpoints",
+  "path": "/groups",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Tree Endpoints",
+  "path": "/trees/{tid}/persons",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-gedcomx-atom+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "400",
+   "429"
+  ],
+  "note": "Failure in upstream call: Unable to get user tree person ids (upstream 400)"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "path": "/trees/{tid}/persons",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "400",
+   "429"
+  ],
+  "note": "Failure in upstream call: Unable to get user tree person ids (upstream 400)"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "path": "/trees/{tid}/matches",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-gedcomx-atom+json",
+  "status": 500,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "400",
+   "429"
+  ],
+  "note": "Failure in upstream call: Unable to retrieve matches for tree; id = X (upstream 500)"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "path": "/trees/{tid}/matches",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 500,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "400",
+   "429"
+  ],
+  "note": "Failure in upstream call: Unable to retrieve matches for tree; id = X (upstream 500)"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "path": "/trees/{tid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": "Failure in upstream call: Unable to read user tree (X) (upstream 400)"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "path": "/trees/{tid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": "Failure in upstream call: Unable to read user tree (X) (upstream 400)"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "path": "/trees/current",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "documented": [
+   "200",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Tree Endpoints",
+  "path": "/trees/current",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 200,
+  "ctype": "application/json",
+  "documented": [
+   "200",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "User Tree Endpoints",
+  "path": "/trees/{tid}/changes",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-gedcomx-atom+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": "Failure in upstream call: Unable to Read TF Tree Change History (upstream 400)"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "path": "/trees/{tid}/changes",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": "Failure in upstream call: Unable to Read TF Tree Change History (upstream 400)"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/persons/{pid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": "Invalid prefix for genealogies: (X)"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/persons/{pid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": "Invalid prefix for genealogies: (X)"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/persons/{pid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": "Invalid prefix for genealogies: (X)"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/persons/{pid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+xml",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/trees/{tid}/persons",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+json",
+  "status": 500,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": "Range [0, 4) out of bounds for length 1"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/trees/{tid}/persons",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 500,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": "Range [0, 4) out of bounds for length 1"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/trees/{tid}/persons",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 500,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": "Range [0, 4) out of bounds for length 1"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/trees/{tid}/persons",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+xml",
+  "status": 500,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/sources/{sdid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": "Invalid prefix for genealogies: (71FD-36P)"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/sources/{sdid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": "Invalid prefix for genealogies: (71FD-36P)"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/sources/{sdid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": "Invalid prefix for genealogies: (71FD-36P)"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/sources/{sdid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/persons/{gpids}/bulkmatches",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-gedcomx-atom+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": "Failure in upstream call: Unable to fetch match resolutions. (upstream 400)"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/persons/{gpids}/bulkmatches",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": "Failure in upstream call: Unable to fetch match resolutions. (upstream 400)"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/persons/{gpids}/bulkmatches",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/atom+xml",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/persons/{gpids}/bulkmatches",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/xml",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/persons/{pid}/matches",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-gedcomx-atom+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": "Invalid prefix for genealogies: (X)"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/persons/{pid}/matches",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": "Invalid prefix for genealogies: (X)"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/persons/{pid}/matches",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/atom+xml",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/persons/{pid}/matches",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/xml",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "301",
+   "404",
+   "410",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/notes/{nid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": "Invalid prefix for genealogies: (2e2280e8-3401-4825-a3c4-466f5cfa64f7)"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/notes/{nid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": "Invalid prefix for genealogies: (2e2280e8-3401-4825-a3c4-466f5cfa64f7)"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/notes/{nid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": "Invalid prefix for genealogies: (2e2280e8-3401-4825-a3c4-466f5cfa64f7)"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/notes/{nid}",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 400,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/trees/{tid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+json",
+  "status": 500,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": "Range [0, 4) out of bounds for length 1"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/trees/{tid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 500,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": "Range [0, 4) out of bounds for length 1"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/trees/{tid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/json",
+  "status": 500,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": "Range [0, 4) out of bounds for length 1"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/trees/{tid}",
+  "variant": "child",
+  "real_ids": false,
+  "accept": "application/x-fs-v1+xml",
+  "status": 500,
+  "ctype": "",
+  "documented": [
+   "200",
+   "404",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/trees",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/trees",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-gedcomx-v1+json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/trees",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/json",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "path": "/genealogies/trees",
+  "variant": "child",
+  "real_ids": true,
+  "accept": "application/x-fs-v1+xml",
+  "status": 204,
+  "ctype": "",
+  "documented": [
+   "200",
+   "204",
+   "429"
+  ],
+  "note": ""
+ }
+]

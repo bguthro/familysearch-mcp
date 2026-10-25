@@ -1,0 +1,848 @@
+[
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Persons",
+  "path": "/tree/current-person",
+  "summary": "Read Current User's Tree Person",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Persons",
+  "path": "/tree/persons",
+  "summary": "Read Persons List",
+  "status": 400,
+  "ctype": "",
+  "note": "Required request parameter 'pids' for method parameter type List is not present"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Persons",
+  "path": "/tree/persons/{pid}",
+  "summary": "Read Person",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Persons",
+  "path": "/tree/persons/{pid}/children",
+  "summary": "Read Children",
+  "status": 204,
+  "ctype": "",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Persons",
+  "path": "/tree/persons/{pid}/families",
+  "summary": "Read Families",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Persons",
+  "path": "/tree/persons/{pid}/merges/{dpid}",
+  "summary": "Read Person Merge",
+  "status": 400,
+  "ctype": "",
+  "note": "Failure in upstream call: Person is gone. (upstream 400)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Persons",
+  "path": "/tree/persons/{pid}/parents",
+  "summary": "Read Parents",
+  "status": 204,
+  "ctype": "",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Persons",
+  "path": "/tree/persons/{pid}/spouses",
+  "summary": "Read Spouses",
+  "status": 204,
+  "ctype": "",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Persons",
+  "path": "/tree/persons/{pid}/memories",
+  "summary": "Get Person Memory Descriptions",
+  "status": 204,
+  "ctype": "",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Pedigrees",
+  "path": "/tree/ancestry",
+  "summary": "Read Ancestry",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Pedigrees",
+  "path": "/tree/descendancy",
+  "summary": "Read Descendancy",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Search",
+  "path": "/tree/search",
+  "summary": "Search Tree Persons",
+  "status": 400,
+  "ctype": "",
+  "note": "Failure in upstream call: Search for tree persons. (upstream 400)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Matches",
+  "path": "/tree/persons/{pid}/matches",
+  "summary": "Read Person Matches by ID",
+  "status": 204,
+  "ctype": "",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Matches",
+  "path": "/tree/persons/{pid}/not-a-match",
+  "summary": "Read Not-a-Match Declarations",
+  "status": 204,
+  "ctype": "",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Relationships: Child and Parents",
+  "path": "/tree/child-and-parents-relationships/{caprid}",
+  "summary": "Read Child and Parents Relationship",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Relationships: Child and Parents",
+  "path": "/tree/users/{uid}/preferred-parent-relationships/{pid}/tree/users/{uid}/preferred-parent-relationships/{pid}",
+  "summary": "Read Preferred Parent Relationship",
+  "status": 404,
+  "ctype": "",
+  "note": "{ \"timestamp\" : 1792933192268, \"status\" : 404, \"error\" : \"Not Found\", \"path\" : \"/tree/users/cis.user"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Relationships: Couple",
+  "path": "/tree/couple-relationships/{crid}",
+  "summary": "Read Couple Relationship",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Relationships: Couple",
+  "path": "/tree/users/{uid}/preferred-spouse-relationships/{pid}",
+  "summary": "Read Preferred Spouse Relationship",
+  "status": 204,
+  "ctype": "",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Relationships",
+  "path": "/tree/persons/{pid}/relationships/{opid}",
+  "summary": "Find Relationship",
+  "status": 204,
+  "ctype": "",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Sources",
+  "path": "/tree/child-and-parents-relationships/{caprid}/source-references",
+  "summary": "Read Child and Parents Source References",
+  "status": 400,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to read TF parent/child relationship ; id=X (upstream 400)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Sources",
+  "path": "/tree/child-and-parents-relationships/{caprid}/sources",
+  "summary": "Read Child and Parents Relationship Sources",
+  "status": 400,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to read TF parent/child relationship ; id=X (upstream 400)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Sources",
+  "path": "/tree/couple-relationships/{crid}/source-references",
+  "summary": "Read Couple Relationship Source References",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Sources",
+  "path": "/tree/couple-relationships/{crid}/sources",
+  "summary": "Read Couple Relationship Sources",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Sources",
+  "path": "/tree/persons/{pid}/sources",
+  "summary": "Read Person Sources",
+  "status": 204,
+  "ctype": "",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Sources",
+  "path": "/tree/source-references",
+  "summary": "Read Source References",
+  "status": 404,
+  "ctype": "",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Sources",
+  "path": "/sources/descriptions/{sdid}",
+  "summary": "Read Source Description",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Notes",
+  "path": "/tree/child-and-parents-relationships/{caprid}/notes/{nid}",
+  "summary": "Read Child and Parents Relationship Note",
+  "status": 400,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to read TF note X for parentChild entity X (upstream 400)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Notes",
+  "path": "/tree/child-and-parents-relationships/{caprid}/notes",
+  "summary": "Read Child and Parents Relationship Notes",
+  "status": 400,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to read TF notes for parentChild entity X (upstream 400)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Notes",
+  "path": "/tree/couple-relationships/{crid}/notes/{nid}",
+  "summary": "Read Couple Relationship Note",
+  "status": 400,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to read TF note X for couple entity X (upstream 400)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Notes",
+  "path": "/tree/couple-relationships/{crid}/notes",
+  "summary": "Read Couple Relationship Notes",
+  "status": 400,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to read TF notes for couple entity X (upstream 400)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Notes",
+  "path": "/tree/persons/{pid}/notes/{nid}",
+  "summary": "Read Person Note",
+  "status": 404,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to read TF note X for person entity BMXM-2HZ (upstream 404)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Notes",
+  "path": "/tree/persons/{pid}/notes",
+  "summary": "Read Person Notes",
+  "status": 204,
+  "ctype": "",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Change History",
+  "path": "/tree/child-and-parents-relationships/{caprid}/changes",
+  "summary": "Read Child and Parents Change History",
+  "status": 200,
+  "ctype": "application/x-gedcomx-atom+json",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Change History",
+  "path": "/tree/couple-relationships/{crid}/changes",
+  "summary": "Read Couple Relationship Change History",
+  "status": 200,
+  "ctype": "application/x-gedcomx-atom+json",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Change History",
+  "path": "/tree/persons/{pid}/changes",
+  "summary": "Read Person Change History",
+  "status": 200,
+  "ctype": "application/x-gedcomx-atom+json",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Portraits",
+  "path": "/tree/persons/{pid}/portrait",
+  "summary": "Read Person Portrait",
+  "status": 204,
+  "ctype": "",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Portraits",
+  "path": "/tree/persons/{pid}/portraits",
+  "summary": "Read Person Portraits",
+  "status": 204,
+  "ctype": "",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Discussions",
+  "path": "/discussions/discussions/{did}",
+  "summary": "Read Discussion",
+  "status": 404,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to read discussion. (upstream 404)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Discussions",
+  "path": "/discussions/discussions/{did}/comments",
+  "summary": "Read Comments",
+  "status": 404,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to read discussion comments. (upstream 404)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Source Box",
+  "path": "/sources/{uid}/collections",
+  "summary": "Read User Source Folders",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Source Box",
+  "path": "/sources/{uid}/collections/descriptions",
+  "summary": "Read User Source Descriptions",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Source Box",
+  "path": "/sources/collections",
+  "summary": "Read Source Folders",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Source Box",
+  "path": "/sources/descriptions",
+  "summary": "Read Current User Source Descriptions",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Source Box",
+  "path": "/sources/collections/{udcid}",
+  "summary": "Read User Defined Collection",
+  "status": 400,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to read collection. (upstream 400)"
+ },
+ {
+  "area": "Family Tree Endpoints",
+  "tag": "Source Box",
+  "path": "/sources/collections/{udcid}/descriptions",
+  "summary": "Read User Defined Collection Descriptions",
+  "status": 400,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to load page of sources from source box. (upstream 400)"
+ },
+ {
+  "area": "Memories Endpoints",
+  "tag": "Memories",
+  "path": "/memories/memories/{mid}",
+  "summary": "Read Memory",
+  "status": 400,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to read artifact description. (upstream 400)"
+ },
+ {
+  "area": "Memories Endpoints",
+  "tag": "Memories",
+  "path": "/memories/memories",
+  "summary": "Read Memories",
+  "status": 204,
+  "ctype": "",
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "tag": "Memories",
+  "path": "/memories/users/{uid}/memories",
+  "summary": "Read User Memories",
+  "status": 204,
+  "ctype": "",
+  "note": ""
+ },
+ {
+  "area": "Memories Endpoints",
+  "tag": "Personas",
+  "path": "/memories/memories/{mid}/personas/{pid}",
+  "summary": "Read Memory Persona",
+  "status": 404,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to read persona. (upstream 404)"
+ },
+ {
+  "area": "Memories Endpoints",
+  "tag": "Personas",
+  "path": "/memories/memories/{mid}/personas",
+  "summary": "Read Memory Personas",
+  "status": 404,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to get personas. (upstream 404)"
+ },
+ {
+  "area": "Memories Endpoints",
+  "tag": "Comments",
+  "path": "/memories/memories/{mid}/comments",
+  "summary": "Read Memory Comments",
+  "status": 400,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to get comments. (upstream 400)"
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Dates",
+  "path": "/dates",
+  "summary": "Standardize Date",
+  "status": 200,
+  "ctype": "text/plain;charset=UTF-8",
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Places",
+  "path": "/places/description/{pdid}/attributes",
+  "summary": "Read Place Description Attributes",
+  "status": 200,
+  "ctype": "application/ld+json",
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Places",
+  "path": "/places/description/{pdid}/children",
+  "summary": "Read Place Children",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Places",
+  "path": "/places/description/{pdid}",
+  "summary": "Read Place Description",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Places",
+  "path": "/places/description/{pdid}/related",
+  "summary": "Read Place Description With Related",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Places",
+  "path": "/places/groups/{pgid}",
+  "summary": "Read Place Descriptions Group",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Places",
+  "path": "/places/description",
+  "summary": "Read Place Descriptions",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Places",
+  "path": "/places/{pid}",
+  "summary": "Read Place",
+  "status": 404,
+  "ctype": "",
+  "note": "{ \"timestamp\" : 1792933207319, \"status\" : 404, \"error\" : \"Not Found\", \"path\" : \"/places/X\" }"
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Places",
+  "path": "/places/search",
+  "summary": "Places Search",
+  "status": 200,
+  "ctype": "application/x-gedcomx-atom+json",
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Places",
+  "path": "/places/type-groups/{ptgid}",
+  "summary": "Read Place Type Group",
+  "status": 404,
+  "ctype": "",
+  "note": "404 Not Found - Failure in upstream call: Unable to read place group type. (upstream 404)"
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Places",
+  "path": "/places/type-groups",
+  "summary": "Read Place Type Groups",
+  "status": 200,
+  "ctype": "application/ld+json",
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Places",
+  "path": "/places/types/{ptid}",
+  "summary": "Read Place Type",
+  "status": 404,
+  "ctype": "",
+  "note": "404 Not Found - Failure in upstream call: Unable to read place type. (upstream 404)"
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Places",
+  "path": "/places/types",
+  "summary": "Read Place Types",
+  "status": 200,
+  "ctype": "application/ld+json",
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Places",
+  "path": "/places/parents",
+  "summary": "Parent Places",
+  "status": 200,
+  "ctype": "application/x-gedcomx-atom+json",
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Places",
+  "path": "/places/{pid}/ischild",
+  "summary": "Check If Place IsChild",
+  "status": 400,
+  "ctype": "",
+  "note": "Method parameter 'pid': Failed to convert value of type 'java.lang.String' to required type 'int'; For input s"
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Names",
+  "path": "/names/script",
+  "summary": "Get Name Script",
+  "status": 200,
+  "ctype": "application/json",
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Names",
+  "path": "/names/segments",
+  "summary": "Segment a Name",
+  "status": 400,
+  "ctype": "",
+  "note": "A name must be provided."
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Vocabularies",
+  "path": "/vocab/concepts/{cvcid}/definition/{locale}",
+  "summary": "Read Vocabulary Concept Definition",
+  "status": 404,
+  "ctype": "",
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Vocabularies",
+  "path": "/vocab/concepts/{cvcid}",
+  "summary": "Read Vocabulary Concept V2",
+  "status": 200,
+  "ctype": "application/ld-v2+json",
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Vocabularies",
+  "path": "/vocab/concepts/search",
+  "summary": "Search Controlled Vocabulary Terms",
+  "status": 200,
+  "ctype": "application/x-gedcomx-atom+json",
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Vocabularies",
+  "path": "/vocab/lists/{cvlid}",
+  "summary": "Read Controlled Vocabulary List",
+  "status": 200,
+  "ctype": "application/ld+json",
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Vocabularies",
+  "path": "/vocab/terms/{cvtid}",
+  "summary": "Read Controlled Vocabulary Term",
+  "status": 200,
+  "ctype": "application/ld+json",
+  "note": ""
+ },
+ {
+  "area": "Standards Endpoints",
+  "tag": "Vocabularies",
+  "path": "/vocab/terms/{cvtid}/translations/{locale}",
+  "summary": "Read Controlled Vocabulary Term Translation",
+  "status": 404,
+  "ctype": "",
+  "note": ""
+ },
+ {
+  "area": "User Endpoints",
+  "tag": "Agent",
+  "path": "/users/agents/{uid}",
+  "summary": "Read Agent",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "User Endpoints",
+  "tag": "Users",
+  "path": "/users/current",
+  "summary": "Read Current User",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "User Endpoints",
+  "tag": "Users",
+  "path": "/users/current/partner-eligible",
+  "summary": "Read Partner Eligibility",
+  "status": 403,
+  "ctype": "",
+  "note": ""
+ },
+ {
+  "area": "User Endpoints",
+  "tag": "Users",
+  "path": "/users/{uid}/history",
+  "summary": "Read User History",
+  "status": 200,
+  "ctype": "application/x-gedcomx-atom+json",
+  "note": ""
+ },
+ {
+  "area": "Utilities Endpoints",
+  "tag": "Utilities",
+  "path": "/pending-modifications",
+  "summary": "Read Pending Modifications",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "User Tree Endpoints",
+  "tag": "Groups",
+  "path": "/groups/{groupid}",
+  "summary": "Read Group",
+  "status": 400,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to read user tree group (upstream 400)"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "tag": "Groups",
+  "path": "/groups",
+  "summary": "Read User's Groups",
+  "status": 204,
+  "ctype": "",
+  "note": ""
+ },
+ {
+  "area": "User Tree Endpoints",
+  "tag": "Trees",
+  "path": "/trees/{tid}/persons",
+  "summary": "Read User Tree Person Ids",
+  "status": 400,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to get user tree person ids (upstream 400)"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "tag": "Trees",
+  "path": "/trees/{tid}/matches",
+  "summary": "Read Tree Matches",
+  "status": 500,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to retrieve matches for tree; id = X (upstream 500)"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "tag": "Trees",
+  "path": "/trees/{tid}",
+  "summary": "Read Tree",
+  "status": 400,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to read user tree (X) (upstream 400)"
+ },
+ {
+  "area": "User Tree Endpoints",
+  "tag": "Trees",
+  "path": "/trees/current",
+  "summary": "Read Current Tree Id",
+  "status": 200,
+  "ctype": "application/x-fs-v1+json",
+  "note": ""
+ },
+ {
+  "area": "User Tree Endpoints",
+  "tag": "Change History",
+  "path": "/trees/{tid}/changes",
+  "summary": "Read Tree Changes",
+  "status": 400,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to Read TF Tree Change History (upstream 400)"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "tag": "Person",
+  "path": "/genealogies/persons/{pid}",
+  "summary": "Read Genealogies Person",
+  "status": 400,
+  "ctype": "",
+  "note": "Invalid prefix for genealogies: (BMXM-2HZ)"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "tag": "Person",
+  "path": "/genealogies/trees/{tid}/persons",
+  "summary": "Read Genealogies Persons",
+  "status": 500,
+  "ctype": "",
+  "note": "Range [0, 4) out of bounds for length 1"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "tag": "Sources",
+  "path": "/genealogies/sources/{sdid}",
+  "summary": "Read Genealogies Source Description",
+  "status": 400,
+  "ctype": "",
+  "note": "Invalid prefix for genealogies: (X)"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "tag": "Matches",
+  "path": "/genealogies/persons/{gpids}/bulkmatches",
+  "summary": "Read Genealogies Bulk Matches",
+  "status": 400,
+  "ctype": "",
+  "note": "Failure in upstream call: Unable to fetch match resolutions. (upstream 400)"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "tag": "Matches",
+  "path": "/genealogies/persons/{pid}/matches",
+  "summary": "Read Genealogies Person Matches",
+  "status": 400,
+  "ctype": "",
+  "note": "Invalid prefix for genealogies: (BMXM-2HZ)"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "tag": "Notes",
+  "path": "/genealogies/notes/{nid}",
+  "summary": "Read Genealogies Note",
+  "status": 400,
+  "ctype": "",
+  "note": "Invalid prefix for genealogies: (X)"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "tag": "Trees",
+  "path": "/genealogies/trees/{tid}",
+  "summary": "Read Genealogies Tree",
+  "status": 500,
+  "ctype": "",
+  "note": "Range [0, 4) out of bounds for length 1"
+ },
+ {
+  "area": "Genealogies Endpoints",
+  "tag": "Trees",
+  "path": "/genealogies/trees",
+  "summary": "Read Genealogies Trees",
+  "status": 204,
+  "ctype": "",
+  "note": ""
+ }
+]
