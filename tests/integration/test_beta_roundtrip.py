@@ -17,6 +17,10 @@ from familysearch import (
 if not (os.environ.get("FS_BETA_TOKEN") or os.environ.get("FS_USE_BRAVE") == "1"):
     pytest.skip("no beta token (FS_BETA_TOKEN or FS_USE_BRAVE=1)", allow_module_level=True)
 
+from _tracker import (  # noqa: E402
+    CHILD_AND_PARENTS_PATH, COUPLE_PATH, MEMORY_PATH, verified_delete,
+)
+
 REASON = "ZZSPIKE automated integration test"
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
@@ -48,17 +52,27 @@ class Cleanup:
         self.persons.append(pid)
         return pid
 
+    def _verified(self, label, path, delete, *, verify=True):
+        url = self.client.base_url + path
+        verified_delete(label, (lambda: self.client.get(url)) if verify else None,
+                        delete, self.errors, delete_404_ok=not verify)
+
     def run(self):
+        # Teardown VERIFIES deletion by read-back; a tolerated 404 once hid a wrong URL.
         for rid in reversed(self.child_and_parents):
-            self._try(lambda r=rid: self.writer.delete_child_and_parents(r, reason=REASON),
-                      f"child-and-parents {rid}")
+            self._verified(f"child-and-parents {rid}", join_path(CHILD_AND_PARENTS_PATH, rid),
+                           lambda r=rid: self.writer.delete_child_and_parents(r, reason=REASON))
         for rid in reversed(self.couples):
-            self._try(lambda r=rid: self.writer.delete_couple(r, reason=REASON),
-                      f"couple {rid}")
+            self._verified(f"couple {rid}", join_path(COUPLE_PATH, rid),
+                           lambda r=rid: self.writer.delete_couple(r, reason=REASON))
         for url in reversed(self.source_urls):
-            self._try(lambda u=url: self.client.delete(u, reason=REASON), f"source {url}")
+            # Source-description GET Accept is not established: DELETE-only, 404 ok.
+            verified_delete(f"source {url}", None,
+                            lambda u=url: self.client.delete(u, reason=REASON),
+                            self.errors, delete_404_ok=True)
         for mid in reversed(self.memory_ids):
-            self._try(lambda m=mid: self.memories.delete(m, reason=REASON), f"memory {mid}")
+            self._verified(f"memory {mid}", join_path(MEMORY_PATH, mid),
+                           lambda m=mid: self.memories.delete(m, reason=REASON))
         for pid in reversed(self.persons):
             self._try(lambda p=pid: self.writer.delete_person(p, reason=REASON), f"person {pid}")
 

@@ -121,12 +121,17 @@ def test_create_parent_child_validates_parent_count(parents):
     assert len(responses.calls) == 0
 
 
+COUPLE = BASE + "/platform/tree/couple-relationships"
+
+
 @responses.activate
-def test_delete_couple_uses_relationships_rel_path():
-    responses.add(responses.DELETE, RELS + "/R-1" + Q, status=204)
+def test_delete_couple_uses_couple_relationships_resource():
+    responses.add(responses.DELETE, COUPLE + "/R-1", status=204)
     assert _writer().delete_couple("R-1", reason="cleanup") is None
-    assert _path_query(0) == ("/platform/tree/relationships/R-1", "flag=fsh")
-    assert responses.calls[0].request.headers["X-Reason"] == "cleanup"
+    req = responses.calls[0].request
+    assert req.url == COUPLE + "/R-1" and req.method == "DELETE"
+    assert "/platform/tree/relationships/" not in req.url
+    assert req.headers["X-Reason"] == "cleanup"
 
 
 @responses.activate

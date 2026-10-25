@@ -107,14 +107,14 @@ For every capability, on beta, with a freshly lifted token:
 | Record (document) search | `GET /service/search/hr/v2/personas` | `q.*` params; paginated via `links.next.href` | 200 |
 | Create person | `POST` the `persons` rel | `{"persons":[<person>]}` | 201 (id in `X-ENTITY-ID`) |
 | Add fact to existing person | `POST /platform/tree/persons/{id}` (the person resource itself) | `{"persons":[{"facts":[<fact>]}]}` | 200 |
-| Couple relationship | `POST` the `relationships` rel | `{"relationships":[{"type":"http://gedcomx.org/Couple","person1":{resource,resourceId},"person2":{…}}]}` | 201 |
+| Couple relationship | `POST` the `relationships` rel (the creation collection ONLY; the created resource is `<base>/platform/tree/couple-relationships/{id}`, per the `Location` header: GET 200, DELETE 204) | `{"relationships":[{"type":"http://gedcomx.org/Couple","person1":{resource,resourceId},"person2":{…}}]}` | 201 |
 | Parent-child relationship | `POST` the `relationships` rel, ONE request holding BOTH parents | `{"childAndParentsRelationships":[{"parent1":{resource,resourceId},"parent2":{…},"child":{…}}]}` (omit `parent2` for a single parent; `resource` URIs are clean, no query string) | 201 (id in `X-ENTITY-ID`; `Location` is `<base>/platform/tree/child-and-parents-relationships/{id}`). Read-back: the child's `parents` link lists both parents; its `spouses`/`children` are 204; the two parents list each other as `spouse` (FamilySearch derives the couple from a two-parent relationship) |
-| Delete couple relationship | `DELETE <relationships rel>/{id}` | — | 204 |
+| Delete couple relationship | `DELETE <base>/platform/tree/couple-relationships/{id}` (not a discovery rel; `<relationships rel>/{id}` is 404 for GET and DELETE) | — | 204; afterwards the person's `spouses` link is 204 (empty) |
 | Delete child-and-parents relationship | `DELETE <base>/platform/tree/child-and-parents-relationships/{id}` (not a discovery rel; learned from the POST's `Location`) | — | 204 (`<relationships rel>/{id}` is 404 for these ids) |
 | Upload memory (standalone, "floating") | `POST` the `artifacts` rel | multipart `files={"artifact":(name,bytes,type)}` + `filename`/`title` params | 201 (id in `X-ENTITY-ID`) |
 | Upload memory AND attach to a person (one step) | `POST` the PERSON's own `artifacts` link (`person_links(pid)["artifacts"]`, `…/persons/{pid}/memories?flag=fsh`) | same multipart as above | 201 (id in `X-ENTITY-ID`; `Location` is `…/persons/{pid}/memory-references/{memId}-{n}`). Read-back: GET that link lists the memory |
 | Attach an EXISTING memory to another person | `POST <base>/platform/memories/memories/{memId}/personas` | `{"persons":[{"media":[{"description":"<base>/platform/memories/memories/{memId}"}],"identifiers":{"http://familysearch.org/v1/FamilyTreePerson":["<base>/ark:/61903/4:1:{PID}"]}}]}` | 201 (persona id `{memId}-{n}` in `X-ENTITY-ID`). Read-back: both persons' memory lists contain the one memory |
-| Person matches | `GET` the person's `matches` rel with `Accept: application/x-gedcomx-atom+json` | — | 200 with `entries`, or 204 with no body when none (`x-fs-v1+json` and `x-gedcomx-v1+json` give 406) |
+| Person matches | `GET` the person's `matches` rel with `Accept: application/x-gedcomx-atom+json` | — | 200 with `entries`, or 204 with no body when none (`x-fs-v1+json` and `x-gedcomx-v1+json` give 406). Entries (verified live on a pre-existing person) carry `confidence` (up to 5), `content.gedcomx.persons[0].display`, `matchInfo` and `score` |
 | Create source description | `POST` the `source-descriptions` rel | `{"sourceDescriptions":[{"about":…,"titles":[{"value":…}],"citations":[{"value":…}]}]}` | 201 |
 | Attach source → person | `POST /platform/tree/persons/{id}` (the person resource itself) | `{"persons":[{"sources":[{"description": <descUrl>}]}]}` | 200 |
 | Delete person | `DELETE /platform/tree/persons/{id}` | — | 204 |
@@ -153,10 +153,20 @@ throttled (see `FSClient`).
   are fine. `Search.tree_search` normalizes via `normalize_search_date` (single
   distinct year -> that year; zero or several -> parameter omitted).
 - **Tree-search `confidence` is a small integer.** Measured on beta 2026-10-24: junk
-  names get 2 on every hit (fuzzy/phonetic noise); real existing people get 3-4. The
+  names get 2 on every hit (fuzzy/phonetic noise); real existing people get 3-4
+  (values from 2 to 5 have been observed). The
   MCP `create_person` match gate blocks only at confidence >= 3 (`MATCH_CONFIDENCE_MIN`).
 - **The auth probe must send a browser `User-Agent`**: python-requests' default gets an
   HTTP 403 from the edge on both hosts.
+
+## 6b. Teardown must verify deletion
+
+Teardown must VERIFY deletion by read-back, never blanket-tolerate 404: a tolerated 404
+hid a wrong delete URL (`delete_couple` hit `<relationships rel>/{id}`, which is 404;
+the suites stayed green because deleting the persons cascaded). The live trackers GET
+each relationship/memory first (404/410 = already gone), DELETE (non-2xx is an error),
+and GET again, requiring 404/410. Source descriptions are the one DELETE-only exception
+(their GET Accept is not established).
 
 ## 6a. Corrections (2026-10-24)
 
@@ -166,7 +176,8 @@ The earlier catalogue entries for **parent-child** (`relationships` + type
 read-back on beta showed the parent-child POST created COUPLE links between the child
 and each parent (child: parents `[]`, spouses `[dad, mom]`), and the memory link
 created nothing (the person's memory list stayed empty). Both were corrected after
-that read-back; `get_matches` (HTTP 406 without the atom `Accept`) was fixed in the
+that read-back; `delete_couple` was corrected the same way on 2026-10-24 (the couple
+resource is `/platform/tree/couple-relationships/{id}`); `get_matches` (HTTP 406 without the atom `Accept`) was fixed in the
 same pass. The unit tests passed throughout because they only asserted the request we
 sent, never the resulting state: hence the methodology rule at the top.
 

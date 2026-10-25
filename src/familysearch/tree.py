@@ -68,6 +68,9 @@ class TreeReader:
 
 GX = "http://gedcomx.org/"
 # Not a discovery rel: learned from the Location header of a child-and-parents POST.
+# Likewise the couple resource (the `relationships` rel is only the creation collection;
+# DELETE/GET there is 404): learned from the Location header of a couple POST.
+COUPLE_PATH = "/platform/tree/couple-relationships"
 CHILD_AND_PARENTS_PATH = "/platform/tree/child-and-parents-relationships"
 
 
@@ -130,7 +133,7 @@ class TreeWriter:
         return _new_id(resp)
 
     def delete_couple(self, relationship_id: str, *, reason: str) -> None:
-        url = join_path(self._discovery.href("relationships"), relationship_id)
+        url = join_path(self._client.base_url + COUPLE_PATH, relationship_id)
         self._client.delete(url, reason=reason)
 
     def delete_child_and_parents(self, relationship_id: str, *, reason: str) -> None:
