@@ -39,12 +39,21 @@ def reg_path(tmp_path):
 class FakeBeta:
     """Persons as id -> {"name", "deleted"}.
 
-    ``ignore`` names the write to no-op ("create", "delete", "restore"), or breaks a read:
-    "search" hits for any surname, "unknown-id" reads any id as 200.
+    ``ignore`` names the write to no-op ("create", "delete", "restore"), or "search" to
+    hit for any surname. ``unknown_status`` is how an id with no person reads (200 makes a
+    catch-all). ``restore_needs_body`` answers a bodiless restore 415, as the FS JSON
+    content type may be required. ``display`` formats a stored name for ``display.name``.
+    Search answers 400 without ``flag=fst``, as recon observed.
     """
 
-    def __init__(self, ignore=None):
+    def __init__(self, ignore=None, *, unknown_status=404, restore_needs_body=False,
+                 display=lambda name: name):
         self.ignore = ignore
+        self.unknown_status = unknown_status
+        self.restore_needs_body = restore_needs_body
+        self.display = display
+        self.restore_bodies: list = []
+        self.search_params: list[dict] = []
         self.persons: dict[str, dict] = {}
         self._ids = (f"PL{n:02d}-ZZZ" for n in itertools.count(1))
         self.calls: list[str] = []
@@ -71,6 +80,9 @@ class FakeBeta:
 
     def search(self, request):
         self.calls.append("search")
+        self.search_params.append(dict(request.params))
+        if request.params.get("flag") != "fst":
+            return 400, {}, "flag=fst required"
         surname = request.params.get("q.surname", "")
         if self.ignore == "search":  # search hits for anything: the marker "pre-exists"
             return 200, {"Content-Type": "application/x-gedcomx-atom+json"}, json.dumps(
@@ -99,14 +111,14 @@ class FakeBeta:
         self.calls.append("read")
         pid = self._pid(request)
         person = self.persons.get(pid)
-        if person is None and self.ignore == "unknown-id":
+        if person is None and self.unknown_status == 200:
             person = {"name": "Somebody", "deleted": False}
         if person is None:
-            return 404, {}, ""
+            return self.unknown_status, {}, ""
         if person["deleted"]:
             return 410, {}, ""
         return 200, JSON, json.dumps({"persons": [
-            {"id": pid, "living": False, "display": {"name": person["name"]}}]})
+            {"id": pid, "living": False, "display": {"name": self.display(person["name"])}}]})
 
     def delete(self, request):
         self.calls.append("delete")
@@ -119,7 +131,14 @@ class FakeBeta:
 
     def restore(self, request):
         self.calls.append("restore")
-        assert not request.body  # least-assuming: a bare POST
+        self.restore_bodies.append(request.body)
+        if self.restore_needs_body:
+            if not request.body:
+                return 415, {}, "Unsupported Media Type"
+            assert json.loads(request.body) == {}
+            assert request.headers["Content-Type"] == "application/x-fs-v1+json"
+        else:
+            assert not request.body  # least-assuming: a bare POST
         person = self.persons.get(self._pid(request))
         if person is None:
             return 404, {}, ""
@@ -203,14 +222,52 @@ def test_person_create_read_fails_when_marker_already_present(reg_path):
     assert reg_path.read_bytes() == raw
 
 
+@pytest.mark.parametrize("status", [400, 404, 410])
+@responses.activate
+def test_person_create_read_accepts_not_found_statuses(reg_path, status):
+    """400 also proves readPerson is not a catch-all."""
+    FakeBeta(unknown_status=status).install()
+    result, _ = run("family_tree.person_create_read", reg_path)
+    assert result["passed"] is True, result
+
+
 @responses.activate
 def test_person_create_read_fails_when_unknown_ids_read_ok(reg_path):
     """A catch-all server (any id reads 200) is refused."""
-    FakeBeta(ignore="unknown-id").install()
+    FakeBeta(unknown_status=200).install()
     raw = reg_path.read_bytes()
     result, _ = run("family_tree.person_create_read", reg_path)
     assert result["passed"] is False
     assert any("ZZZZ-ZZZ" in p for p in result["problems"])
+    assert reg_path.read_bytes() == raw
+
+
+@responses.activate
+def test_person_create_read_sends_the_proven_search_shape(reg_path):
+    fake = FakeBeta().install()
+    result, ctx = run("family_tree.person_create_read", reg_path)
+    assert result["passed"] is True, result
+    assert fake.search_params == [{"flag": "fst", "q.givenName": "ZZSPIKE Pilot",
+                                   "q.surname": ctx.unique, "count": "20"}]
+    search = next(c.request for c in responses.calls if "/tree/search" in c.request.url)
+    assert search.headers["Accept"] == "application/x-gedcomx-atom+json"
+
+
+@responses.activate
+def test_person_create_read_accepts_a_differently_formatted_display_name(reg_path):
+    """display.name need only contain the marker (beta may format names its own way)."""
+    FakeBeta(display=lambda name: name.replace("ZZSPIKE Pilot ", "") + ", Pilot").install()
+    result, _ = run("family_tree.person_create_read", reg_path)
+    assert result["passed"] is True, result
+
+
+@responses.activate
+def test_person_create_read_fails_when_display_name_lacks_marker(reg_path):
+    FakeBeta(display=lambda name: "Somebody Else").install()
+    raw = reg_path.read_bytes()
+    result, _ = run("family_tree.person_create_read", reg_path)
+    assert result["passed"] is False
+    assert any("negative control failed" in p for p in result["problems"])
     assert reg_path.read_bytes() == raw
 
 
@@ -228,6 +285,34 @@ def test_person_delete_restore_passes_and_records(reg_path):
     assert fake.calls.count("delete") == 2 and fake.calls.count("restore") == 1
     assert [p["deleted"] for p in fake.persons.values()] == [True]
     _assert_verified(reg_path, "family_tree.person_delete_restore")
+
+
+@responses.activate
+def test_person_delete_restore_sends_a_bare_restore_first(reg_path):
+    fake = FakeBeta().install()
+    assert run("family_tree.person_delete_restore", reg_path)[0]["passed"] is True
+    assert [b or None for b in fake.restore_bodies] == [None]
+
+
+@responses.activate
+def test_person_delete_restore_retries_once_with_empty_json_on_415(reg_path):
+    fake = FakeBeta(restore_needs_body=True).install()
+    result, _ = run("family_tree.person_delete_restore", reg_path)
+    assert result["passed"] is True, result
+    assert [b or None for b in fake.restore_bodies] == [None, b"{}"]
+    _assert_verified(reg_path, "family_tree.person_delete_restore")
+
+
+@responses.activate
+def test_person_delete_restore_does_not_retry_other_errors(reg_path):
+    fake = FakeBeta().install()
+    responses.replace(responses.POST, re.compile(re.escape(PERSONS) + r"/([^/?]+)/restore$"),
+                      status=500)
+    raw = reg_path.read_bytes()
+    result, _ = run("family_tree.person_delete_restore", reg_path)
+    assert result["passed"] is False
+    assert sum("/restore" in c.request.url for c in responses.calls) == 1
+    assert fake.restore_bodies == [] and reg_path.read_bytes() == raw
 
 
 @pytest.mark.parametrize("ignore", ["delete", "restore"])
