@@ -6,8 +6,8 @@ recon recorded (docs/superpowers/recon/2026-10-25-api-surface/shapes.json) and t
 runs: relative lists answer 204 when empty, ``readPersons`` needs ``pids`` and answers
 an unknown one 204, search (over real beta data, with the canary) answers 400 to no
 parameter at all, change histories are atom feeds whose links carry the person id. For
-the Task 4 reads it also keeps the relationships' records, feeds and notes, the person note, the source
-(description, the child's reference to it, the user's source box) and the memory; only the
+the Task 4 reads it also keeps the relationships' records, feeds and notes, the person
+note, the source (description, the child's reference to it) and the memory; only the
 child has a note, a source and a memory, so the dad's lists answer 204 as in the recon. The
 registered recipe objects run through the real ``run_recipe`` with the fixture world
 replaced (``tools.verify.world.World``) by one that serves the fake's ids and names; each
@@ -95,7 +95,9 @@ class FakeTree:
     answers the couple's resources with the child-and-parents' and back;
     ``pedigree_swap`` answers ancestry with the descendancy and back; ``ignore_nid``
     answers a single-note read with the owner's note whatever the id; ``ignore_sdids``
-    answers readSourceDescriptions with the whole source box.
+    answers readSourceDescriptions with the whole source box; ``wrong_location`` answers
+    a source description's HEAD (which, as on beta, carries no validator) with another
+    description's Content-Location.
     """
 
     def __init__(self, mode=None, *, relationship_lag=0, search_lie=None, reference_lag=0):
@@ -190,6 +192,12 @@ class FakeTree:
     def _answer(self, request, status, body=None, content_type=FS_JSON):
         path = urlsplit(request.url).path
         headers = {"ETag": self._etag(path)}
+        if path.startswith("/platform/sources/descriptions/"):
+            # Live run 2: a source description's HEAD and GET carry no validator, only
+            # where the description lives.
+            headers = {"Content-Location": f"{path}?flag=fsh"}
+            if request.method == "HEAD" and self.mode == "wrong_location":
+                headers = {"Content-Location": "/platform/sources/descriptions/SDZZ-OTH"}
         if request.method == "HEAD":
             if self.mode == "stale_head":
                 headers["ETag"] = '"stale-0"'
@@ -356,7 +364,9 @@ class FakeTree:
         if "description" not in query:  # recon: 404 without a parameter
             return self._answer(request, 404, {"errors": [{"code": 404}]})
         if query["description"] != SOURCE[0]:
-            return self._unknown(request)  # documented: unknown description, 404
+            if self.mode == "catch_all":
+                return self._unknown(request)
+            return self._answer(request, 204)  # live run 2: unknown description, empty
         if self._lagging("references"):
             return self._answer(request, 204)  # documented: "no results" (yet)
         role = "dad" if self.mode == "other_record" else "child"
@@ -384,13 +394,6 @@ class FakeTree:
     def source_box(self):
         stranger = {"id": "SDZZ-BOX", "titles": [{"value": "an older source"}]}
         return [stranger, self.description()]
-
-    def user_source_descriptions(self, request):
-        uid = urlsplit(request.url).path.split("/platform/sources/", 1)[1].split("/")[0]
-        if uid != rtr.CURRENT_USER:
-            return self._unknown(request)
-        return self._list(request, {"sourceDescriptions": self.source_box(),
-                                    "links": {"self": {"href": request.url}}})
 
     def search(self, request):
         """Beta's tree search over real data, as probed: the canary is the best hit for
@@ -430,8 +433,6 @@ class FakeTree:
         references = re.compile(re.escape(TREE + "/source-references") + r"(\?.*)?$")
         descriptions = re.compile(re.escape(BETA + "/platform/sources/descriptions")
                                   + r"(/[^?]*)?(\?.*)?$")
-        box = re.compile(re.escape(BETA + "/platform/sources/") + r"[^/]+/collections/"
-                         r"descriptions(\?.*)?$")
         for method in (responses.GET, responses.HEAD):
             responses.add_callback(method, persons_list, callback=self.persons)
             responses.add_callback(method, person, callback=self.person_route)
@@ -440,7 +441,6 @@ class FakeTree:
             responses.add_callback(method, pedigree, callback=self.pedigree)
             responses.add_callback(method, references, callback=self.source_references)
             responses.add_callback(method, descriptions, callback=self.source_descriptions)
-            responses.add_callback(method, box, callback=self.user_source_descriptions)
 
 
 @pytest.fixture
@@ -749,9 +749,9 @@ def test_source_queries_send_the_fixture_ids_and_anchor_on_what_comes_back(
     urls = [c.request.url for c in responses.calls]
     assert f"{TREE}/source-references?description={SOURCE[0]}" in urls
     assert f"{BETA}/platform/sources/descriptions?sdids={SOURCE[0]}" in urls
-    # The signed-in user's box by the spec's literal, not a world value.
-    assert rtr.CURRENT_USER not in FakeWorld(None, None, "", "").ids.values()
-    assert f"{BETA}/platform/sources/current/collections/descriptions" in urls
+    # Live run 2: beta ignores the uid of the user's source box, so no control exists.
+    assert "readUserSourceDescriptions" in rtr.DEFERRED
+    assert not any("/collections/descriptions" in u for u in urls)
 
 
 def test_only_the_person_to_source_reads_poll():
@@ -759,9 +759,31 @@ def test_only_the_person_to_source_reads_poll():
     assert polled == {"readPersonSources", "readSourceReferences"}
     empty_controls = {c.op for cases in RELATION_CASES.values() for c in cases
                       if c.control_may_be_empty}
-    assert empty_controls == {"readSourceDescriptions"}
-    case = next(c for c in rtr.SOURCE_QUERIES_CASES if c.op == "readSourceDescriptions")
-    assert "204" in case.control_may_be_empty and case.anchors
+    assert empty_controls == {"readSourceDescriptions", "readSourceReferences"}
+    for case in rtr.SOURCE_QUERIES_CASES:
+        assert "204" in case.control_may_be_empty and case.anchors
+    # The one HEAD without validators on beta, and only it, proves existence only.
+    optional = {c.op for cases in RELATION_CASES.values() for c in cases
+                if c.validators_optional}
+    assert optional == {"readSourceDescriptionHead"}
+
+
+@responses.activate
+def test_unknown_description_control_is_an_empty_answer(reg_path, fake_world):
+    result, _tree = run("reads.tree.source_queries", reg_path)
+    assert result["passed"] is True, result["problems"]
+    [control] = [c for c in responses.calls if c.request.url.endswith(
+        f"/source-references?description={rtr.NO_SUCH_SOURCE}")]
+    assert control.response.status_code == 204 and not control.response.text
+
+
+@responses.activate
+def test_source_head_passes_on_existence_without_validators(reg_path, fake_world):
+    result, _tree = run("reads.tree.sources", reg_path)
+    assert result["passed"] is True, result["problems"]
+    heads = [c.response for c in responses.calls if c.request.method == "HEAD"]
+    assert heads and not any("ETag" in h.headers for h in heads)
+    assert all("Content-Location" in h.headers for h in heads)
 
 
 @responses.activate
@@ -797,8 +819,8 @@ RELATION_LIES = {
                            "reads.tree.couple_notes", "reads.tree.child_and_parents_notes"},
     "catch_all": RELATION_RECIPES,
     "empty": RELATION_RECIPES,
-    "stale_head": {"reads.tree.relationships", "reads.tree.relationship_history",
-                   "reads.tree.sources"},
+    "stale_head": {"reads.tree.relationships", "reads.tree.relationship_history"},
+    "wrong_location": {"reads.tree.sources"},
     "pedigree_swap": {"reads.tree.pedigree"},
     "ignore_nid": {"reads.tree.notes", "reads.tree.couple_notes",
                    "reads.tree.child_and_parents_notes"},
@@ -813,6 +835,8 @@ RELATION_CAUGHT_BY = {
     "catch_all": ("not-found control answered 200",),
     "empty": ("positive call answered 204",),
     "stale_head": ("validator",),
+    "wrong_location": ("readSourceDescriptionHead: HEAD and readSourceDescription answer "
+                       "another Content-Location",),
     "pedigree_swap": ("anchor",),
     "ignore_nid": ("not-found control answered 200",),
     "ignore_sdids": ("not the requested",),
@@ -833,12 +857,12 @@ def test_relation_recipe_fails_when_the_fake_lies(mode, name, reg_path, fake_wor
 
 @responses.activate
 def test_every_head_case_fails_on_a_stale_validator(reg_path, fake_world):
-    # Each HEAD (not only one per recipe) is judged against its own GET's validator.
+    # Each HEAD (not only one per recipe) is judged against its own GET's validator,
+    # except the source description's, which beta answers without one (existence only).
     heads = {c.op for cases in RELATION_CASES.values() for c in cases
-             if OPERATIONS[c.op].http_method == "HEAD"}
+             if OPERATIONS[c.op].http_method == "HEAD" and not c.validators_optional}
     failed = set()
-    for name in ("reads.tree.relationships", "reads.tree.relationship_history",
-                 "reads.tree.sources"):
+    for name in ("reads.tree.relationships", "reads.tree.relationship_history"):
         result, _tree = run(name, reg_path, "stale_head")
         problems = "\n".join(result["problems"])
         failed |= {op for op in heads if f"{op}: HEAD and" in problems}

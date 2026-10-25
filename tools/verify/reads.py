@@ -36,6 +36,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from functools import cache
 from types import MappingProxyType
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
 from familysearch.api import OPERATIONS
 from familysearch.api._runtime import ApiResult
@@ -130,6 +131,16 @@ class ReadCase:
     answer for the unknown id is a real "nothing", not a server that answers 204 to
     everything.
 
+    ``validators_optional`` (a non-empty reason citing the live headers; HEAD with
+    ``compare_with`` only) is for a HEAD whose answer and GET carry no ETag,
+    Last-Modified or Content-Length (beta's readSourceDescriptionHead). The
+    validator match is then replaced by: the sibling GET still passes with its anchors
+    and ``expect``; the HEAD still answers a documented success; if both carry
+    ``Content-Location``, their paths are equal; no validator both carry disagrees; and
+    the HEAD's not-found control still must error. This proves existence semantics only
+    (success for the fixture, not-found for an unknown id), not that HEAD describes the
+    same representation as the GET.
+
     ``eventual`` = ``(max_attempts, seconds_between)`` repeats the positive call (never
     the control) while it answers 204, no content, or lacks an anchor, for a server
     that computes something lazily for fixtures created a moment ago (findRelationship
@@ -157,6 +168,7 @@ class ReadCase:
     literal_anchors: tuple[str, ...] = ()
     control_may_be_empty: str | None = None
     eventual: tuple[int, float] | None = None
+    validators_optional: str | None = None
 
 
 # ------------------------------------------------------------------ the world
@@ -540,13 +552,27 @@ def _sibling_get(ctx: VerifyContext, case: ReadCase, head: ApiResult, args: dict
     problem = media_type_problem(spec, accept, got.content_type)
     if problem:
         raise AssertionError(f"sibling {case.compare_with}: {problem}")
-    for name in _VALIDATORS:
-        h, g = _header(head, name), _header(got, name)
-        if h and g and _validator(h) == _validator(g):
-            return got
+    shapes = f"HEAD {skeleton(head, headers=True)} | GET {skeleton(got, headers=True)}"
+    both = [(name, _header(head, name), _header(got, name)) for name in _VALIDATORS]
+    both = [(name, h, g) for name, h, g in both if h and g]
+    if any(_validator(h) == _validator(g) for _name, h, g in both):
+        return got
+    if case.validators_optional and not both:
+        # Existence semantics only (see ReadCase): no validator to compare, none that
+        # disagrees; the location, where both give one, must be the same resource.
+        h, g = _header(head, "Content-Location"), _header(got, "Content-Location")
+        if h and g and _location(h) != _location(g):
+            raise ContentFailure(
+                f"HEAD and {case.compare_with} answer another Content-Location", shapes)
+        return got
     raise ContentFailure(
         f"HEAD and {case.compare_with} share no equal validator ({', '.join(_VALIDATORS)})",
-        f"HEAD {skeleton(head, headers=True)} | GET {skeleton(got, headers=True)}")
+        shapes)
+
+
+def _location(value: str) -> str:
+    """A Content-Location's path (host and query dropped, as beta adds ``?flag=``)."""
+    return urlsplit(value.strip()).path.rstrip("/")
 
 
 def _sibling_accept(case: ReadCase) -> str | None:
@@ -826,6 +852,13 @@ def _content_problems(case: ReadCase, spec: OpSpec) -> list[str]:
                             f"of {spec.path}")
     elif case.compare_with is not None:
         problems.append(f"{op}: compare_with is for HEAD cases only")
+    optional = case.validators_optional
+    if optional is not None:
+        if not (isinstance(optional, str) and optional.strip()):
+            problems.append(f"{op}: validators_optional must be a non-empty reason")
+        if spec.http_method != "HEAD" or case.compare_with is None:
+            problems.append(f"{op}: validators_optional is only for a HEAD case with "
+                            "compare_with")
     if spec.http_method == "OPTIONS":
         if not callable(case.contrast_args):
             problems.append(f"{op}: an OPTIONS case needs contrast_args (other ids whose "

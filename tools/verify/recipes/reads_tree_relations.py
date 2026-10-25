@@ -35,14 +35,18 @@ from .reads_tree_persons import (
 NO_SUCH_RELATIONSHIP = NO_SUCH_PERSON
 NO_SUCH_SOURCE = NO_SUCH_PERSON
 NO_SUCH_NOTE = "00000000-0000-4000-8000-000000000000"  # note ids are UUIDs (recon)
-NO_SUCH_USER = "cis.user.ZZZZ-ZZZZ"
-# The spec's own example for the signed-in user's source box (readUserSourceDescriptions):
-# a literal, not a world value (the world keeps the shared user id out of its values).
-CURRENT_USER = "current"
 # Live (Task 4 run 1): right after the attach, the child's source-references answered 404,
 # so the person -> source link may lag; the reads that follow it poll (an error is never
 # retried, only an empty or anchor-less answer).
 REFERENCE_EVENTUAL = (8, 5.0)
+UNKNOWN_DESCRIPTION_EMPTY = (
+    "beta answers readSourceReferences for an unknown description (ZZZZ-ZZZ) with an "
+    "empty 204 (Task 4 live run 2), not the spec's 404; it counts only because the "
+    "positive call in the same recipe named the child, which the request did not send")
+SOURCE_HEAD_NO_VALIDATORS = (
+    "beta answers readSourceDescriptionHead with no ETag, Last-Modified or Content-Length "
+    "(Task 4 live run 2: Cache-Control, Content-Location, Date, Vary, Via, X-* only), and "
+    "its GET (chunked, content-encoded) carries none either: existence semantics only")
 NO_MATCHING_SDIDS_EMPTY = (
     "the spec documents 204 for readSourceDescriptions when 'no source descriptions "
     "matched provided ids', so an unknown sdid (ZZZZ-ZZZ) is an empty answer, not an "
@@ -83,6 +87,12 @@ DEFERRED: dict[str, str] = {
         "lists the user's source folders, which carry no fixture value: the world creates "
         "no folder (createUserDefinedCollection is an unverified write), and the uid path "
         "parameter rules out an anchor-free case"),
+    "readUserSourceDescriptions": (
+        "beta ignores or does not validate the uid path segment: with uid=current the "
+        "positive call listed the fixture source, but the control uid=cis.user.ZZZZ-ZZZZ "
+        "answered 200 too (Task 4 live run 2), so a not-found control is impossible; a "
+        "control that must differ in content rather than error is not supported by the "
+        "framework"),
     "readUserDefinedCollection": (
         "needs a user-defined collection id; creating one is an unverified write, and "
         "path args come only from the world, so the default folder's id (listed by "
@@ -355,7 +365,8 @@ SOURCES_CASES = (
              needs=("source",)),
     ReadCase(op="readSourceDescriptionHead", path_args=_arg("sdid", "source_description"),
              compare_with="readSourceDescription", missing={"sdid": NO_SUCH_SOURCE},
-             expect=_SOURCE, anchors=(_title(),), needs=("source",)),
+             expect=_SOURCE, anchors=(_title(),), needs=("source",),
+             validators_optional=SOURCE_HEAD_NO_VALIDATORS),
 )
 SOURCES = reads_recipe("reads.tree.sources", SOURCES_CASES)
 
@@ -366,7 +377,7 @@ SOURCE_QUERIES_CASES = (
              query=lambda w: {"description": w.ids["source_description"]},
              missing={}, missing_query={"description": NO_SUCH_SOURCE},
              expect=_expect_cited_by("child"), anchors=(_id("child"),), needs=("source",),
-             eventual=REFERENCE_EVENTUAL),
+             eventual=REFERENCE_EVENTUAL, control_may_be_empty=UNKNOWN_DESCRIPTION_EMPTY),
     # The descriptions named by ``sdids``: exactly the fixture's, under its title.
     ReadCase(op="readSourceDescriptions", path_args=lambda w: {},
              query=lambda w: {"sdids": w.ids["source_description"]},
@@ -374,10 +385,6 @@ SOURCE_QUERIES_CASES = (
              control_may_be_empty=NO_MATCHING_SDIDS_EMPTY,
              expect=_expect_description("source_description", "source_title", exactly=True),
              anchors=(_title(),), needs=("source",)),
-    # The signed-in user's source box holds the description the world just created.
-    ReadCase(op="readUserSourceDescriptions", path_args=lambda w: {"uid": CURRENT_USER},
-             missing={"uid": NO_SUCH_USER}, expect=_SOURCE,
-             anchors=(_title(), _id("source_description")), needs=("source",)),
 )
 SOURCE_QUERIES = reads_recipe("reads.tree.source_queries", SOURCE_QUERIES_CASES)
 

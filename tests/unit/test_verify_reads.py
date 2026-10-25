@@ -691,6 +691,81 @@ def test_head_case_still_runs_its_not_found_control(reg_path):
         run_case(ctx_for("headPerson", reg_path=reg_path), FakeWorld(), head_case())
 
 
+NO_VALIDATORS = "beta answers this HEAD and its GET with no ETag, Last-Modified or length"
+LOCATION = f"/platform/tree/persons/{CHILD}"
+
+
+def serve_head_without_validators(*, head_location=LOCATION, get_location=LOCATION,
+                                  bogus_status=404):
+    head = {"Content-Location": head_location} if head_location else {}
+    responses.add(responses.HEAD, f"{PERSONS}/{CHILD}", status=200, headers=head)
+    responses.add(responses.HEAD, f"{PERSONS}/{BOGUS}", status=bogus_status)
+    get = {"Content-Location": get_location} if get_location else {}
+    serve_person(headers=get, bogus=None)
+
+
+@responses.activate
+def test_head_without_validators_fails_unless_the_case_says_why(reg_path):
+    serve_head_without_validators()
+    with pytest.raises(AssertionError, match="validator"):
+        run_case(ctx_for("headPerson", reg_path=reg_path), FakeWorld(), head_case())
+
+
+@responses.activate
+@pytest.mark.parametrize("head_location, get_location", [
+    (LOCATION, LOCATION), (LOCATION + "?flag=fsh", BETA + LOCATION), (LOCATION, None),
+    (None, None)])
+def test_validators_optional_head_passes_on_existence(head_location, get_location, reg_path):
+    serve_head_without_validators(head_location=head_location, get_location=get_location)
+    ctx = ctx_for("headPerson", reg_path=reg_path)
+    run_case(ctx, FakeWorld(), head_case(validators_optional=NO_VALIDATORS))
+    methods = [(c.request.method, c.request.url.rsplit("/", 1)[-1]) for c in responses.calls]
+    assert methods == [("HEAD", CHILD), ("GET", CHILD), ("HEAD", BOGUS)]
+
+
+@responses.activate
+def test_validators_optional_head_fails_on_another_content_location(reg_path):
+    serve_head_without_validators(head_location=f"/platform/tree/persons/{OTHER}")
+    with pytest.raises(AssertionError, match="Content-Location"):
+        run_case(ctx_for("headPerson", reg_path=reg_path), FakeWorld(),
+                 head_case(validators_optional=NO_VALIDATORS))
+
+
+@responses.activate
+def test_validators_optional_head_still_fails_on_contradicting_validators(reg_path):
+    serve_head(get_etag='"rev-other"')  # both carry an ETag, and they differ
+    with pytest.raises(AssertionError, match="validator"):
+        run_case(ctx_for("headPerson", reg_path=reg_path), FakeWorld(),
+                 head_case(validators_optional=NO_VALIDATORS))
+
+
+@responses.activate
+def test_validators_optional_head_still_runs_its_not_found_control(reg_path):
+    serve_head_without_validators(bogus_status=200)  # a catch-all HEAD
+    with pytest.raises(AssertionError, match="not-found control answered 200"):
+        run_case(ctx_for("headPerson", reg_path=reg_path), FakeWorld(),
+                 head_case(validators_optional=NO_VALIDATORS))
+
+
+@responses.activate
+def test_validators_optional_head_still_needs_its_get_to_carry_the_fixture(reg_path):
+    responses.add(responses.HEAD, f"{PERSONS}/{CHILD}", status=200)
+    serve_person(body=person_body(OTHER, "Somebody"), bogus=None)
+    with pytest.raises(AssertionError, match="not in the response"):
+        run_case(ctx_for("headPerson", reg_path=reg_path), FakeWorld(),
+                 head_case(validators_optional=NO_VALIDATORS))
+
+
+@pytest.mark.parametrize("case", [
+    lambda: head_case(validators_optional="  "),
+    lambda: head_case(validators_optional=True),
+    lambda: read_child(validators_optional=NO_VALIDATORS),
+])
+def test_validators_optional_only_for_head_cases_with_a_reason(case):
+    with pytest.raises(ValueError, match="validators_optional"):
+        reads_recipe("t", [case()])
+
+
 def merge_case(**kw):
     def expect(result, world):
         assert "POST" in result.headers.get("Allow", ""), "merge not allowed"
