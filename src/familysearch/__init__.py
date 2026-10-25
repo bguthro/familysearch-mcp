@@ -1,5 +1,6 @@
 """Client library for the FamilySearch API."""
 
+from .api import ApiResult, FamilySearchApi
 from .auth import Environment, detect_environment, extract_brave_token
 from .client import FSClient
 from .discovery import Discovery
@@ -19,7 +20,7 @@ from .sources import Sources
 from .tree import TreeReader, TreeWriter
 
 __all__ = [
-    "FSClient", "Environment", "extract_brave_token", "detect_environment",
+    "FamilySearchApi", "ApiResult", "FSClient", "Environment", "extract_brave_token", "detect_environment",
     "Discovery", "TreeReader", "TreeWriter", "Search", "Memories", "Sources",
     "build_person", "build_name", "build_fact",
     "FACT_BIRTH", "FACT_DEATH", "FACT_MARRIAGE", "GENDER_URI",
