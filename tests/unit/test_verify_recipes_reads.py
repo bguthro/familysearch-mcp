@@ -5,8 +5,8 @@ relationships) in memory and answers the person-centred reads in the GEDCOM X sh
 recon recorded (docs/superpowers/recon/2026-10-25-api-surface/shapes.json) and the live
 runs: relative lists answer 204 when empty, ``readPersons`` needs ``pids`` and answers
 an unknown one 204, search (over real beta data, with the canary) answers 400 to no
-parameter at all, change histories are atom feeds whose links carry the person id. For the Task 4 reads it
-also keeps the relationships' records, feeds and notes, the person note, the source
+parameter at all, change histories are atom feeds whose links carry the person id. For
+the Task 4 reads it also keeps the relationships' records, feeds and notes, the person note, the source
 (description, the child's reference to it, the user's source box) and the memory; only the
 child has a note, a source and a memory, so the dad's lists answer 204 as in the recon. The
 registered recipe objects run through the real ``run_recipe`` with the fixture world
@@ -98,8 +98,10 @@ class FakeTree:
     answers readSourceDescriptions with the whole source box.
     """
 
-    def __init__(self, mode=None, *, relationship_lag=0, search_lie=None):
+    def __init__(self, mode=None, *, relationship_lag=0, search_lie=None, reference_lag=0):
         self.relationship_lag = relationship_lag  # 204s before the relationship is computed
+        # 204s each person -> source read answers before the attach shows (Task 4 run 1)
+        self.reference_lag = {"sources": reference_lag, "references": reference_lag}
         self.search_lie = search_lie  # ignore_count / other_first / no_confidence
         self.search_params: list[dict] = []
         self.mode = mode
@@ -269,6 +271,8 @@ class FakeTree:
                 return self._list(request, None) if len(rest) == 1 else self._unknown(request)
             return self._notes(request, "persons", IDS["child"], "person_note", rest[1:])
         if what == "sources" and len(rest) == 1:
+            if role == "child" and self._lagging("sources"):
+                return self._answer(request, 204)
             body = {"persons": [self.cited_by("child")],
                     "sourceDescriptions": [self.description()]} if role == "child" else None
             return self._list(request, body)
@@ -278,6 +282,12 @@ class FakeTree:
                     "links": {"self": {"href": request.url}}} if role == "child" else None
             return self._list(request, body)
         return self._answer(request, 404, {"errors": [{"code": 404}]})
+
+    def _lagging(self, what):
+        if self.reference_lag[what]:
+            self.reference_lag[what] -= 1
+            return True
+        return False
 
     def _notes(self, request, envelope, owner, key, rest):
         """An owner's notes (``rest`` empty) or one of them (``rest`` = [nid])."""
@@ -347,6 +357,8 @@ class FakeTree:
             return self._answer(request, 404, {"errors": [{"code": 404}]})
         if query["description"] != SOURCE[0]:
             return self._unknown(request)  # documented: unknown description, 404
+        if self._lagging("references"):
+            return self._answer(request, 204)  # documented: "no results" (yet)
         role = "dad" if self.mode == "other_record" else "child"
         return self._list(request, {"persons": [self.cited_by(role)]})
 
@@ -363,9 +375,10 @@ class FakeTree:
         if self.mode == "ignore_sdids":
             return self._list(request, {"sourceDescriptions": self.source_box()})
         if any(s != SOURCE[0] for s in sdids):
-            # The spec documents 204 for "no source descriptions matched"; the recipe sets
-            # no empty control until a live run shows it (the controller sends failures).
-            return self._unknown(request)
+            # The spec documents 204 for "no source descriptions matched".
+            if self.mode == "catch_all":
+                return self._unknown(request)
+            return self._answer(request, 204)
         return self._list(request, {"sourceDescriptions": [self.description()]})
 
     def source_box(self):
@@ -690,7 +703,10 @@ def test_relation_recipes_declare_only_the_groups_they_read():
 @pytest.mark.parametrize("name", sorted(RELATION_RECIPES))
 def test_relation_recipe_passes_against_the_honest_fake(name, reg_path, fake_world):
     result, _tree = run(name, reg_path)
-    assert result.pop("notes", []) == []  # nothing is polled
+    # Only the polled cases (the person -> source reads) report attempts.
+    polled = [c.op for c in RELATION_CASES[name] if c.eventual]
+    assert result.pop("notes", []) == [
+        f"{op}: content after 1 of {rtr.REFERENCE_EVENTUAL[0]} attempts" for op in polled]
     assert result == {"recipe": name, "passed": True, "problems": []}
     registry = json.loads(reg_path.read_text())["operations"]
     for op in RECIPES[name].ops:
@@ -736,6 +752,38 @@ def test_source_queries_send_the_fixture_ids_and_anchor_on_what_comes_back(
     # The signed-in user's box by the spec's literal, not a world value.
     assert rtr.CURRENT_USER not in FakeWorld(None, None, "", "").ids.values()
     assert f"{BETA}/platform/sources/current/collections/descriptions" in urls
+
+
+def test_only_the_person_to_source_reads_poll():
+    polled = {c.op for cases in RELATION_CASES.values() for c in cases if c.eventual}
+    assert polled == {"readPersonSources", "readSourceReferences"}
+    empty_controls = {c.op for cases in RELATION_CASES.values() for c in cases
+                      if c.control_may_be_empty}
+    assert empty_controls == {"readSourceDescriptions"}
+    case = next(c for c in rtr.SOURCE_QUERIES_CASES if c.op == "readSourceDescriptions")
+    assert "204" in case.control_may_be_empty and case.anchors
+
+
+@responses.activate
+@pytest.mark.parametrize("name", ["reads.tree.sources", "reads.tree.source_queries"])
+def test_source_reference_reads_wait_for_the_attach_but_not_forever(
+        name, reg_path, fake_world):
+    attempts, pause = rtr.REFERENCE_EVENTUAL
+    result, _tree = run(name, reg_path, reference_lag=attempts - 1)
+    assert result["passed"] is True, result["problems"]
+    assert fake_world == [pause] * (attempts - 1)
+    result, _tree = run(name, reg_path, reference_lag=attempts)
+    problems = "\n".join(result["problems"])
+    assert result["passed"] is False and "positive call answered 204" in problems
+
+
+@responses.activate
+def test_unmatched_sdids_control_is_the_documented_empty_answer(reg_path, fake_world):
+    result, _tree = run("reads.tree.source_queries", reg_path)
+    assert result["passed"] is True, result["problems"]
+    [control] = [c for c in responses.calls
+                 if c.request.url.endswith(f"/sources/descriptions?sdids={rtr.NO_SUCH_SOURCE}")]
+    assert control.response.status_code == 204 and not control.response.text
 
 
 RELATION_LIES = {

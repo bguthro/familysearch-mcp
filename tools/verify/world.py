@@ -22,7 +22,7 @@ from types import MappingProxyType
 from familysearch._urls import join_path
 from familysearch.client import FSClient
 from familysearch.discovery import Discovery
-from familysearch.errors import FSError
+from familysearch.errors import FSError, FSHTTPError
 from familysearch.memories import Memories
 from familysearch.models import FACT_BIRTH, build_fact, build_person
 from familysearch.sources import Sources
@@ -226,8 +226,16 @@ class World:
                 reason=self._reason)
             self._attached = True
         if "source_reference" not in self._ids:
-            resp = self._client.get(join_path(self._client.base_url + PERSONS_PATH, child,
-                                              "source-references"))
+            # Best effort: the reference id is optional (no read case uses it). Live
+            # (Task 4 run 1) beta answered 404 to this right after the attach; a 4xx,
+            # like a 204, means "not discoverable now". A 5xx still fails the build.
+            try:
+                resp = self._client.get(join_path(self._client.base_url + PERSONS_PATH,
+                                                  child, "source-references"))
+            except FSHTTPError as e:
+                if not 400 <= e.status < 500:
+                    raise
+                return
             srid = self._source_reference(resp)
             if srid:
                 self._ids["source_reference"] = srid

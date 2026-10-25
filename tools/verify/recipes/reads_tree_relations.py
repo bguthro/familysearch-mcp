@@ -39,6 +39,15 @@ NO_SUCH_USER = "cis.user.ZZZZ-ZZZZ"
 # The spec's own example for the signed-in user's source box (readUserSourceDescriptions):
 # a literal, not a world value (the world keeps the shared user id out of its values).
 CURRENT_USER = "current"
+# Live (Task 4 run 1): right after the attach, the child's source-references answered 404,
+# so the person -> source link may lag; the reads that follow it poll (an error is never
+# retried, only an empty or anchor-less answer).
+REFERENCE_EVENTUAL = (8, 5.0)
+NO_MATCHING_SDIDS_EMPTY = (
+    "the spec documents 204 for readSourceDescriptions when 'no source descriptions "
+    "matched provided ids', so an unknown sdid (ZZZZ-ZZZ) is an empty answer, not an "
+    "error; it counts only because the positive call in the same recipe returned the "
+    "fixture description under its title, which the request did not send")
 
 DEFERRED: dict[str, str] = {
     "readDiscussion": (
@@ -337,7 +346,8 @@ SOURCES_CASES = (
     # The child's sources: its reference to the fixture description, and the description.
     ReadCase(op="readPersonSources", path_args=_pid("child"), missing=MISSING_PID,
              expect=_both(_SOURCE, _expect_cited_by("child")),
-             anchors=(_title(), _id("source_description")), needs=("source",)),
+             anchors=(_title(), _id("source_description")), needs=("source",),
+             eventual=REFERENCE_EVENTUAL),
     ReadCase(op="readPersonSources", path_args=_pid("dad"), missing=MISSING_PID,
              expect=_no_relatives("sources"), allow_empty=True, needs=("source",)),
     ReadCase(op="readSourceDescription", path_args=_arg("sdid", "source_description"),
@@ -355,11 +365,13 @@ SOURCE_QUERIES_CASES = (
     ReadCase(op="readSourceReferences", path_args=lambda w: {},
              query=lambda w: {"description": w.ids["source_description"]},
              missing={}, missing_query={"description": NO_SUCH_SOURCE},
-             expect=_expect_cited_by("child"), anchors=(_id("child"),), needs=("source",)),
+             expect=_expect_cited_by("child"), anchors=(_id("child"),), needs=("source",),
+             eventual=REFERENCE_EVENTUAL),
     # The descriptions named by ``sdids``: exactly the fixture's, under its title.
     ReadCase(op="readSourceDescriptions", path_args=lambda w: {},
              query=lambda w: {"sdids": w.ids["source_description"]},
              missing={}, missing_query={"sdids": NO_SUCH_SOURCE},
+             control_may_be_empty=NO_MATCHING_SDIDS_EMPTY,
              expect=_expect_description("source_description", "source_title", exactly=True),
              anchors=(_title(),), needs=("source",)),
     # The signed-in user's source box holds the description the world just created.

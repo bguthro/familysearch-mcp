@@ -43,6 +43,7 @@ class FakeBeta:
         self.attached: dict[str, list[str]] = {}  # person id -> source description urls
         self.noid: set[str] = set()  # kinds whose create answers 201 with no id header
         self.list_refs = True  # source-references lists attached sources
+        self.refs_status = None  # set: source-references answers this error status
         self.fail_person_at = 0  # the n-th person POST answers 500
         self.person_posts = 0
         rsps.add(responses.GET, P + "/collections/tree", json={"collections": [{
@@ -128,6 +129,8 @@ class FakeBeta:
         path = self.path(request.url)
         m = re.fullmatch(r"/platform/tree/persons/([^/]+)/source-references", path)
         if m:
+            if self.refs_status:
+                return self.refs_status, {}, json.dumps({"errors": [{"code": self.refs_status}]})
             refs = self.attached.get(m.group(1)) if self.list_refs else None
             if not refs:
                 return 204, {}, ""
@@ -386,6 +389,30 @@ def test_source_reference_absent_when_not_discoverable(beta):
     beta.list_refs = False  # attach succeeds, the listing answers 204
     world.need("source")
     assert "source_description" in world.ids and "source_reference" not in world.ids
+    assert fixtures.teardown() == [] and beta.live == {}
+
+
+@pytest.mark.parametrize("status", [404, 400, 410])
+def test_source_reference_lookup_error_still_builds_and_tears_down(beta, status):
+    # Live (Task 4 run 1): right after the attach, beta answered 404 to the child's
+    # source-references. The reference is optional: the group builds without it.
+    world, fixtures = make_world()
+    beta.refs_status = status
+    world.need("source")
+    assert "source_description" in world.ids and "source_reference" not in world.ids
+    assert fixtures.tracked("source") == [world.ids["source_description"]]
+    assert world.ids["child"] in beta.attached  # the attach itself still ran
+    world.need("source")  # built: no second lookup or create
+    assert len(beta.posts("/platform/sources/descriptions")) == 1
+    assert fixtures.teardown() == [] and beta.live == {}
+
+
+def test_source_reference_lookup_server_error_is_not_swallowed(beta):
+    world, fixtures = make_world()
+    beta.refs_status = 500
+    with pytest.raises(FSHTTPError):
+        world.need("source")
+    assert fixtures.tracked("source") == [world.ids["source_description"]]
     assert fixtures.teardown() == [] and beta.live == {}
 
 
