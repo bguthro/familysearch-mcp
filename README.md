@@ -123,3 +123,18 @@ module is skipped. Log in to beta.familysearch.org in Brave first.
 
     FS_USE_BRAVE=1 .venv/bin/python -m pytest tests/integration        # reads the fssessionid cookie from Brave (Keychain prompt)
     FS_BETA_TOKEN=<token> .venv/bin/python -m pytest tests/integration # or supply the token directly
+
+**MCP beta suite** (`tests/integration/test_mcp_beta.py`; drives the assembled MCP server
+through the real FastMCP call path). Needs `FS_USE_BRAVE=1` (reads the Brave session;
+macOS Keychain prompt) or `FS_BETA_TOKEN`, and a FRESH login to beta.familysearch.org. It
+forces `FS_ENVIRONMENT=beta`, refuses to proceed unless `auth_status` reports beta, creates
+`ZZSPIKE` throwaway persons, relationships, memories and sources on beta ONLY, and deletes
+them at teardown through the library (there is no MCP delete tool), failing loudly on any
+leftover. Uploads use a temporary `FS_UPLOAD_ROOT` that the test creates itself. Add `-s`
+to see the `[OBSERVED]` live-shape lines.
+
+    FS_USE_BRAVE=1 .venv/bin/python -m pytest tests/integration/test_mcp_beta.py -v -s
+
+**Manual production read smoke** (no automated prod test): with a production login in
+Brave, run the server with `FS_ENVIRONMENT=production` and call `auth_status`,
+`search_tree` and `get_person`.
