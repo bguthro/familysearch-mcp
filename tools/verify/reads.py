@@ -57,7 +57,7 @@ _SKELETON_DEPTH = 6
 _SKELETON_STRING = 60  # characters of each string shown
 # Keys whose values are never shown, whatever the response holds.
 _SECRET_KEY = re.compile(r"token|authori[sz]ation|cookie|session|secret|password", re.I)
-MAX_ATTEMPTS = 10   # ``eventual`` bounds: at most this many positive calls...
+MAX_ATTEMPTS = 12   # ``eventual`` bounds: at most this many positive calls...
 MAX_PAUSE = 60.0    # ...this many seconds apart
 sleep = time.sleep  # the pause between ``eventual`` attempts (tests replace it)
 
@@ -122,11 +122,13 @@ class ReadCase:
     whose ``Allow`` must differ from the positive call's. A HEAD case is sent with its
     GET's Accept (HEAD documents none; the server answers 406 to another type).
 
-    ``control_may_be_empty`` (a non-empty reason) lets the not-found control answer an
-    empty 204 instead of 400/404/410. Only for an operation whose spec documents 204,
-    and a case with fixture anchors that is not ``allow_empty``: its positive call
-    answered anchored content (a 204 there fails), so the empty answer for the unknown
-    id is a real "nothing", not a server that answers 204 to everything.
+    ``control_may_be_empty`` (a non-empty reason citing the observed behaviour) lets the
+    not-found control answer an empty-bodied 204 instead of 400/404/410. Only for a
+    list/collection read (the spec need not document the 204: beta answers undocumented
+    204s for empty lists), and a case with fixture anchors that is not ``allow_empty``:
+    its positive call answered anchored content (a 204 there fails), so the empty
+    answer for the unknown id is a real "nothing", not a server that answers 204 to
+    everything.
 
     ``eventual`` = ``(max_attempts, seconds_between)`` repeats the positive call (never
     the control) while it answers 204, no content, or lacks an anchor, for an index
@@ -694,8 +696,8 @@ def _control(ctx: VerifyContext, spec: OpSpec, case: ReadCase, args: dict, query
                              f"{type(e).__name__}: {_snippet(e)}") from None
     if (case.control_may_be_empty and answer.status == 204
             and answer.body is None and not (answer.text or "").strip()):
-        # Allowed only where the spec documents 204 and the positive call already
-        # answered anchored content (construction and the positive check enforce it).
+        # Allowed only for a list read whose positive call already answered anchored
+        # content (construction and the positive check enforce it).
         return
     raise AssertionError(f"not-found control answered {answer.status} for {bad_args or ''}"
                          f"{bad_query or ''}; a server that answers everything verifies nothing")
@@ -749,15 +751,23 @@ def _case_problems(case: Any) -> list[str]:
     return problems
 
 
+def _is_list_read(spec: OpSpec) -> bool:
+    """A GET whose answer is a list: a collection path (no path parameter, such as
+    ``/tree/persons?pids=``) or one whose spec documents an empty 204. Reading one
+    record (``/tree/persons/{pid}``) is not: "nothing" is no answer for a record."""
+    return spec.http_method == "GET" and spec.kind == "read" and (
+        not spec.path_params or 204 in documented_statuses(spec.operation_id))
+
+
 def _control_and_polling_problems(case: ReadCase, spec: OpSpec) -> list[str]:
     op, problems = case.op, []
     empty = case.control_may_be_empty
     if empty is not None:
         if not (isinstance(empty, str) and empty.strip()):
             problems.append(f"{op}: control_may_be_empty must be a non-empty reason")
-        if 204 not in documented_statuses(op):
-            problems.append(f"{op}: control_may_be_empty needs an operation whose spec "
-                            "documents 204")
+        if not _is_list_read(spec):
+            problems.append(f"{op}: control_may_be_empty is only for a list/collection "
+                            "read (a GET of a collection, or one documenting 204)")
         if case.allow_empty or not case.anchors or case.anchor_free_reason is not None:
             problems.append(f"{op}: control_may_be_empty is only for a populated case "
                             "with fixture anchors (not allow_empty or anchor-free)")

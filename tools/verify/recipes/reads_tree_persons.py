@@ -19,15 +19,19 @@ from ..reads import ReadCase, json_path, reads_recipe
 
 # Fits the tree-id format but is very unlikely to exist (as the pilot's).
 NO_SUCH_PERSON = "ZZZZ-ZZZ"
-# Not a tree id at all. readPersons answers a well-formed unknown pid with 204 (live
-# run), which its spec does not document, so an empty control cannot vouch for it; a
-# pid that cannot be an id must be refused (400) by a server that parses the list.
-MALFORMED_PERSON_ID = "NOT-A-PERSON-ID"
+# readPersons answers any unknown pid (well-formed or not) with an empty 204 on beta.
+UNKNOWN_PIDS_EMPTY = (
+    "beta answers readPersons for an unknown pid (ZZZZ-ZZZ, and NOT-A-PERSON-ID) with an "
+    "empty 204 (live runs 1 and 2); the spec's 200/400/404/410 omits it, the known "
+    "undocumented 204 for empty lists (recon README)")
 # A surname no fixture carries; sent without flag=fst, which beta answers 400.
 NO_SUCH_SURNAME = "ZZSPIKENOSUCHSURNAME"
 SEARCH_COUNT = 20
-# The search index lags behind persons created a moment ago: up to 6 tries, 5 s apart.
-SEARCH_EVENTUAL = (6, 5.0)
+# The search index lags behind persons created a moment ago (live run 2 found only
+# real tree persons): up to 12 tries, 10 s apart.
+SEARCH_EVENTUAL = (12, 10.0)
+# Live run 2: the relationship between just-created fixtures first answers 204.
+RELATIONSHIP_EVENTUAL = (8, 5.0)
 
 DEFERRED: dict[str, str] = {
     "readTreePersonMatches": (
@@ -198,17 +202,19 @@ def _id(role: str):
 MISSING_PID = {"pid": NO_SUCH_PERSON}
 FAMILY = ("persons", "couple")
 
-PERSONS = reads_recipe("reads.tree.persons", [
+PERSONS_CASES = (
     # pids echoes both ids: the names are what the server must supply.
     ReadCase(op="readPersons", path_args=lambda w: {},
              query=lambda w: {"pids": f"{w.ids['child']},{w.ids['dad']}"},
-             missing={}, missing_query={"pids": MALFORMED_PERSON_ID}, missing_statuses=(400,),
+             missing={}, missing_query={"pids": NO_SUCH_PERSON},
+             control_may_be_empty=UNKNOWN_PIDS_EMPTY,
              expect=_expect_persons("child", "dad", exactly=True),
              anchors=(_name("child"), _name("dad")), needs=("persons",)),
     ReadCase(op="headPerson", path_args=_pid("child"), compare_with="readPerson",
              missing=MISSING_PID, expect=_expect_persons("child"),
              anchors=(_name("child"),), needs=("persons",)),
-])
+)
+PERSONS = reads_recipe("reads.tree.persons", PERSONS_CASES)
 
 RELATIVES = reads_recipe("reads.tree.relatives", [
     ReadCase(op="readPersonParents", path_args=_pid("child"), missing=MISSING_PID,
@@ -241,18 +247,21 @@ RELATIVES = reads_recipe("reads.tree.relatives", [
              path_args=lambda w: {"pid": w.ids["child"], "opid": w.ids["dad"]},
              missing={"opid": NO_SUCH_PERSON},
              expect=_expect_persons("child", "dad"),
-             anchors=(_name("child"), _name("dad")), needs=FAMILY),
+             anchors=(_name("child"), _name("dad")), needs=FAMILY,
+             eventual=RELATIONSHIP_EVENTUAL),
 ])
 
 SEARCH = reads_recipe("reads.tree.search", [
-    # The proven shape (Search.tree_search): flag=fst and a surname, here the run's own,
-    # which every fixture shares; the hits must be the fixtures by id and full name.
+    # The proven shape (Search.tree_search): flag=fst, the child's own given token
+    # (unique to it) and the run's surname. Neither alone is the child's full name, which
+    # the hit must carry, with the child's id, which the request never sends.
     ReadCase(op="searchTreePersons", path_args=lambda w: {},
-             query=lambda w: {"flag": "fst", "q.surname": w.names["child_name"].split()[-1],
+             query=lambda w: {"flag": "fst", "q.givenName": w.names["child_name"].split()[0],
+                              "q.surname": w.names["child_name"].split()[-1],
                               "count": SEARCH_COUNT},
              missing={}, missing_query={"q.surname": NO_SUCH_SURNAME}, missing_statuses=(400,),
-             expect=_expect_search_hits("child", "dad", "mom"),
-             anchors=(_name("child"), _id("child"), _id("dad")), needs=("persons",),
+             expect=_expect_search_hits("child"),
+             anchors=(_name("child"), _id("child")), needs=("persons",),
              eventual=SEARCH_EVENTUAL),
 ])
 

@@ -76,7 +76,8 @@ class FakeTree:
     populated list; ``stale_head`` answers HEAD with another revision than the GET.
     """
 
-    def __init__(self, mode=None, *, search_lag=0):
+    def __init__(self, mode=None, *, search_lag=0, relationship_lag=0):
+        self.relationship_lag = relationship_lag  # 204s before the relationship is computed
         self.mode = mode
         self.role = {pid: role for role, pid in IDS.items() if role in GIVEN}
         self.search_params: list[dict] = []
@@ -169,10 +170,10 @@ class FakeTree:
         pids = [p for value in query["pids"] for p in value.split(",") if p]
         if self.mode == "ignore_pids":
             pids = [IDS[r] for r in GIVEN]
-        if self.mode != "catch_all" and not all(PID_FORMAT.match(p) for p in pids):
-            return self._answer(request, 400, {"errors": [{"message": "invalid person id"}]})
+        if self.mode == "empty":
+            return self._answer(request, 204)
         if any(p not in self.role for p in pids):
-            # Beta (live run): an unknown well-formed id is reported as nothing, 204.
+            # Beta (live runs): an unknown id, well-formed or not, is reported as nothing.
             return self._unknown(request) if self.mode == "catch_all" else self._answer(
                 request, 204)
         return self._answer(request, 200,
@@ -209,6 +210,9 @@ class FakeTree:
                 if self.mode == "catch_all":
                     return self._answer(request, 200, {"persons": []})
                 return self._answer(request, 400, {"errors": [{"code": 400}]})
+            if self.relationship_lag:  # live run 2: 204 for just-created fixtures
+                self.relationship_lag -= 1
+                return self._answer(request, 204)
             # Live: the child-and-parents id is not in this answer; the persons are.
             return self._answer(request, 200, self.family(role, self.role[self._who(other)]))
         return self._answer(request, 404, {"errors": [{"code": 404}]})
@@ -227,9 +231,11 @@ class FakeTree:
             hits = [{"id": STRANGER["id"], "content": {"gedcomx": {"persons": [{
                 "id": STRANGER["id"], "display": {"name": STRANGER["name"]}}]}}}]
         else:
+            given = query.get("q.givenName")
             hits = [{"id": IDS[r], "score": 1.0,
                      "content": {"gedcomx": {"persons": [self.person(IDS[r])]}}}
-                    for r in GIVEN if query.get("q.surname") == SURNAME]
+                    for r in GIVEN if query.get("q.surname") == SURNAME
+                    and given in (None, GIVEN[r])]
         return self._list(request, {"entries": hits, "results": len(hits)} if hits else None,
                           ATOM_JSON)
 
@@ -283,6 +289,7 @@ def test_search_sends_the_proven_shape(reg_path, fake_world):
     _result, tree = run("reads.tree.search", reg_path)
     positive, control = tree.search_params
     assert positive["flag"] == "fst" and positive["q.surname"] == SURNAME
+    assert positive["q.givenName"] == GIVEN["child"]  # the child's unique given token
     # The control sends the parameter with a dead value and no flag: a server answer.
     assert "flag" not in control and control["q.surname"] != SURNAME
 
@@ -300,14 +307,28 @@ def test_search_waits_for_the_index_but_not_forever(reg_path, fake_world):
 
 
 @responses.activate
-def test_read_persons_control_is_a_malformed_id(reg_path, fake_world):
-    # Live, an unknown well-formed pid answers 204, which readPersons does not document
-    # (so control_may_be_empty may not vouch for it); a malformed id must be refused.
-    _result, _tree = run("reads.tree.persons", reg_path)
+def test_read_persons_control_is_an_empty_answer_for_an_unknown_pid(reg_path, fake_world):
+    # Live (runs 1 and 2), beta answers any unknown pid with an empty 204, which the
+    # spec omits; the case says so, and its positive call is anchored content first.
+    case = next(c for c in rtp.PERSONS_CASES if c.op == "readPersons")
+    assert case.control_may_be_empty and "204" in case.control_may_be_empty
+    result, _tree = run("reads.tree.persons", reg_path)
+    assert result["passed"] is True, result["problems"]
     controls = [c.request.url for c in responses.calls
                 if c.request.url.startswith(TREE + "/persons?")][1:]
-    assert len(controls) == 1 and rtp.MALFORMED_PERSON_ID in controls[0].replace("%2C", ",")
-    assert not PID_FORMAT.match(rtp.MALFORMED_PERSON_ID)
+    assert len(controls) == 1 and rtp.NO_SUCH_PERSON in controls[0]
+    assert PID_FORMAT.match(rtp.NO_SUCH_PERSON)  # well-formed, just absent
+
+
+@responses.activate
+def test_find_relationship_waits_for_the_calculation_but_not_forever(reg_path, fake_world):
+    attempts, pause = rtp.RELATIONSHIP_EVENTUAL
+    result, _tree = run("reads.tree.relatives", reg_path, relationship_lag=attempts - 1)
+    assert result["passed"] is True, result["problems"]
+    assert fake_world == [pause] * (attempts - 1)
+    result, _tree = run("reads.tree.relatives", reg_path, relationship_lag=attempts)
+    problems = "\n".join(result["problems"])
+    assert result["passed"] is False and "findRelationship: positive call answered 204" in problems
 
 
 @responses.activate
@@ -325,7 +346,8 @@ LIES = {
     "other_person": OWN_RECIPES,
     "catch_all": OWN_RECIPES,
     "ignore_pids": {"reads.tree.persons"},
-    "empty": {"reads.tree.relatives", "reads.tree.search", "reads.tree.history"},
+    "empty": {"reads.tree.persons", "reads.tree.relatives", "reads.tree.search",
+              "reads.tree.history"},
     "stale_head": {"reads.tree.persons", "reads.tree.history"},
 }
 # What each lie is caught by (so a recipe cannot fail for an unrelated reason).

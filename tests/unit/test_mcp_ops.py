@@ -125,8 +125,13 @@ def test_list_operations_filters_and_limit():
 
     real = tools(registry=load_registry())
     verified = real["list_operations"](status="verified", limit=200)
+    # The pilot's four and whatever read verification has recorded since: exactly the
+    # registry's verified rows (the set grows as recipes pass live).
+    registry = load_registry()["operations"]
     assert {r["operation_id"] for r in verified} == {
-        "createPerson", "deletePerson", "readPerson", "restorePerson"}
+        op for op, row in registry.items() if row["generated"]["status"] == "verified"}
+    assert {"createPerson", "deletePerson", "readPerson", "restorePerson"} <= {
+        r["operation_id"] for r in verified}
     assert real["list_operations"](status="unverifiable", limit=200)
 
 

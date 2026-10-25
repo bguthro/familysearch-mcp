@@ -1290,8 +1290,35 @@ def test_catch_all_204_server_still_fails_the_positive(reg_path):
                  children_case("dad", control_may_be_empty=EMPTY_REASON))
 
 
+@responses.activate
+def test_empty_control_with_a_body_fails(reg_path):
+    serve_children_control(bogus_status=204, bogus_body="unexpected")
+    # (The HTTP stack itself refuses a 204 with content; either way it is no proof.)
+    with pytest.raises(AssertionError, match="not-found control"):
+        run_case(ctx_for("readPersonChildren", reg_path=reg_path), FakeWorld(),
+                 children_case("dad", control_may_be_empty=EMPTY_REASON))
+
+
+@responses.activate
+def test_empty_control_for_a_list_read_whose_spec_omits_204(reg_path):
+    # readPersons documents no 204, yet beta answers one for an unknown pid (the known
+    # "undocumented 204 for empty lists" defect): a collection read may still use it.
+    assert 204 not in reads.documented_statuses("readPersons")
+    responses.add(responses.GET, PERSONS, match=[
+        responses.matchers.query_param_matcher({"pids": CHILD})], status=200,
+        body=json.dumps(person_body(CHILD, CHILD_NAME)), content_type=FS_JSON)
+    responses.add(responses.GET, PERSONS, match=[
+        responses.matchers.query_param_matcher({"pids": BOGUS})], status=204)
+    case = ReadCase(op="readPersons", path_args=lambda w: {},
+                    query=lambda w: {"pids": w.ids["child"]}, missing={},
+                    missing_query={"pids": BOGUS}, expect=expect_child,
+                    anchors=(CHILD_NAMED,), control_may_be_empty=EMPTY_REASON)
+    run_case(ctx_for("readPersons", reg_path=reg_path), FakeWorld(), case)
+
+
 @pytest.mark.parametrize("make, why", [
-    (lambda: [read_child(control_may_be_empty=EMPTY_REASON)], "204"),  # readPerson: no 204
+    # readPerson reads one record: an empty answer for it is no "nothing found".
+    (lambda: [read_child(control_may_be_empty=EMPTY_REASON)], "list"),
     (lambda: [children_case("dad", control_may_be_empty="  ")], "reason"),
     (lambda: [children_case("dad", control_may_be_empty=True)], "reason"),
     (lambda: [children_case("dad"), children_case("child", allow_empty=True,
@@ -1356,7 +1383,7 @@ def test_eventual_does_not_retry_errors_or_a_good_answer(reg_path, sleeps):
     assert sleeps == []
 
 
-@pytest.mark.parametrize("eventual", [(0, 1.0), (11, 1.0), (3, -1.0), (3, 61.0), (3,),
+@pytest.mark.parametrize("eventual", [(0, 1.0), (13, 1.0), (3, -1.0), (3, 61.0), (3,),
                                       ("3", 1.0), [3, 1.0], (True, 1.0)])
 def test_eventual_rejects_unbounded_polling(eventual):
     with pytest.raises(ValueError, match="eventual"):
