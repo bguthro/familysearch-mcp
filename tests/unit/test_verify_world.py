@@ -38,7 +38,8 @@ class FakeBeta:
         self.rsps = rsps
         self.live: dict[str, dict] = {}  # path -> stored body
         self.counter = itertools.count(1)
-        self.fail: set[str] = set()  # kinds whose create answers 500
+        self.fail: set[str] = set()  # kinds whose create answers fail_status
+        self.fail_status = 500
         self.attached: dict[str, list[str]] = {}  # person id -> source description urls
         self.noid: set[str] = set()  # kinds whose create answers 201 with no id header
         self.list_refs = True  # source-references lists attached sources
@@ -69,7 +70,7 @@ class FakeBeta:
 
     def _created(self, kind, path, body, *, header="Location"):
         if kind in self.fail:
-            return 500, {}, json.dumps({"errors": [{"message": "scripted failure"}]})
+            return self.fail_status, {}, json.dumps({"errors": [{"message": "scripted"}]})
         self.live[path] = body
         if kind in self.noid:
             return 201, {}, ""
@@ -198,7 +199,8 @@ def test_unknown_group_is_refused(beta):
 
 
 def test_groups_are_the_documented_ones():
-    assert set(GROUPS) == {"persons", "couple", "notes", "source", "memory"}
+    assert set(GROUPS) == {"persons", "couple", "person_note", "couple_note",
+                           "child_and_parents_note", "notes", "source", "memory"}
 
 
 def test_requires_reason_and_unique():
@@ -328,6 +330,40 @@ def test_note_id_from_location_then_entity_header():
     assert world._note_id(r) == "N8"  # noqa: SLF001
 
 
+def test_person_note_alone_implies_only_persons(beta):
+    world, fixtures = make_world()
+    world.need("person_note")
+    assert set(world.ids) == {"dad", "mom", "child", "person_note"}
+    assert not any("relationships" in p for p in beta.posts())
+    assert set(world.names) == {"dad_name", "mom_name", "child_name", "person_note_text"}
+    assert fixtures.teardown() == [] and beta.live == {}
+
+
+@pytest.mark.parametrize("group", ["couple_note", "child_and_parents_note"])
+def test_relationship_note_implies_couple(beta, group):
+    world, _ = make_world()
+    world.need(group)
+    assert {"couple", "child_and_parents", group} <= set(world.ids)
+    assert not any("person_note" in k for k in world.ids)
+
+
+def test_one_bad_note_envelope_does_not_fail_the_others(beta):
+    world, fixtures = make_world()
+    beta.fail.add("couple_note")
+    beta.fail_status = 400
+    with pytest.raises(FSHTTPError) as err:
+        world.need("notes")
+    assert err.value.status == 400
+    assert "person_note" in world.ids and "child_and_parents_note" in world.ids
+    assert "couple_note" not in world.ids and "couple_note_text" not in world.names
+    world.need("person_note")  # built: no new POST, no error
+    beta.fail.clear()
+    world.need("notes")  # the retry posts only the missing couple note
+    assert "couple_note" in world.ids
+    assert len(beta.posts("/platform/tree/persons/" + world.ids["child"] + "/notes")) == 1
+    assert fixtures.teardown() == [] and beta.live == {}
+
+
 # ------------------------------------------------------------------ source
 
 
@@ -442,6 +478,9 @@ def test_names_are_long_per_fixture_and_free_of_shared_constants(beta):
                                 "source_title", "memory_title"}
     for value in world.names.values():
         assert len(value) >= 12 and value.startswith("ZZSPIKE")
+        # ZZSPIKE + a tag letter + 12 digits: nothing a server could re-case.
+        for word in value.split():
+            assert re.fullmatch(r"ZZSPIKE[A-Z]\d{12}", word) or word == UNIQUE, word
     # The shared surname, the prefix and the reason are not values on their own.
     for shared in (UNIQUE, "ZZSPIKE", REASON):
         assert shared not in all_values(world)

@@ -7,7 +7,7 @@ still tears down. Notes are embedded in their owner (a person or relationship th
 tracked before the note is posted) and go with it at teardown.
 
 ``ids`` and ``names`` are what a read case sees (``tools.verify.reads.seal``). Each
-value belongs to one fixture: names carry their own uuid hex, the run's shared
+value belongs to one fixture: names carry their own uuid digits, the run's shared
 surname and the ``ZZSPIKE`` prefix are never values on their own, and no value may be
 contained in another, so an anchor can only match its own record.
 """
@@ -35,10 +35,16 @@ from .fixtures import FixtureSet
 GROUPS: dict[str, tuple[str, ...]] = {
     "persons": (),
     "couple": ("persons",),
-    "notes": ("couple", "persons"),
+    "person_note": ("persons",),
+    "couple_note": ("couple",),
+    "child_and_parents_note": ("couple",),
+    "notes": ("person_note", "couple_note", "child_and_parents_note"),  # alias: all three
     "source": ("persons",),
     "memory": ("persons",),
 }
+# Each part of these is tried even if another fails: one wrong note envelope (only the
+# person note's is proven on beta) must not keep the other notes from being built.
+INDEPENDENT = frozenset({"notes"})
 PERSONS = (("dad", "Male", "1850"), ("mom", "Female", "1852"), ("child", "Male", "1875"))
 PNG = base64.b64decode(  # a 1x1 PNG, as deep.py uploads
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5E"
@@ -47,15 +53,28 @@ PERSONS_PATH = "/platform/tree/persons"
 
 
 def _token(tag: str) -> str:
-    """A per-fixture value: ``ZZSPIKE`` + a one-letter tag + 12 hex digits."""
-    return f"ZZSPIKE{tag}{uuid.uuid4().hex[:12]}"
+    """A per-fixture value: ``ZZSPIKE`` + an upper-case tag letter + 12 decimal digits.
+
+    Digits only after the prefix: nothing a server could re-case in a returned name.
+    """
+    return f"ZZSPIKE{tag.upper()}{uuid.uuid4().int % 10**12:012d}"
 
 
 class World:
     """Lazy fixture builder; see the module docstring.
 
     ``need(*groups)`` builds the missing groups (and what they imply) once; a retry
-    after a failure creates only the objects that do not exist yet.
+    after a failure creates only the objects that do not exist yet. ``notes`` builds
+    ``person_note``, ``couple_note`` and ``child_and_parents_note``, each attempted even
+    when another fails (the first failure is raised after all were tried).
+
+    ``names`` holds full per-fixture strings only (``dad_name``, ``mom_name``,
+    ``child_name``, ``*_note_text``, ``source_title``, ``memory_title``). There is no
+    ``unique_surname``: the surname is shared by every person, so it is contained in
+    each full name and could not tell them apart. A case that searches by surname
+    (Task 3) sends it in the query as ``names["child_name"].split()[-1]`` and anchors on
+    one person's full name (anchors must be exact world values, and a value the
+    request sends cannot be the only anchor).
     """
 
     def __init__(self, client: FSClient, fixtures: FixtureSet, reason: str, unique: str):
@@ -96,6 +115,17 @@ class World:
 
     def _build(self, group: str) -> None:
         if group in self._built:
+            return
+        if group in INDEPENDENT:
+            errors = []
+            for part in GROUPS[group]:
+                try:
+                    self._build(part)
+                except Exception as e:  # noqa: BLE001 - try the rest, then raise
+                    errors.append(e)
+            if errors:
+                raise errors[0]
+            self._built.add(group)
             return
         for implied in GROUPS[group]:
             self._build(implied)
@@ -143,26 +173,28 @@ class World:
             self._fixtures.track("child_and_parents", cid)
             ids["child_and_parents"] = cid
 
-    def _build_notes(self) -> None:
-        base = self._client.base_url
-        owners = (
-            ("person_note", join_path(base + PERSONS_PATH, self._ids["child"], "notes"),
-             "persons", "p"),
-            ("couple_note", join_path(base + COUPLE_PATH, self._ids["couple"], "notes"),
-             "relationships", "r"),
-            ("child_and_parents_note",
-             join_path(base + CHILD_AND_PARENTS_PATH, self._ids["child_and_parents"], "notes"),
-             "childAndParentsRelationships", "a"),
-        )
-        for key, url, envelope, tag in owners:
-            if key in self._ids:
-                continue
-            text = self._value(f"{key}_text", tag)
-            # The owner is tracked already: the note is embedded in it and goes with it.
-            resp = self._client.post(url, json={envelope: [{"notes": [{
-                "subject": f"{text} subject", "text": text}]}]}, reason=self._reason)
-            self._ids[key] = self._note_id(resp)
-            self._named(f"{key}_text", text)
+    def _build_person_note(self) -> None:
+        url = join_path(self._client.base_url + PERSONS_PATH, self._ids["child"], "notes")
+        self._note("person_note", url, "persons", "p")
+
+    def _build_couple_note(self) -> None:
+        url = join_path(self._client.base_url + COUPLE_PATH, self._ids["couple"], "notes")
+        self._note("couple_note", url, "relationships", "r")
+
+    def _build_child_and_parents_note(self) -> None:
+        url = join_path(self._client.base_url + CHILD_AND_PARENTS_PATH,
+                        self._ids["child_and_parents"], "notes")
+        self._note("child_and_parents_note", url, "childAndParentsRelationships", "a")
+
+    def _note(self, key: str, url: str, envelope: str, tag: str) -> None:
+        if key in self._ids:
+            return
+        text = self._value(f"{key}_text", tag)
+        # The owner is tracked already: the note is embedded in it and goes with it.
+        resp = self._client.post(url, json={envelope: [{"notes": [{
+            "subject": f"{text} subject", "text": text}]}]}, reason=self._reason)
+        self._ids[key] = self._note_id(resp)
+        self._named(f"{key}_text", text)
 
     @staticmethod
     def _note_id(resp) -> str:
