@@ -73,12 +73,20 @@ class ApiBase:
         confirm_destructive: bool = False,
     ) -> ApiResult:
         # The lock first, before anything that could touch the network.
-        if spec.kind == "write":
+        is_write = spec.kind != "read"  # fail closed on any unexpected kind
+        if is_write:
             check_call(
                 spec, self._client.environment, self._registry,
                 allow_unverified=allow_unverified, allow_production=allow_production,
                 confirm_destructive=confirm_destructive,
             )
+        if body is not None and spec.body == "none":
+            raise ValueError(f"{spec.operation_id} does not accept a body")
+        if query is not None and not isinstance(query, Mapping):
+            raise ValueError("query must be a mapping")
+        extra = set(path_args) - set(spec.path_params)
+        if extra:
+            raise ValueError(f"unexpected path parameters {sorted(extra)}")
         quoted = {}
         for name in spec.path_params:
             if name not in path_args:
@@ -87,6 +95,8 @@ class ApiBase:
         path = _PLACEHOLDER.sub(
             lambda m: quoted.get(m.group(1), m.group(0)), spec.path
         )
+        if _PLACEHOLDER.search(path):
+            raise ValueError(f"unfilled placeholder in path {path!r}")
         if spec.accepts:
             if accept is not None and accept not in spec.accepts:
                 raise ValueError(f"accept {accept!r} not one of {list(spec.accepts)}")
@@ -97,7 +107,7 @@ class ApiBase:
         if (files is not None or data is not None) and spec.body != "upload":
             raise ValueError(f"{spec.operation_id} does not accept an upload")
         resp = self._client.request(
-            spec.http_method, API_PREFIX + path, write=(spec.kind == "write"),
+            spec.http_method, API_PREFIX + path, write=is_write,
             reason=reason, accept=accept, params=_render_query(query) or None,
             json=body, files=files, data=data, content_type=data_content_type,
         )

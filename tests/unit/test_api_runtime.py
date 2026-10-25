@@ -171,3 +171,48 @@ def test_upload_only_for_upload_ops():
     up = _spec(kind="write", method="POST", body="upload")
     api._call(up, {"pid": 1}, data=b"x", data_content_type="image/png", reason="r")
     assert responses.calls[0].request.headers["Content-Type"] == "image/png"
+
+
+@responses.activate(assert_all_requests_are_fired=False)
+def test_unexpected_kind_is_treated_as_write():
+    spec = _spec(kind="Write", method="POST", body="json")
+    with pytest.raises(OperationLockedError):
+        _api()._call(spec, {"pid": 1}, body={}, reason="why")
+    with pytest.raises(FSError):  # verified, but still a write: reason required
+        _api(_verified())._call(spec, {"pid": 1}, body={})
+    assert len(responses.calls) == 0
+
+
+@responses.activate
+def test_body_rejected_for_bodyless_op():
+    with pytest.raises(ValueError):
+        _api()._call(_spec(body="none"), {"pid": 1}, body={"a": 1})
+    assert len(responses.calls) == 0
+
+
+@responses.activate(assert_all_requests_are_fired=False)
+def test_body_check_after_lock_for_writes():
+    spec = _spec(kind="write", method="POST", body="none")
+    with pytest.raises(OperationLockedError):
+        _api()._call(spec, {"pid": 1}, body={"a": 1}, reason="r")
+    with pytest.raises(ValueError):
+        _api(_verified())._call(spec, {"pid": 1}, body={"a": 1}, reason="r")
+    assert len(responses.calls) == 0
+
+
+@responses.activate
+def test_leftover_placeholder_and_extra_path_args_rejected():
+    spec = _spec(path="/a/{pid}/b/{other}")
+    with pytest.raises(ValueError):
+        _api()._call(spec, {"pid": 1})
+    with pytest.raises(ValueError):
+        _api()._call(_spec(), {"pid": 1, "extra": 2})
+    assert len(responses.calls) == 0
+
+
+@responses.activate
+def test_non_mapping_query_rejected():
+    for bad in ("a=1", [("a", 1)], 5):
+        with pytest.raises(ValueError):
+            _api()._call(_spec(), {"pid": 1}, query=bad)
+    assert len(responses.calls) == 0

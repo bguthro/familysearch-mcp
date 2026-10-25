@@ -108,6 +108,8 @@ def resolve(snapshot: dict, overrides: dict) -> tuple[list[ResolvedOp], dict[str
             continue
         method = o["method"]
         kind = kinds.get(sid, "read" if method in _READ_METHODS else "write")
+        if kind not in ("read", "write"):
+            raise ValueError(f"{sid}: kind must be 'read' or 'write', got {kind!r}")
         summary = o.get("summary") or ""
         is_destructive = kind == "write" and bool(_DESTRUCTIVE.search(summary))
         if sid in add:

@@ -149,6 +149,15 @@ def test_unknown_override_target_raises(snapshot, overrides):
         resolve(snapshot, ov)
 
 
+def test_invalid_kind_override_raises(snapshot, overrides):
+    sid = next(o["operation_id"] for o in snapshot["operations"]
+               if o["operation_id"] not in overrides["exclude"])
+    ov = copy.deepcopy(overrides)
+    ov["kind"] = {**ov["kind"], sid: "Write"}
+    with pytest.raises(ValueError, match=sid):
+        resolve(snapshot, ov)
+
+
 def test_unknown_top_level_key_raises(tmp_path, overrides):
     p = tmp_path / "o.json"
     p.write_text(json.dumps({**overrides, "bogus": {}}))
