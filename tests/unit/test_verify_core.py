@@ -73,6 +73,33 @@ def test_verify_api_refuses_undeclared_write():
 
 
 @responses.activate
+@pytest.mark.parametrize("flags", [
+    {}, {"allow_unverified": True, "confirm_destructive": True},
+    {"allow_unverified": True, "confirm_destructive": True, "allow_production": True},
+])
+def test_verify_api_undeclared_write_ignores_caller_unlock_flags(flags):
+    api = VerifyApi(beta_client(), ops=("readPerson",), registry=registry(
+        deletePerson={"status": "unverified"}))
+    with pytest.raises(OperationLockedError):
+        api.delete_person("P1", reason="r", **flags)
+    assert api.called == set() and len(responses.calls) == 0
+
+
+@responses.activate
+def test_verify_api_forces_flags_false_for_undeclared_writes(monkeypatch):
+    import familysearch.api._runtime as runtime
+
+    seen = []
+    monkeypatch.setattr(runtime, "check_call", lambda *a, **kw: seen.append(kw))
+    responses.add(responses.POST, PERSONS, status=201)
+    api = VerifyApi(beta_client(), ops=("readPerson",), registry=registry())
+    api.create_person(reason="r", body={}, allow_unverified=True, confirm_destructive=True,
+                      allow_production=True)
+    assert seen == [{"allow_unverified": False, "allow_production": False,
+                     "confirm_destructive": False}]
+
+
+@responses.activate
 def test_verify_api_still_refuses_unverifiable_op():
     api = VerifyApi(beta_client(), ops=("updateVocabTranslation",), registry=registry(
         updateVocabTranslation={"status": "unverifiable", "reason": "shared data"}))
@@ -285,6 +312,12 @@ def test_record_preserves_other_entries_and_formatting(reg_path):
             assert after["operations"][oid] == before["operations"][oid]
     assert {k: v for k, v in after.items() if k != "operations"} == \
         {k: v for k, v in before.items() if k != "operations"}
+
+
+def test_record_many_preserves_handwritten_for_read_op(reg_path):
+    before = json.loads(reg_path.read_text())["operations"]["readPerson"]["handwritten"]
+    record.record_many_verified(["readPerson"], "r", "read-content", "c", "d", path=reg_path)
+    assert json.loads(reg_path.read_text())["operations"]["readPerson"]["handwritten"] == before
 
 
 def test_record_keeps_file_mode(reg_path):

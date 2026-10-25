@@ -1,7 +1,7 @@
 """The verification recipes, keyed by name. Empty until recipes are written."""
 from familysearch.api import OPERATIONS
 
-from ..core import EVIDENCE, Recipe
+from ..core import Recipe, evidence_problem
 
 RECIPES: dict[str, Recipe] = {}
 
@@ -24,8 +24,9 @@ def validate_recipes(recipes: dict[str, Recipe]) -> list[str]:
         for op in recipe.ops:
             if op not in OPERATIONS:
                 problems.append(f"{key}: unknown operation {op}")
-        if recipe.evidence not in EVIDENCE:
-            problems.append(f"{key}: evidence must be one of {EVIDENCE}, got {recipe.evidence!r}")
+        evidence = evidence_problem(recipe.ops, recipe.evidence)
+        if evidence:
+            problems.append(f"{key}: {evidence}")
         if not callable(recipe.run):
             problems.append(f"{key}: run is not callable")
     return problems

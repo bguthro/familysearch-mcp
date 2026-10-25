@@ -14,7 +14,7 @@ from pathlib import Path
 from familysearch.api import OPERATIONS
 from familysearch.api.registry import REGISTRY_PATH
 
-from .core import EVIDENCE
+from .core import EVIDENCE, evidence_problem
 
 _ENTRY_KEYS = {"generated", "handwritten"}
 
@@ -82,6 +82,9 @@ def apply_verified(
     if not _nonempty(fingerprint) or fingerprint != spec.fingerprint:
         raise ValueError(
             f"fingerprint for {operation_id} does not match the generated spec; refusing")
+    problem = evidence_problem([operation_id], evidence)
+    if problem:
+        raise ValueError(problem)
     _set_generated(registry, operation_id, {
         "status": "verified", "fingerprint": fingerprint, "recipe": recipe,
         "evidence": evidence, "commit": commit, "verified_on": verified_on,
@@ -111,10 +114,25 @@ def record_many_verified(
     _write(registry, path)
 
 
-def record_unverifiable(operation_id: str, reason: str, path: Path = REGISTRY_PATH) -> None:
+def record_unverifiable(
+    operation_id: str, reason: str, path: Path = REGISTRY_PATH, *, force: bool = False
+) -> None:
+    """Classify an operation unverifiable.
+
+    An ``excluded`` entry is never overwritten; a ``verified`` one only with
+    ``force=True``.
+    """
     if not _nonempty(reason):
         raise ValueError("an unverifiable classification needs a non-empty reason")
     registry = _load(path)
+    entry = registry["operations"].get(operation_id)
+    current = entry.get("generated") if isinstance(entry, dict) else None
+    status = current.get("status") if isinstance(current, dict) else None
+    if status == "excluded":
+        raise ValueError(f"{operation_id} is excluded; refusing to reclassify it")
+    if status == "verified" and force is not True:
+        raise ValueError(
+            f"{operation_id} is verified; pass --force-reclassify to mark it unverifiable")
     _set_generated(registry, operation_id,
                    {"status": "unverifiable", "reason": reason.strip()}, create=True)
     _write(registry, path)

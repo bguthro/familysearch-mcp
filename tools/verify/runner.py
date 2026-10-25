@@ -4,9 +4,11 @@
     python -m tools.verify run (--recipe NAME ... | --all) [--dry-run]
     python -m tools.verify classify OPERATION_ID --status unverifiable --reason TEXT
 
-``run`` takes the session cookie from Brave, and aborts (exit 2) unless that session
-belongs to beta and ``GET /platform/users/current`` answers 200 there. Production is
-refused in every code path. A recipe marks its operations verified only when it
+``run`` refuses (exit 2) a working tree with uncommitted changes other than
+``registry.json`` (the recorded commit must describe the code that ran). It then takes
+the session cookie from Brave and aborts (exit 2) unless beta's
+``GET /platform/users/current`` answers 200 for it. Production is never contacted
+and is refused in every code path. A recipe marks its operations verified only when it
 raised nothing, its fixtures were torn down cleanly, it called every operation it
 claims and (for ``state-change`` evidence) passed a negative control; otherwise the
 registry file is left untouched. The token is never printed.
@@ -18,20 +20,20 @@ import sys
 import uuid
 from pathlib import Path
 
-import requests
-
 from familysearch.api.registry import REGISTRY_PATH, load_registry
-from familysearch.auth import Environment, detect_environment, extract_brave_token
-from familysearch.client import DEFAULT_USER_AGENT, FS_JSON, FSClient
+from familysearch.auth import Environment, extract_brave_token
+from familysearch.client import FSClient
 from familysearch.errors import FSError
 
 from . import record
-from .core import EVIDENCE, Recipe, VerifyApi, VerifyContext
+from .core import Recipe, VerifyApi, VerifyContext, evidence_problem
 from .fixtures import FixtureSet
 from .recipes import RECIPES, validate_recipes
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CURRENT_USER = "/platform/users/current"
+REGISTRY_REL = "src/familysearch/api/registry.json"
+NOT_BETA = "not a beta session (are you signed into production?)"
 
 
 def make_context(client: FSClient, recipe: Recipe, *, registry_path: Path = REGISTRY_PATH,
@@ -62,8 +64,9 @@ def run_recipe(recipe: Recipe, ctx: VerifyContext, *, registry_path: Path, commi
     missing = sorted(set(recipe.ops) - ctx.api.called)
     if missing:
         problems.append(f"claimed but never successfully called: {', '.join(missing)}")
-    if recipe.evidence not in EVIDENCE:
-        problems.append(f"evidence must be one of {EVIDENCE}, got {recipe.evidence!r}")
+    evidence = evidence_problem(recipe.ops, recipe.evidence)
+    if evidence:
+        problems.append(evidence)
     elif recipe.evidence == "state-change" and ctx.negative_controls < 1:
         problems.append("state-change evidence needs at least one passing negative control "
                         "(ctx.expect_changed)")
@@ -76,35 +79,40 @@ def run_recipe(recipe: Recipe, ctx: VerifyContext, *, registry_path: Path, commi
     return {"recipe": recipe.name, "passed": not problems, "problems": problems}
 
 
-def _status_of_current_user(token: str):
-    """detect_environment probe: the identity read only, with a browser User-Agent."""
-    def http_get(base_url: str) -> int:
-        try:
-            return requests.get(
-                base_url + CURRENT_USER,
-                headers={"Authorization": f"Bearer {token}", "Accept": FS_JSON,
-                         "User-Agent": DEFAULT_USER_AGENT},
-                timeout=30, allow_redirects=False,
-            ).status_code
-        except requests.RequestException as e:
-            raise FSError(f"could not reach FamilySearch: {type(e).__name__}") from None
-    return http_get
-
-
 def build_beta_client() -> FSClient:
-    """A client for beta from Brave's cookie, or FSError. Never returns production."""
+    """A client for beta from Brave's cookie, or FSError. Never contacts production.
+
+    Only beta is probed: a session that beta's current-user read does not answer
+    200 for (production's, an expired one, or an unreachable host) is refused.
+    """
     token = extract_brave_token()
-    env = detect_environment(token, _status_of_current_user(token))
-    if env is not Environment.BETA:
-        raise FSError("Brave is signed into production; verification runs on beta only. "
-                      "Sign into beta.familysearch.org in Brave.")
     client = FSClient(token, Environment.BETA)
     if client.environment is not Environment.BETA:
         raise FSError("refusing a non-beta client")
-    resp = client.get(CURRENT_USER)
-    if resp.status_code != 200:
-        raise FSError(f"beta {CURRENT_USER} answered {resp.status_code}, not 200")
+    try:
+        status = client.get(CURRENT_USER).status_code
+    except Exception as e:  # noqa: BLE001 - 401/403/network: all mean "not usable here"
+        raise FSError(f"{NOT_BETA}: {type(e).__name__}") from None
+    if status != 200:
+        raise FSError(f"{NOT_BETA}: beta {CURRENT_USER} answered {status}")
     return client
+
+
+def git_status_porcelain() -> str:
+    return subprocess.run(["git", "status", "--porcelain"], cwd=REPO_ROOT,
+                          capture_output=True, text=True, check=True).stdout
+
+
+def dirty_paths(porcelain: str) -> list[str]:
+    """Changed paths other than the registry itself (renames count as dirty)."""
+    dirty = []
+    for line in porcelain.splitlines():
+        if not line.strip():
+            continue
+        path = line[3:]
+        if " -> " in path or path.strip('"') != REGISTRY_REL:
+            dirty.append(path)
+    return dirty
 
 
 def current_commit() -> str:
@@ -147,6 +155,15 @@ def _run(args) -> int:
         print("no recipes to run")
         return 0
     try:
+        dirty = dirty_paths(git_status_porcelain())
+    except Exception as e:  # noqa: BLE001
+        print(f"abort: cannot read git status: {type(e).__name__}: {e}", file=sys.stderr)
+        return 2
+    if dirty:
+        print("abort: uncommitted changes (commit them so the recorded commit is the code "
+              "that ran):\n  " + "\n  ".join(dirty), file=sys.stderr)
+        return 2
+    try:
         client = build_beta_client()
         commit = current_commit()
     except Exception as e:  # noqa: BLE001 - any failure here aborts; messages carry no token
@@ -170,7 +187,8 @@ def _run(args) -> int:
 
 def _classify(args) -> int:
     try:
-        record.record_unverifiable(args.operation_id, args.reason, path=args.registry)
+        record.record_unverifiable(args.operation_id, args.reason, path=args.registry,
+                                   force=args.force_reclassify)
     except (ValueError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -192,6 +210,8 @@ def main(argv: list[str] | None = None) -> int:
     cls_p.add_argument("operation_id")
     cls_p.add_argument("--status", required=True, choices=["unverifiable"])
     cls_p.add_argument("--reason", required=True)
+    cls_p.add_argument("--force-reclassify", action="store_true",
+                       help="allow replacing a verified entry (excluded ones never are)")
     cls_p.add_argument("--registry", type=Path, default=REGISTRY_PATH, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if args.command == "list":

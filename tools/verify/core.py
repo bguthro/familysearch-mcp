@@ -5,7 +5,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from familysearch.api import FamilySearchApi
+from familysearch.api import OPERATIONS, FamilySearchApi
 from familysearch.api._runtime import ApiResult
 from familysearch.api.spec import OpSpec
 from familysearch.auth import Environment
@@ -13,6 +13,22 @@ from familysearch.client import FSClient
 from familysearch.errors import FSError
 
 EVIDENCE = ("state-change", "read-content")
+
+
+def evidence_problem(ops: Iterable[str], evidence: str) -> str | None:
+    """Why ``evidence`` cannot vouch for ``ops``, or None.
+
+    ``read-content`` is only for recipes whose ops are all reads: any write (or
+    unknown op) must be proven by ``state-change``.
+    """
+    if evidence not in EVIDENCE:
+        return f"evidence must be one of {EVIDENCE}, got {evidence!r}"
+    if evidence != "state-change":
+        writes = [op for op in ops if op not in OPERATIONS or OPERATIONS[op].kind != "read"]
+        if writes:
+            return (f"ops {', '.join(writes)} are not reads; they need state-change "
+                    "evidence, not read-content")
+    return None
 
 
 @dataclass(frozen=True)
@@ -33,8 +49,9 @@ def _require_beta(client) -> None:
 class VerifyApi(FamilySearchApi):
     """FamilySearchApi that unlocks the recipe's declared writes on beta, and only there.
 
-    For an operation in ``ops`` it passes ``allow_unverified`` and
-    ``confirm_destructive``; it never passes ``allow_production``. The lock still
+    For a write in ``ops`` it passes ``allow_unverified`` and
+    ``confirm_destructive``; for any other write it forces both False, whatever the
+    caller passed; it never passes ``allow_production``. The lock still
     runs for every write, so unverifiable and excluded operations stay refused, as
     does any undeclared unverified write. ``called`` holds every operation that
     completed without raising.
@@ -48,10 +65,11 @@ class VerifyApi(FamilySearchApi):
 
     def _call(self, spec: OpSpec, path_args: Mapping[str, Any], **kwargs) -> ApiResult:
         _require_beta(self._client)
+        # The caller's flags never count: unlocking is decided here and only here.
+        unlock = spec.kind != "read" and spec.operation_id in self._unlocked
         kwargs["allow_production"] = False
-        if spec.kind != "read" and spec.operation_id in self._unlocked:
-            kwargs["allow_unverified"] = True
-            kwargs["confirm_destructive"] = True
+        kwargs["allow_unverified"] = unlock
+        kwargs["confirm_destructive"] = unlock
         result = super()._call(spec, path_args, **kwargs)
         self.called.add(spec.operation_id)
         return result
