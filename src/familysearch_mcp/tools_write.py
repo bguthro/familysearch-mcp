@@ -50,6 +50,10 @@ def _gate(ctx: Any) -> dict | None:
     return None
 
 
+class _BadResponse(TypeError):
+    """The library returned something other than a list of non-empty ids."""
+
+
 class PartialWriteError(FSError):
     """A multi-step write failed part-way; some relationships already exist."""
 
@@ -59,7 +63,7 @@ class PartialWriteError(FSError):
 
 
 def _no_control(name: str, value: str) -> None:
-    if any(unicodedata.category(ch) == "Cc" for ch in value):
+    if any(unicodedata.category(ch) in ("Cc", "Zl", "Zp") for ch in value):
         raise ValueError(f"{name} must not contain control characters")
 
 
@@ -86,12 +90,15 @@ def _text(name: str, value: Any) -> str | None:
     return value or None
 
 
-def _past_date(name: str, value: str | None, year: int) -> None:
+_CONFIRM_HINT = (
+    "omit it (use confirm_deceased=True for a deceased person whose death date is unknown)"
+)
+_PLACE_ONLY_HINT = "omit the date to record place only"
+
+
+def _past_date(name: str, value: str | None, year: int, hint: str = _CONFIRM_HINT) -> None:
     if value is not None and classify_life_status(None, value, today_year=year) != "deceased":
-        raise ValueError(
-            f"{name} is not a recognizable past date; omit it (use "
-            "confirm_deceased=True for a deceased person whose death date is unknown)"
-        )
+        raise ValueError(f"{name} is not a recognizable past date; {hint}")
 
 
 def _required_text(name: str, value: Any) -> str:
@@ -223,7 +230,7 @@ def _add_fact(ctx: Any, person_id, fact_type, reason, date, place) -> dict:
     if date is None and place is None:
         raise ValueError("add_fact needs at least one of date or place")
     if short == "Death":
-        _past_date("date", date, _current_year())
+        _past_date("a Death fact's date", date, _current_year(), _PLACE_ONLY_HINT)
     fact = build_fact(uri, date=date, place=place)
     ctx.call(lambda s: s.writer.add_fact(pid, fact, reason=reason))
     return {"status": "added", "person_id": pid, "fact_type": short}
@@ -264,8 +271,13 @@ def _create_parent_child(ctx: Any, child_id, parent_ids, reason) -> dict:
                 lambda s, p=parent: s.writer.create_parent_child(
                     child_id=child, parent_ids=[p], reason=reason)
             )
+            if not (isinstance(rels, list) and rels
+                    and all(isinstance(r, str) and r for r in rels)):
+                raise _BadResponse("create_parent_child returned an unexpected response")
         except Exception as e:
             if not created:
+                if isinstance(e, _BadResponse):
+                    raise FSError("unexpected response from create_parent_child") from e
                 raise
             raise PartialWriteError(
                 f"Relationship(s) already created: {', '.join(created)}. Linking parent "
@@ -335,7 +347,9 @@ def register_write_tools(mcp: Any, ctx: Any) -> None:
         Ethnicity, FirstCommunion, Funeral, Immigration, MaritalStatus, Marriage,
         MilitaryService, Mission, Naturalization, Nationality, Occupation,
         Ordination, Residence, Retirement (or the full http://gedcomx.org/<Name>
-        URI). At least one of `date` or `place` is required. Every write needs a
+        URI). At least one of `date` or `place` is required. A Death fact's `date`,
+        if given, must be a recognizable past date (junk like "Unknown" is
+        rejected); omit the date to record the place only. Every write needs a
         `reason`: a short change message (max 500 chars) recorded in FamilySearch's
         change history; mention the research archive folder or source when relevant.
         Returns {"status": "added", "person_id", "fact_type"}, or

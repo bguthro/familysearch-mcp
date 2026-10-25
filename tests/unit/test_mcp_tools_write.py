@@ -648,3 +648,61 @@ def test_parent_child_token_expiry_reruns_only_one_post():
         tools["create_parent_child"]("GKLV-DY8", ["GKLW-DY9", "GKLX-DY1"], REASON)
     posted = [c[1]["parent_ids"][0] for c in svc.writer.create_parent_child.calls]
     assert posted == ["GKLW-DY9", "GKLX-DY1", "GKLX-DY1"]
+
+
+# ---- Step 0 fixes -------------------------------------------------------
+
+def test_add_fact_death_error_does_not_mention_confirm_deceased():
+    tools, svc, _ = build()
+    with pytest.raises(ValueError) as ei:
+        tools["add_fact"]("GKLV-DY8", "Death", REASON, date="Unknown")
+    assert "confirm_deceased" not in str(ei.value)
+    assert "place" in str(ei.value)
+    assert svc.writer.add_fact.calls == []
+    assert "Death" in tools["add_fact"].__doc__ and "past date" in tools["add_fact"].__doc__
+
+
+def test_create_person_death_error_keeps_confirm_hint():
+    tools, _, _ = build()
+    with pytest.raises(ValueError, match="confirm_deceased"):
+        tools["create_person"](**dict(PERSON, death_date="Unknown"))
+
+
+@pytest.mark.parametrize("sep", [" ", " "])
+def test_line_paragraph_separators_rejected(sep):
+    tools, svc, _ = build()
+    with pytest.raises(ValueError):
+        tools["create_person"](**dict(PERSON, given="Jo" + sep + "hn"))
+    with pytest.raises(ValueError):
+        tools["create_couple"]("GKLV-DY8", "GKLW-DY9", "why" + sep + "x")
+    assert writer_calls(svc) == 0 and svc.search.tree_search.calls == []
+
+
+class OddParentRec(ParentRec):
+    def __init__(self, bad_for, bad):
+        super().__init__()
+        self.bad_for, self.bad = bad_for, bad
+
+    def __call__(self, *args, **kwargs):
+        out = super().__call__(*args, **kwargs)
+        return self.bad if kwargs["parent_ids"][0] == self.bad_for else out
+
+
+@pytest.mark.parametrize("bad", ["REL-1", None, [], [""], [None], ("REL-1",), {"a": 1}])
+def test_parent_child_bad_return_second_parent_is_partial(bad):
+    tools, svc, _ = build()
+    svc.writer.create_parent_child = OddParentRec("GKLX-DY1", bad)
+    with pytest.raises(PartialWriteError) as ei:
+        tools["create_parent_child"]("GKLV-DY8", ["GKLW-DY9", "GKLX-DY1"], REASON)
+    assert ei.value.created_ids == ["REL-GKLW-DY9"]
+    assert isinstance(ei.value.__cause__, TypeError)
+
+
+@pytest.mark.parametrize("bad", ["REL-1", None, [], [""], [None]])
+def test_parent_child_bad_return_first_parent_is_fserror(bad):
+    tools, svc, _ = build()
+    svc.writer.create_parent_child = OddParentRec("GKLW-DY9", bad)
+    with pytest.raises(FSError, match="unexpected response") as ei:
+        tools["create_parent_child"]("GKLV-DY8", ["GKLW-DY9", "GKLX-DY1"], REASON)
+    assert not isinstance(ei.value, PartialWriteError)
+    assert len(svc.writer.create_parent_child.calls) == 1
