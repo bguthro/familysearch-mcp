@@ -14,7 +14,22 @@ from test_search import BASE, _load, _search
     ("December 1846", "1846"),
     ("abt 1850", "1850"),
     ("about 1846", "1846"),
-    ("after 1850", "1850"),
+    ("after 1850", None),
+    ("Before 1850", None),
+    ("from 1840", None),
+    ("until 1850", None),
+    ("since 1840", None),
+    ("1850s", None),
+    ("the 1850s", None),
+    ("circa 1850", "1850"),
+    ("ca. 1850", "1850"),
+    ("est 1850", "1850"),
+    ("c. 1850", "1850"),
+    ("Toronto 1850", "1850"),
+    ("\uff11\uff18\uff14\uff16", None),
+    ("\u0661\u0668\u0664\u0666", None),
+    ("1846-13-45", "1846"),
+    ("1846-02-30", "1846"),
     ("  1846  ", "1846"),
     ("30 March 1828", "1828"),
     ("1850 or 1850", "1850"),
@@ -32,6 +47,14 @@ from test_search import BASE, _load, _search
 ])
 def test_normalize_search_date(raw, expected):
     assert normalize_search_date(raw) == expected
+
+
+def test_normalize_search_date_huge_junk_is_fast():
+    import time
+    t = time.monotonic()
+    assert normalize_search_date("x1 " * 350000) is None
+    assert normalize_search_date("9" * 1_000_000) is None
+    assert time.monotonic() - t < 2
 
 
 @responses.activate

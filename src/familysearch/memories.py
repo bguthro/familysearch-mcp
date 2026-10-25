@@ -6,6 +6,7 @@ from urllib.parse import quote
 from ._urls import join_path
 from .client import FSClient
 from .discovery import Discovery
+from .errors import LinkNotFoundError
 from .tree import _new_id
 
 
@@ -50,7 +51,9 @@ class Memories:
     ) -> str:
         """Upload AND attach in one step, via the person's own memories link."""
         self._check(data, content_type)
-        url = self._discovery.person_links(person_id)["artifacts"]
+        url = self._discovery.person_links(person_id).get("artifacts")
+        if not url:
+            raise LinkNotFoundError("artifacts")
         return self._post_multipart(url, data, filename, content_type, title, reason)
 
     def link_to_person(self, person_id: str, memory_id: str, *, reason: str) -> None:

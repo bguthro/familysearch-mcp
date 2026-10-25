@@ -189,6 +189,49 @@ def test_create_person_returns_matches_and_does_not_create():
     assert svc.search.tree_search.calls[0][1]["count"] == 10
 
 
+def raw_hit(conf, pid="KW1", missing=False):
+    h = hit(conf, pid)
+    if missing:
+        del h["confidence"]
+    return h
+
+
+@pytest.mark.parametrize("conf", [2.9, "2.9", 2.99, 2.0, True, False, "3", "2", None])
+def test_non_int_confidence_blocks_creation(conf):
+    tools, svc, _ = build([raw_hit(conf)])
+    out = tools["create_person"](**OLD)
+    assert out["status"] == "matches_found", conf
+    assert writer_calls(svc) == 0
+
+
+def test_missing_confidence_blocks_creation():
+    tools, svc, _ = build([raw_hit(None, missing=True)])
+    assert tools["create_person"](**OLD)["status"] == "matches_found"
+    assert writer_calls(svc) == 0
+
+
+@pytest.mark.parametrize("conf", [3, 4, 5])
+def test_int_confidence_at_or_above_threshold_blocks(conf):
+    tools, svc, _ = build([hit(conf)])
+    assert tools["create_person"](**OLD)["status"] == "matches_found"
+
+
+@pytest.mark.parametrize("conf", [0, 1, 2])
+def test_int_confidence_below_threshold_is_weak(conf):
+    tools, svc, _ = build([hit(conf, "W1")])
+    out = tools["create_person"](**OLD)
+    assert out["status"] == "created" and out["weak_candidates_ignored"] == 1
+    assert out["weak_candidates"] == [
+        {"id": "W1", "name": out["weak_candidates"][0]["name"], "confidence": conf}]
+
+
+def test_weak_candidates_capped_at_five():
+    tools, svc, _ = build([hit(2, f"W{i}") for i in range(8)])
+    out = tools["create_person"](**OLD)
+    assert out["weak_candidates_ignored"] == 8
+    assert [c["id"] for c in out["weak_candidates"]] == [f"W{i}" for i in range(5)]
+
+
 def test_matches_capped_at_ten():
     tools, svc, _ = build([hit(i, f"P{i}") for i in range(15)])
     out = tools["create_person"](**OLD)
@@ -200,7 +243,8 @@ def test_create_person_creates_with_override():
     tools, svc, _ = build([hit(5)])
     out = tools["create_person"](**OLD, create_despite_matches=True)
     assert out == {"status": "created", "id": "NEW1-ABC", "living": False,
-                   "life_status": "deceased_by_age", "weak_candidates_ignored": 0}
+                   "life_status": "deceased_by_age", "weak_candidates_ignored": 0,
+                   "weak_candidates": []}
     assert svc.search.tree_search.calls == []
     assert len(svc.writer.create_person.calls) == 1
 
@@ -242,7 +286,8 @@ def test_living_true_creates_private_living():
     tools, svc, _ = build()
     out = tools["create_person"](**PERSON, birth_date="1990", living=True)
     assert out == {"status": "created", "id": "NEW1-ABC", "living": True,
-                   "life_status": "living", "weak_candidates_ignored": 0}
+                   "life_status": "living", "weak_candidates_ignored": 0,
+                   "weak_candidates": []}
     payload = svc.writer.create_person.calls[0][0][0]
     assert payload["living"] is True
 

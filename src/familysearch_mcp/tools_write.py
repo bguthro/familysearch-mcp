@@ -134,9 +134,14 @@ def _fact_type(value: Any) -> tuple[str, str]:
 MATCH_CONFIDENCE_MIN = 3
 
 
-def _blocks(candidate: dict) -> bool:
-    c = candidate.get("confidence")
-    return not isinstance(c, int) or isinstance(c, bool) or c >= MATCH_CONFIDENCE_MIN
+def _is_weak(entry: Any) -> bool:
+    """Weak (non-blocking) only when the RAW confidence is a real int below the minimum.
+
+    Floats, strings, bools, None and a missing value all BLOCK (fail safe); the
+    projection's display coercion (2.9 -> 2) must never weaken the gate.
+    """
+    c = entry.get("confidence") if isinstance(entry, dict) else None
+    return isinstance(c, int) and not isinstance(c, bool) and c < MATCH_CONFIDENCE_MIN
 
 
 def _confidence_key(candidate: dict) -> float:
@@ -169,6 +174,7 @@ def _create_person(ctx: Any, given, surname, gender, reason, birth_date, birth_p
     # MATCH GATE: a hit with confidence >= MATCH_CONFIDENCE_MIN (or unknown
     # confidence) blocks creation until Ben has reviewed the candidates.
     weak_ignored = 0
+    weak: list[dict] = []
     if not create_despite_matches:
         hits = ctx.call(
             lambda s: s.search.tree_search(
@@ -178,9 +184,11 @@ def _create_person(ctx: Any, given, surname, gender, reason, birth_date, birth_p
         )
         if not isinstance(hits, list):
             raise FSError("tree_search returned an unexpected response; refusing to create")
-        projected = [project_search_hit(e) for e in hits]
-        candidates = [c for c in projected if _blocks(c)]
-        weak_ignored = len(projected) - len(candidates)
+        pairs = [(e, project_search_hit(e)) for e in hits]
+        candidates = [p for e, p in pairs if not _is_weak(e)]
+        weak = [{"id": p["id"], "name": p["name"], "confidence": p["confidence"]}
+                for e, p in pairs if _is_weak(e)]
+        weak_ignored = len(weak)
         if candidates:
             candidates.sort(key=_confidence_key, reverse=True)
             return {
@@ -230,7 +238,8 @@ def _create_person(ctx: Any, given, surname, gender, reason, birth_date, birth_p
     )
     new_id = ctx.call(lambda s: s.writer.create_person(person, reason=reason))
     return {"status": "created", "id": new_id, "living": is_living,
-            "life_status": classification, "weak_candidates_ignored": weak_ignored}
+            "life_status": classification, "weak_candidates_ignored": weak_ignored,
+            "weak_candidates": weak[:5]}
 
 
 def _add_fact(ctx: Any, person_id, fact_type, reason, date, place) -> dict:
@@ -605,7 +614,9 @@ def register_write_tools(mcp: Any, ctx: Any) -> None:
            is contradictory and rejected.
         Writes may be disabled, in which case {"status": "writes_disabled"} is
         returned. On success returns {"status": "created", "id", "living",
-        "life_status"}.
+        "life_status", "weak_candidates_ignored", "weak_candidates"}; the weak
+        candidates are low-confidence (< 3) hits that did not block creation: glance
+        at them, since a true duplicate can score that low.
         """
         return _create_person(ctx, given, surname, gender, reason, birth_date,
                               birth_place, death_date, living,

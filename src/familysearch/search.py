@@ -1,6 +1,7 @@
 """Tree search and historical-record (persona) search."""
 from __future__ import annotations
 
+import datetime
 import re
 
 from .client import FSClient
@@ -25,18 +26,25 @@ def _entries(data: dict) -> list:
     return entries if isinstance(entries, list) else []
 
 
-_BARE_YEAR = re.compile(r"\d{4}")
-_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
-_YEAR_RUN = re.compile(r"(?<!\d)\d{4}(?!\d)")
+_BARE_YEAR = re.compile(r"\d{4}", re.ASCII)
+_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}", re.ASCII)
+_YEAR_RUN = re.compile(r"(?<!\d)\d{4}(?!\d)", re.ASCII)
+# Bounds, ranges and decades NARROW a search (or are not one date): omit the date.
+_NARROWING = re.compile(
+    r"\b(?:after|aft|before|bef|from|to|until|since|between)\b|\d{4}s\b",
+    re.ASCII | re.IGNORECASE,
+)
 
 
 def normalize_search_date(text) -> str | None:
     """Reduce a free-form date to what q.birthLikeDate accepts, or None to omit it.
 
-    The search endpoint accepts ONLY a bare year or an ISO date (anything else is
-    HTTP 400). A bare year or ISO date passes through; otherwise a single distinct
-    plausible year (1000-2999) is used; zero or several years omit the date (a
-    broader search is the safe direction for the anti-duplicate gate).
+    The search endpoint accepts ONLY a bare year or a valid ISO date (anything else is
+    HTTP 400). A bare year or valid ISO date passes through. Text with a bound/range
+    qualifier (after, before, from, to, until, since, between) or a decade ("1850s") is
+    omitted, since a single year would NARROW the search. Otherwise (including
+    approximations such as "abt 1850") a single distinct plausible year (1000-2999) is
+    used; zero or several years omit the date.
     """
     if not isinstance(text, str):
         return None
@@ -44,7 +52,13 @@ def normalize_search_date(text) -> str | None:
     if _BARE_YEAR.fullmatch(s) and 1000 <= int(s) <= 2999:
         return s
     if _ISO_DATE.fullmatch(s):
-        return s
+        try:
+            datetime.date.fromisoformat(s)
+            return s
+        except ValueError:
+            pass
+    if _NARROWING.search(s):
+        return None
     years = {y for y in _YEAR_RUN.findall(s) if 1000 <= int(y) <= 2999}
     return years.pop() if len(years) == 1 else None
 

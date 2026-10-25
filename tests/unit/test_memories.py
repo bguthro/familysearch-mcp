@@ -69,6 +69,19 @@ def test_upload_to_person_rejects_oversize_and_bad_type():
     assert len(responses.calls) == 0
 
 
+def test_upload_to_person_without_artifacts_link_raises_link_not_found():
+    from familysearch import LinkNotFoundError
+
+    class NoLink(FakeDiscovery):
+        def person_links(self, pid):
+            return {}
+
+    mem = Memories(FSClient("tkn", Environment.BETA, min_write_interval=0), NoLink())
+    with pytest.raises(LinkNotFoundError):
+        mem.upload_to_person("PID-1", b"x", filename="a.png", content_type="image/png",
+                             reason="r")
+
+
 @responses.activate
 def test_upload_to_person_posts_multipart_to_persons_artifacts_link():
     responses.add(responses.POST, PERSON_ART, status=201, headers={

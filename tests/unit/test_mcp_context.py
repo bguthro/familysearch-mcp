@@ -91,6 +91,23 @@ def test_writes_allowed_on_prod_with_flag(monkeypatch, val):
     c.require_writes()
 
 
+@pytest.mark.parametrize("val", ["", "0", "false", "no", "garbage", " ", "on", "y"])
+def test_prod_writes_stay_blocked_for_non_truthy_flag(monkeypatch, val):
+    monkeypatch.setenv("FS_ALLOW_PROD_WRITES", val)
+    assert Context().writes_allowed() is False
+
+
+def test_prod_writes_flag_is_stripped_and_case_insensitive(monkeypatch):
+    monkeypatch.setenv("FS_ALLOW_PROD_WRITES", "TRUE ")
+    assert Context().writes_allowed() is True
+
+
+def test_beta_writes_always_allowed(monkeypatch):
+    monkeypatch.setenv("FS_ENVIRONMENT", "beta")
+    monkeypatch.setenv("FS_ALLOW_PROD_WRITES", "garbage")
+    assert Context().writes_allowed() is True
+
+
 def test_call_relifts_once_on_token_expired(monkeypatch, lifted):
     detect_as(monkeypatch, Environment.PRODUCTION)
     c = Context()
