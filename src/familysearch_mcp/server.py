@@ -34,6 +34,7 @@ if a tool says it is missing, tell Ben and never try to set it yourself.
 upload_memory(person_id=...) uploads and attaches in one step; to put one document on
 several people upload ONCE, then link_memory for the others (never re-upload).
 create_parent_child takes both parents in ONE call; the couple link is derived.
+Documents are attached to deceased persons only (living_person_blocked); no override.
 
 There is no delete or merge tool. Every write needs a short `reason` (the change
 message recorded in FamilySearch).

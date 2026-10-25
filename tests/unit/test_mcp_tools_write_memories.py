@@ -57,6 +57,8 @@ def make_services():
     s.memories = Obj()
     s.memories.upload = Rec("MEM123")
     s.memories.upload_to_person = Rec("MEM456")
+    s.tree = Obj()
+    s.tree.get_person = Rec({"id": "GKLV-DY8", "living": False})
     s.memories.link_to_person = Rec(None)
     s.sources = Obj()
     s.sources.create_description = Rec("71FD-SL2")
@@ -804,7 +806,8 @@ def test_upload_with_person_id_uses_upload_to_person(tmp_path):
     (args, kw), = svc.memories.upload_to_person.calls
     assert args == ("GKLV-DY8", PNG)
     assert kw == dict(filename="a.png", content_type="image/png", title="a.png", reason=REASON)
-    assert svc.memories.upload.calls == [] and ctx.call_count == 1
+    assert svc.memories.upload.calls == [] and ctx.call_count == 2  # living check + upload
+    assert svc.tree.get_person.calls == [(("GKLV-DY8",), {})]
 
 
 @pytest.mark.parametrize("bad", ["", "junk", "x" * 40, 5, "../etc", " "])
@@ -834,6 +837,96 @@ def test_upload_docstrings_explain_attach_flow():
     assert "person_id" in doc and "link_memory" in doc and "floating" in doc
     assert "never re-upload" in " ".join(doc.lower().split())
     assert "persona" in tools["link_memory"].__doc__
+
+
+# ---- living-person policy ---------------------------------------------------
+
+LIVING_CASES = [{"id": "X", "living": True}, {"id": "X", "living": None}, {"id": "X"},
+                {"id": "X", "living": "false"}]
+
+
+def writes_made(s):
+    return (len(s.memories.upload.calls) + len(s.memories.upload_to_person.calls)
+            + len(s.memories.link_to_person.calls))
+
+
+@pytest.mark.parametrize("person", LIVING_CASES)
+def test_upload_with_person_blocked_when_not_known_deceased(tmp_path, person):
+    tools, svc, _ = build()
+    svc.tree.get_person = Rec(person)
+    out = tools["upload_memory"](mk(tmp_path, "a.png", PNG), REASON,
+                                 person_id="gklv-dy8", provenance="NARA")
+    assert out["status"] == "living_person_blocked" and out["person_id"] == "GKLV-DY8"
+    assert "deceased" in out["message"] and "web UI" in out["message"]
+    assert writes_made(svc) == 0
+    assert len(svc.tree.get_person.calls) == 1
+
+
+@pytest.mark.parametrize("person", LIVING_CASES)
+def test_link_blocked_when_not_known_deceased(person):
+    tools, svc, _ = build()
+    svc.tree.get_person = Rec(person)
+    out = tools["link_memory"]("gklv-dy8", "123", REASON)
+    assert out["status"] == "living_person_blocked" and out["person_id"] == "GKLV-DY8"
+    assert writes_made(svc) == 0 and len(svc.tree.get_person.calls) == 1
+
+
+def test_deceased_person_proceeds_and_checked_once(tmp_path):
+    tools, svc, _ = build()
+    out = tools["upload_memory"](mk(tmp_path, "a.png", PNG), REASON,
+                                 person_id="GKLV-DY8", provenance="NARA")
+    assert out["status"] == "uploaded"
+    assert len(svc.tree.get_person.calls) == 1 and len(svc.memories.upload_to_person.calls) == 1
+    assert tools["link_memory"]("GKLV-DY8", "123", REASON)["status"] == "linked"
+    assert len(svc.tree.get_person.calls) == 2
+
+
+def test_get_person_error_propagates_with_zero_writes(tmp_path):
+    tools, svc, _ = build()
+    def boom(*a, **k):
+        raise RuntimeError("missing")
+    svc.tree.get_person = boom
+    with pytest.raises(RuntimeError):
+        tools["upload_memory"](mk(tmp_path, "a.png", PNG), REASON,
+                               person_id="GKLV-DY8", provenance="NARA")
+    with pytest.raises(RuntimeError):
+        tools["link_memory"]("GKLV-DY8", "123", REASON)
+    assert writes_made(svc) == 0
+
+
+def test_standalone_upload_makes_no_get_person_call(tmp_path):
+    tools, svc, _ = build()
+    assert upload(tools, mk(tmp_path, "a.png", PNG))["status"] == "uploaded"
+    assert svc.tree.get_person.calls == []
+
+
+def test_provenance_gate_wins_over_living_check(tmp_path):
+    tools, svc, _ = build()
+    svc.tree.get_person = Rec({"id": "X", "living": True})
+    out = tools["upload_memory"](mk(tmp_path, "fold3-scan.png", PNG), REASON,
+                                 person_id="GKLV-DY8", provenance="NARA")
+    assert out["status"] == "provenance_blocked"
+    out = tools["upload_memory"](mk(tmp_path, "b.png", PNG), REASON, person_id="GKLV-DY8")
+    assert out["status"] == "provenance_unknown"
+    assert svc.tree.get_person.calls == []
+
+
+def test_living_check_happens_before_reading_file(tmp_path, monkeypatch):
+    tools, svc, _ = build()
+    svc.tree.get_person = Rec({"id": "X", "living": True})
+    import familysearch_mcp.tools_write as tw
+    monkeypatch.setattr(tw, "_read_upload", lambda *a: pytest.fail("file read"))
+    out = tools["upload_memory"](mk(tmp_path, "a.png", PNG), REASON,
+                                 person_id="GKLV-DY8", provenance="NARA")
+    assert out["status"] == "living_person_blocked"
+
+
+def test_docstrings_describe_living_policy():
+    tools, _, _ = build()
+    for name in ("upload_memory", "link_memory"):
+        doc = " ".join(tools[name].__doc__.split())
+        assert "living_person_blocked" in doc and "deceased" in doc.lower(), name
+    assert "duplicate" in tools["link_memory"].__doc__
 
 
 # ---- link_memory ------------------------------------------------------------------

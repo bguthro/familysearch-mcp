@@ -25,7 +25,7 @@ from familysearch._urls import join_path
 
 from .context import ContextError
 from .guards import classify_life_status, provenance_blocked
-from .projections import project_search_hit
+from .projections import project_person, project_search_hit
 from .validation import validate_memory_id, validate_person_id, validate_source_id
 
 _REASON_MAX = 500
@@ -433,6 +433,28 @@ def _read_upload(real: str, content_type: str, st: os.stat_result) -> bytes:
     return data
 
 
+def _living_block(ctx: Any, pid: str) -> dict | None:
+    """Policy: documents are attached to DECEASED persons only (fail closed).
+
+    Reads the person once; anything other than an explicit living=False blocks.
+    A get_person error (e.g. no such person) propagates: no write is attempted.
+    """
+    person = project_person(ctx.call(lambda s: s.tree.get_person(pid)))
+    if person["living"] is False:
+        return None
+    return {
+        "status": "living_person_blocked",
+        "person_id": pid,
+        "message": (
+            "Nothing was attached. Documents are only attached to persons known to be "
+            "deceased, and this person is living or their status is unknown (a living "
+            "person's record is private). There is no override. If this is really "
+            "needed, tell Ben; he can decide and attach it manually in the FamilySearch "
+            "web UI."
+        ),
+    }
+
+
 def _upload_memory(
     ctx: Any, file_path, reason, person_id, title, provenance, override_rights,
 ) -> dict:
@@ -491,6 +513,10 @@ def _upload_memory(
             ),
         }
 
+    if pid is not None:
+        blocked = _living_block(ctx, pid)
+        if blocked:
+            return blocked
     data = _read_upload(real, content_type, st)
     if pid is None:
         memory_id = ctx.call(
@@ -523,6 +549,9 @@ def _link_memory(ctx: Any, person_id, memory_id, reason) -> dict:
     reason = _reason(reason)
     pid = validate_person_id(person_id)
     mid = validate_memory_id(memory_id)
+    blocked = _living_block(ctx, pid)
+    if blocked:
+        return blocked
     ctx.call(lambda s: s.memories.link_to_person(pid, mid, reason=reason))
     return {"status": "linked", "person_id": pid, "memory_id": mid}
 
@@ -705,7 +734,9 @@ def register_write_tools(mcp: Any, ctx: Any) -> None:
           that he holds the rights for THIS file first. An override skips both
           checks and is recorded in the result.
         With `person_id` the document is uploaded AND attached to that person in one
-        step. Without it the memory is standalone ("floating") and `link_memory`
+        step, but only for a DECEASED person: if the person is living or their status
+        is unknown the result is {"status": "living_person_blocked"} and nothing is
+        uploaded (no override; tell Ben, who can attach it manually in the web UI). Without it the memory is standalone ("floating") and `link_memory`
         attaches it. To attach one document to several people, upload ONCE (with the
         first person's id), then call `link_memory` for each other person; never
         re-upload the same document.
@@ -724,7 +755,12 @@ def register_write_tools(mcp: Any, ctx: Any) -> None:
         """Attach an EXISTING Memory (by memory id, e.g. from upload_memory) to
         another person in the shared Family Tree (a WRITE). This creates a persona
         link: the same single document then appears on each linked person, with no
-        duplicate upload. Every write needs a `reason`: a short change message (max
+        duplicate upload. Do NOT link the person the memory was uploaded with (that
+        creates a duplicate persona). Documents are attached to DECEASED persons
+        only: if the person is living or their status is unknown the result is
+        {"status": "living_person_blocked"} and nothing is linked (no override; tell
+        Ben, who can attach it manually in the FamilySearch web UI). Every write
+        needs a `reason`: a short change message (max
         500 chars) recorded in FamilySearch's change history; mention the research
         archive folder or source when relevant. Returns {"status": "linked",
         "person_id", "memory_id"}, or {"status": "writes_disabled"} when writes are
