@@ -28,7 +28,8 @@ READ = {"auth_status", "search_tree", "search_records", "get_person", "get_relat
         "get_person_sources", "get_person_memories", "get_matches"}
 WRITE = {"create_person", "add_fact", "create_couple", "create_parent_child",
          "upload_memory", "link_memory", "create_source", "attach_source"}
-ALL = READ | WRITE
+OPS = {"list_operations", "describe_operation", "call_operation"}
+ALL = READ | WRITE | OPS
 
 REQUIRED = {
     "auth_status": [],
@@ -47,6 +48,9 @@ REQUIRED = {
     "link_memory": ["person_id", "memory_id", "reason"],
     "create_source": ["about_url", "title", "citation", "reason"],
     "attach_source": ["person_id", "source_id", "reason"],
+    "list_operations": [],
+    "describe_operation": ["operation_id"],
+    "call_operation": ["operation_id"],
 }
 
 
@@ -104,7 +108,7 @@ def tools_of(server):
 
 def test_exact_tool_names_and_no_delete_merge():
     names = set(tools_of(build_server(FakeCtx(Obj()))))
-    assert names == ALL
+    assert names == ALL and len(names) == 19
     assert not [n for n in names if "delete" in n or "merge" in n]
 
 
@@ -172,6 +176,14 @@ EXPECTED_TYPES = {
     "link_memory": {"person_id": {S}, "memory_id": {S}, "reason": {S}},
     "create_source": {"about_url": {S}, "title": {S}, "citation": {S}, "reason": {S}},
     "attach_source": {"person_id": {S}, "source_id": {S}, "reason": {S}},
+    "list_operations": {"area": {S, N}, "kind": {S, N}, "status": {S, N},
+                        "query": {S, N}, "limit": {"integer"}},
+    "describe_operation": {"operation_id": {S}},
+    # body is free-form JSON: no declared type
+    "call_operation": {"operation_id": {S}, "path_args": {"object", N},
+                       "query": {"object", N}, "accept": {S, N}, "body": set(),
+                       "reason": {S, N}, "allow_unverified": {"boolean"},
+                       "confirm_destructive": {"boolean"}},
 }
 
 
@@ -187,6 +199,7 @@ def test_property_types_all_tools(name):
         assert _types(props[prop]) == want, (name, prop, props[prop])
     if name == "create_parent_child":
         assert props["parent_ids"]["items"]["type"] == "string"
+    assert "allow_production" not in props
 
 
 # ---- stdout hygiene / lazy build / main (G3, G6) ----

@@ -11,6 +11,7 @@ import sys
 from mcp.server.fastmcp import FastMCP
 
 from .context import Context, ContextError
+from .tools_ops import register_op_tools
 from .tools_read import register_read_tools
 from .tools_write import register_write_tools
 
@@ -48,6 +49,7 @@ def build_server(ctx: Context | None = None) -> FastMCP:
     mcp = FastMCP("familysearch", instructions=SERVER_INSTRUCTIONS)
     register_read_tools(mcp, ctx)
     register_write_tools(mcp, ctx)
+    register_op_tools(mcp, ctx)
     return mcp
 
 

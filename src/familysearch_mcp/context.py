@@ -24,6 +24,7 @@ from familysearch import (
     detect_environment,
     extract_brave_token,
 )
+from familysearch.api import FamilySearchApi
 
 _TRUTHY = {"1", "true", "yes"}
 
@@ -41,6 +42,7 @@ class Services:
     search: Search
     memories: Memories
     sources: Sources
+    api: FamilySearchApi
 
     def __repr__(self) -> str:  # never expose the client (which holds the token)
         return "Services(...)"
@@ -129,6 +131,7 @@ class Context:
             search=Search(client, discovery),
             memories=Memories(client, discovery),
             sources=Sources(client, discovery),
+            api=FamilySearchApi(client),
         )
 
     def services(self) -> Services:
