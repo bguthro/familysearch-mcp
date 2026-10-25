@@ -14,10 +14,12 @@ A case passes only if all of these hold, in one run against the same server:
   parameterless operation ``missing_query``/``missing_body``) reaches the server and
   answers one of ``missing_statuses``, so a catch-all server cannot pass.
 
-HEAD cases read their content from the matching GET (``compare_with``) and must share
-an HTTP validator with it; OPTIONS cases must answer a different ``Allow`` for
-``contrast_args``. ``reads_recipe`` groups cases into a ``read-content`` recipe and
-reports every failing case at once. Fixtures come from a ``World`` (built by
+HEAD cases read their content from the matching GET (``compare_with``), sent with that
+GET's Accept, and must share an HTTP validator with it; OPTIONS cases must answer a
+different ``Allow`` for ``contrast_args``. A content or validator failure carries a
+bounded ``skeleton`` of the response, so a live failure shows the real shape.
+``reads_recipe`` groups cases into a ``read-content`` recipe and reports every failing
+case at once. Fixtures come from a ``World`` (built by
 tools/verify/world.py) on the beta client with the hand-written library, never through
 the generated API; cases only ever see a sealed, read-only view of it (``seal``).
 """
@@ -27,6 +29,7 @@ import contextlib
 import dataclasses
 import json
 import re
+import time
 import uuid
 import weakref
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -46,6 +49,17 @@ MAX_CASES = 12  # one bad case should fail only a small group
 NOT_FOUND_STATUSES = frozenset({400, 404, 410})
 _VALIDATORS = ("ETag", "Last-Modified", "Content-Length")
 _BODY_LIMIT = 200
+SKELETON_LIMIT = 1500  # characters of response shape a failure may carry
+# Dict levels shown (lists do not count). 6, not 4: a search hit's person sits at
+# entries[].content.gedcomx.persons[] (level 4) and its name one level below; the
+# total stays bounded by SKELETON_LIMIT.
+_SKELETON_DEPTH = 6
+_SKELETON_STRING = 60  # characters of each string shown
+# Keys whose values are never shown, whatever the response holds.
+_SECRET_KEY = re.compile(r"token|authori[sz]ation|cookie|session|secret|password", re.I)
+MAX_ATTEMPTS = 10   # ``eventual`` bounds: at most this many positive calls...
+MAX_PAUSE = 60.0    # ...this many seconds apart
+sleep = time.sleep  # the pause between ``eventual`` attempts (tests replace it)
 
 # Recipes reads_recipe built, by identity: id -> (weak ref, built with default_world).
 # Only reads_recipe writes here, so a hand-made or copied Recipe is never in it.
@@ -105,7 +119,19 @@ class ReadCase:
     with the same path: it is called with the same args, the anchors and ``expect``
     run on its result, and HEAD and GET must agree on an ETag, Last-Modified or
     Content-Length. ``contrast_args`` (OPTIONS only, required) are other path args
-    whose ``Allow`` must differ from the positive call's.
+    whose ``Allow`` must differ from the positive call's. A HEAD case is sent with its
+    GET's Accept (HEAD documents none; the server answers 406 to another type).
+
+    ``control_may_be_empty`` (a non-empty reason) lets the not-found control answer an
+    empty 204 instead of 400/404/410. Only for an operation whose spec documents 204,
+    and a case with fixture anchors that is not ``allow_empty``: its positive call
+    answered anchored content (a 204 there fails), so the empty answer for the unknown
+    id is a real "nothing", not a server that answers 204 to everything.
+
+    ``eventual`` = ``(max_attempts, seconds_between)`` repeats the positive call (never
+    the control) while it answers 204, no content, or lacks an anchor, for an index
+    that lags behind fixtures created a moment ago (search). Bounded by ``MAX_ATTEMPTS``
+    and ``MAX_PAUSE``; the last answer is checked as usual, so it still has to pass.
     """
 
     op: str
@@ -125,6 +151,8 @@ class ReadCase:
     compare_with: str | None = None
     contrast_args: Callable[[World], dict] | None = None
     literal_anchors: tuple[str, ...] = ()
+    control_may_be_empty: str | None = None
+    eventual: tuple[int, float] | None = None
 
 
 # ------------------------------------------------------------------ the world
@@ -311,8 +339,72 @@ def mutants(result: ApiResult) -> list[ApiResult]:
     return [scrubbed, emptied]
 
 
+def _shape(value: Any, depth: int) -> Any:
+    if isinstance(value, dict):
+        if depth >= _SKELETON_DEPTH:
+            return "{...}"
+        return {k: "<hidden>" if _SECRET_KEY.search(str(k)) else _shape(v, depth + 1)
+                for k, v in value.items()}
+    if isinstance(value, list):
+        return [f"list[{len(value)}]", _shape(value[0], depth)] if value else []
+    if isinstance(value, str):
+        cut = value[:_SKELETON_STRING]
+        return cut + "..." if len(value) > _SKELETON_STRING else cut
+    return value
+
+
+def skeleton(result: ApiResult, *, headers: bool = False) -> str:
+    """A bounded picture of a response, for a failure message: never a secret.
+
+    The status and content type, then the JSON body's keys and values (strings cut
+    to 60 characters, a list as its length and first item, dict levels below 6
+    elided, values of token/cookie/authorization-like keys hidden) or the text's
+    start. With ``headers`` (HEAD/OPTIONS), the header names and only the validator
+    and ``Allow`` values. Only the response is shown: the request (and its token)
+    never reaches an ``ApiResult``. At most ``SKELETON_LIMIT`` characters.
+    """
+    parts = [f"{result.status} {result.content_type or '(no type)'}"]
+    if headers:
+        shown = {k: v for k, v in result.headers.items()
+                 if k.lower() in {n.lower() for n in (*_VALIDATORS, "Allow")}}
+        parts.append(f"headers {sorted(result.headers)} {json.dumps(shown)}")
+    if result.body is not None:
+        parts.append(json.dumps(_shape(result.body, 0), ensure_ascii=False))
+    elif (result.text or "").strip():
+        parts.append(f"text[{len(result.text)}] {_shape(result.text, 0)!r}")
+    elif not headers:
+        parts.append("(empty)")
+    text = " ".join(parts)
+    return text if len(text) <= SKELETON_LIMIT else text[:SKELETON_LIMIT - 3] + "..."
+
+
+class ContentFailure(AssertionError):
+    """A content or validator failure, with the response skeleton(s) it was judged on."""
+
+    def __init__(self, message: str, shape: str):
+        super().__init__(f"{message} | response: {shape}")
+        self.message, self.shape = message, shape
+
+
+def _failure_text(e: Exception) -> str:
+    """The failure message for a recipe report: the skeleton is kept whole (bounded)."""
+    if isinstance(e, ContentFailure):
+        return f"{_snippet(AssertionError(e.message))} | response: {e.shape}"
+    return _snippet(e)
+
+
 def _check_content(case: ReadCase, result: ApiResult, world: World, anchors: list[str],
                    in_headers: bool) -> None:
+    try:
+        _check_content_of(case, result, world, anchors, in_headers)
+    except ContentFailure:
+        raise
+    except AssertionError as e:
+        raise ContentFailure(str(e), skeleton(result, headers=in_headers)) from None
+
+
+def _check_content_of(case: ReadCase, result: ApiResult, world: World, anchors: list[str],
+                      in_headers: bool) -> None:
     """Anchors in the response (and not in its scrubbed copy), then ``expect`` on it and,
     failing, on every mutant."""
     haystack = _header_text if in_headers else _serialized
@@ -431,9 +523,10 @@ def _validator(value: str) -> str:
 
 def _sibling_get(ctx: VerifyContext, case: ReadCase, head: ApiResult, args: dict,
                  query) -> ApiResult:
-    """The matching GET (same path args), which must answer and share a validator."""
+    """The matching GET (same path args and Accept), which must answer and share a
+    validator."""
     spec = OPERATIONS[case.compare_with]
-    accept = spec.accepts[0] if spec.accepts else None
+    accept = _sibling_accept(case)
     try:
         got = _call(ctx, spec, args, query, accept, None)
     except FSHTTPError as e:
@@ -447,8 +540,15 @@ def _sibling_get(ctx: VerifyContext, case: ReadCase, head: ApiResult, args: dict
         h, g = _header(head, name), _header(got, name)
         if h and g and _validator(h) == _validator(g):
             return got
-    raise AssertionError(f"HEAD and {case.compare_with} share no equal validator "
-                         f"({', '.join(_VALIDATORS)})")
+    raise ContentFailure(
+        f"HEAD and {case.compare_with} share no equal validator ({', '.join(_VALIDATORS)})",
+        f"HEAD {skeleton(head, headers=True)} | GET {skeleton(got, headers=True)}")
+
+
+def _sibling_accept(case: ReadCase) -> str | None:
+    """The Accept a HEAD case and its GET both send: the GET's default."""
+    spec = OPERATIONS[case.compare_with]
+    return spec.accepts[0] if spec.accepts else None
 
 
 def _allow(result: ApiResult) -> frozenset[str]:
@@ -509,11 +609,10 @@ def _run_case(ctx: VerifyContext, world: World, case: ReadCase,
     if echo:
         raise AssertionError(echo)
     anchors += list(case.literal_anchors)  # checked in the response just like anchors
-    accept =case.accept or (spec.accepts[0] if spec.accepts else None)
-    try:
-        result = _call(ctx, spec, args, query, accept, case.body)
-    except FSHTTPError as e:
-        raise AssertionError(f"positive call failed: {_snippet(e)}") from None
+    accept = case.accept or (spec.accepts[0] if spec.accepts else None)
+    if spec.http_method == "HEAD" and case.compare_with and accept is None:
+        accept = _sibling_accept(case)  # HEAD documents no Accept; its GET's applies
+    result = _positive(ctx, spec, case, args, query, accept, anchors)
     allowed = accepted_statuses(case.op, allow_empty=case.allow_empty)
     if result.status not in allowed:
         raise AssertionError(
@@ -536,6 +635,32 @@ def _run_case(ctx: VerifyContext, world: World, case: ReadCase,
         _check_content(case, result, world, anchors, in_headers=False)
     _control(ctx, spec, case, args, query, accept)
     return args, query
+
+
+def _pending(result: ApiResult, anchors: list[str]) -> bool:
+    """Not there yet (for ``eventual``): empty, or missing an anchor."""
+    if result.status == 204 or not (result.body is not None or (result.text or "").strip()):
+        return True
+    haystack = _serialized(result)
+    return any(anchor not in haystack for anchor in anchors)
+
+
+def _positive(ctx: VerifyContext, spec: OpSpec, case: ReadCase, args: dict, query, accept,
+              anchors: list[str]) -> ApiResult:
+    """The positive call; with ``eventual``, repeated (bounded) while it is pending.
+
+    An error is never retried: only an empty or anchor-less answer may be index lag.
+    """
+    attempts, pause = case.eventual or (1, 0.0)
+    for attempt in range(attempts):
+        try:
+            result = _call(ctx, spec, args, query, accept, case.body)
+        except FSHTTPError as e:
+            raise AssertionError(f"positive call failed: {_snippet(e)}") from None
+        if attempt + 1 == attempts or not _pending(result, anchors):
+            return result
+        sleep(pause)
+    raise AssertionError("unreachable")  # pragma: no cover - attempts >= 1
 
 
 def _control(ctx: VerifyContext, spec: OpSpec, case: ReadCase, args: dict, query,
@@ -567,6 +692,11 @@ def _control(ctx: VerifyContext, spec: OpSpec, case: ReadCase, args: dict, query
     except Exception as e:  # noqa: BLE001
         raise AssertionError(f"not-found control did not reach the server: "
                              f"{type(e).__name__}: {_snippet(e)}") from None
+    if (case.control_may_be_empty and answer.status == 204
+            and answer.body is None and not (answer.text or "").strip()):
+        # Allowed only where the spec documents 204 and the positive call already
+        # answered anchored content (construction and the positive check enforce it).
+        return
     raise AssertionError(f"not-found control answered {answer.status} for {bad_args or ''}"
                          f"{bad_query or ''}; a server that answers everything verifies nothing")
 
@@ -615,6 +745,34 @@ def _case_problems(case: Any) -> list[str]:
     if not all(isinstance(g, str) and g.strip() for g in case.needs):
         problems.append(f"{op}: needs must be non-empty group names")
     problems += _content_problems(case, spec)
+    problems += _control_and_polling_problems(case, spec)
+    return problems
+
+
+def _control_and_polling_problems(case: ReadCase, spec: OpSpec) -> list[str]:
+    op, problems = case.op, []
+    empty = case.control_may_be_empty
+    if empty is not None:
+        if not (isinstance(empty, str) and empty.strip()):
+            problems.append(f"{op}: control_may_be_empty must be a non-empty reason")
+        if 204 not in documented_statuses(op):
+            problems.append(f"{op}: control_may_be_empty needs an operation whose spec "
+                            "documents 204")
+        if case.allow_empty or not case.anchors or case.anchor_free_reason is not None:
+            problems.append(f"{op}: control_may_be_empty is only for a populated case "
+                            "with fixture anchors (not allow_empty or anchor-free)")
+    eventual = case.eventual
+    if eventual is not None:
+        ok = (isinstance(eventual, tuple) and len(eventual) == 2
+              and type(eventual[0]) is int and 1 <= eventual[0] <= MAX_ATTEMPTS
+              and isinstance(eventual[1], (int, float)) and not isinstance(eventual[1], bool)
+              and 0 <= eventual[1] <= MAX_PAUSE)
+        if not ok:
+            problems.append(f"{op}: eventual must be (attempts 1..{MAX_ATTEMPTS}, seconds "
+                            f"0..{MAX_PAUSE:g}), got {eventual!r}")
+        if case.allow_empty or spec.http_method in ("HEAD", "OPTIONS"):
+            problems.append(f"{op}: eventual is for a populated GET/POST case (not "
+                            "allow_empty, HEAD or OPTIONS)")
     return problems
 
 
@@ -756,7 +914,7 @@ def reads_recipe(name: str, cases: Sequence[ReadCase], *,
                 done = _run_case(ctx, view, case, MappingProxyType(dict(populated)))
             except Exception as e:  # noqa: BLE001 - collect every failing case
                 kind = "" if isinstance(e, AssertionError) else f"{type(e).__name__}: "
-                failures.append(f"{case.op}: {kind}{_snippet(e)}")
+                failures.append(f"{case.op}: {kind}{_failure_text(e)}")
                 continue
             if not case.allow_empty:
                 populated[case.op] = done

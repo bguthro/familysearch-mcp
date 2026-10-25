@@ -1169,3 +1169,201 @@ def test_json_path():
             json_path(body, bad)
     with pytest.raises(AssertionError):
         json_path(None, "a")
+
+
+# ------------------------------------------------- live-run fixes: diagnostics
+
+
+def test_skeleton_is_bounded_and_carries_no_secret():
+    from familysearch.api import ApiResult
+
+    secret = "Bearer s3cr3t-token-value"
+    deep = {"l1": {"l2": {"l3": {"l4": {"l5": {"l6": {"l7": {"l8": "too deep to show"}}}}}}}}
+    body = {"persons": [{"id": CHILD, "display": {"name": "N" * 500}}] * 300,
+            "access_token": secret, "links": {"self": {"href": "x"}}, **deep,
+            **{f"k{i}": "v" * 80 for i in range(400)}}
+    result = ApiResult(200, {"Authorization": secret, "Set-Cookie": secret, "ETag": '"e1"'},
+                       FS_JSON, body, json.dumps(body))
+    shape = reads.skeleton(result)
+    assert len(shape) <= reads.SKELETON_LIMIT
+    assert "s3cr3t" not in shape
+    assert "N" * 61 not in shape and "N" * 60 in shape  # strings cut to 60
+    assert "list[300]" in shape and CHILD in shape        # length + first item
+    assert "too deep" not in shape
+    head = ApiResult(200, {"Authorization": secret, "ETag": '"e1"', "Content-Length": "9"},
+                     "", None, "")
+    shape = reads.skeleton(head, headers=True)
+    assert "s3cr3t" not in shape
+    assert "e1" in shape and "Content-Length" in shape and "Authorization" in shape
+
+
+@responses.activate
+def test_anchor_failure_shows_the_response_skeleton(reg_path):
+    serve_person(body=person_body(OTHER, "Somebody Else"))
+    recipe = reads_recipe("t.p", [read_child()], world_factory=FakeWorld)
+    with pytest.raises(AssertionError) as info:
+        recipe.run(make_ctx(recipe, reg_path))
+    message = str(info.value)
+    assert "not in the response" in message and "Somebody Else" in message
+    assert OTHER in message and "response:" in message
+
+
+@responses.activate
+def test_expect_failure_shows_the_response_skeleton(reg_path):
+    body = {"persons": [{"id": OTHER}, {"id": CHILD, "display": {"name": CHILD_NAME}}]}
+    serve_person(body=body)
+    with pytest.raises(AssertionError, match=r"(?s)is not the child.*response:.*KWZZ-OTH"):
+        run_case(ctx_for("readPerson", reg_path=reg_path), FakeWorld(), read_child())
+
+
+@responses.activate
+def test_validator_failure_shows_both_validators(reg_path):
+    serve_head(get_etag='"rev-other"')
+    with pytest.raises(AssertionError, match="validator") as info:
+        run_case(ctx_for("headPerson", reg_path=reg_path), FakeWorld(), head_case())
+    assert "rev-other" in str(info.value) and "rev-9c1e44" in str(info.value)
+
+
+# ------------------------------------------------- HEAD sends its GET's Accept
+
+CHANGES_ACCEPT = "application/x-gedcomx-atom+json"
+
+
+@responses.activate
+def test_head_case_sends_the_sibling_gets_accept(reg_path):
+    url = f"{PERSONS}/{CHILD}/changes"
+    feed = {"entries": [{"id": "1", "title": CHILD_NAME}]}
+
+    def answer(request):
+        if request.headers.get("Accept") != CHANGES_ACCEPT:
+            return 406, {}, ""
+        body = "" if request.method == "HEAD" else json.dumps(feed)
+        return 200, {"ETag": REV, "Content-Type": CHANGES_ACCEPT}, body
+
+    for method in (responses.HEAD, responses.GET):
+        responses.add_callback(method, url, callback=answer)
+    responses.add(responses.HEAD, f"{PERSONS}/{BOGUS}/changes", status=404)
+    case = ReadCase(op="headPersonChangeHistory", path_args=lambda w: {"pid": w.ids["child"]},
+                    compare_with="readPersonChangeHistory", missing={"pid": BOGUS},
+                    expect=lambda r, w: contains(r, w.names["child_name"]),
+                    anchors=(CHILD_NAMED,))
+    run_case(ctx_for("headPersonChangeHistory", reg_path=reg_path), FakeWorld(), case)
+    assert {c.request.headers.get("Accept") for c in responses.calls} == {CHANGES_ACCEPT}
+
+
+# ------------------------------------------------- an empty answer as the control
+
+EMPTY_REASON = "beta answers an unknown id with 204 (nothing found)"
+
+
+def serve_children_control(bogus_status=204, bogus_body=""):
+    responses.add(responses.GET, f"{PERSONS}/{DAD}/children", status=200,
+                  body=json.dumps({"persons": [{"id": CHILD}]}), content_type=FS_JSON)
+    responses.add(responses.GET, f"{PERSONS}/{BOGUS}/children", status=bogus_status,
+                  body=bogus_body)
+
+
+@responses.activate
+def test_empty_control_accepted_with_reason_and_documented_204(reg_path):
+    serve_children_control()
+    ctx = ctx_for("readPersonChildren", reg_path=reg_path)
+    run_case(ctx, FakeWorld(), children_case("dad", control_may_be_empty=EMPTY_REASON))
+    with pytest.raises(AssertionError, match="control answered 204"):
+        run_case(ctx, FakeWorld(), children_case("dad"))  # without the flag: not proof
+
+
+@responses.activate
+def test_empty_control_with_content_fails(reg_path):
+    serve_children_control(bogus_status=200,
+                           bogus_body=json.dumps({"persons": [{"id": CHILD}]}))
+    with pytest.raises(AssertionError, match="control"):
+        run_case(ctx_for("readPersonChildren", reg_path=reg_path), FakeWorld(),
+                 children_case("dad", control_may_be_empty=EMPTY_REASON))
+
+
+@responses.activate
+def test_catch_all_204_server_still_fails_the_positive(reg_path):
+    responses.add(responses.GET, f"{PERSONS}/{DAD}/children", status=204)
+    responses.add(responses.GET, f"{PERSONS}/{BOGUS}/children", status=204)
+    with pytest.raises(AssertionError, match="positive call answered 204"):
+        run_case(ctx_for("readPersonChildren", reg_path=reg_path), FakeWorld(),
+                 children_case("dad", control_may_be_empty=EMPTY_REASON))
+
+
+@pytest.mark.parametrize("make, why", [
+    (lambda: [read_child(control_may_be_empty=EMPTY_REASON)], "204"),  # readPerson: no 204
+    (lambda: [children_case("dad", control_may_be_empty="  ")], "reason"),
+    (lambda: [children_case("dad", control_may_be_empty=True)], "reason"),
+    (lambda: [children_case("dad"), children_case("child", allow_empty=True,
+                                                  control_may_be_empty=EMPTY_REASON)],
+     "allow_empty"),
+])
+def test_empty_control_flag_rejected_when_unsound(make, why):
+    with pytest.raises(ValueError, match="control_may_be_empty") as info:
+        reads_recipe("t", make())
+    assert why in str(info.value)
+
+
+# ------------------------------------------------- eventual consistency
+
+
+@pytest.fixture
+def sleeps(monkeypatch):
+    slept: list[float] = []
+    monkeypatch.setattr(reads, "sleep", slept.append)
+    return slept
+
+
+def eventual_children(**kw):
+    return children_case("dad", eventual=(4, 2.5), **kw)
+
+
+@responses.activate
+def test_eventual_retries_the_positive_while_empty(reg_path, sleeps):
+    url = f"{PERSONS}/{DAD}/children"
+    responses.add(responses.GET, url, status=204)
+    responses.add(responses.GET, url, status=200, content_type=FS_JSON,
+                  body=json.dumps({"persons": [{"id": OTHER}]}))  # anchor still missing
+    responses.add(responses.GET, url, status=200, content_type=FS_JSON,
+                  body=json.dumps({"persons": [{"id": CHILD}]}))
+    responses.add(responses.GET, f"{PERSONS}/{BOGUS}/children", status=404)
+    run_case(ctx_for("readPersonChildren", reg_path=reg_path), FakeWorld(), eventual_children())
+    assert sleeps == [2.5, 2.5]
+    bogus = [c for c in responses.calls if BOGUS in c.request.url]
+    assert len(bogus) == 1  # the control is never polled
+
+
+@responses.activate
+def test_eventual_gives_up_after_max_attempts(reg_path, sleeps):
+    responses.add(responses.GET, f"{PERSONS}/{DAD}/children", status=204)
+    responses.add(responses.GET, f"{PERSONS}/{BOGUS}/children", status=404)
+    with pytest.raises(AssertionError, match="204"):
+        run_case(ctx_for("readPersonChildren", reg_path=reg_path), FakeWorld(),
+                 eventual_children())
+    assert sleeps == [2.5, 2.5, 2.5]
+    assert sum(DAD in c.request.url for c in responses.calls) == 4
+
+
+@responses.activate
+def test_eventual_does_not_retry_errors_or_a_good_answer(reg_path, sleeps):
+    serve_children_control(bogus_status=404)
+    run_case(ctx_for("readPersonChildren", reg_path=reg_path), FakeWorld(), eventual_children())
+    assert sleeps == []
+    responses.replace(responses.GET, f"{PERSONS}/{DAD}/children", status=500)
+    with pytest.raises(AssertionError, match="positive call failed"):
+        run_case(ctx_for("readPersonChildren", reg_path=reg_path), FakeWorld(),
+                 eventual_children())
+    assert sleeps == []
+
+
+@pytest.mark.parametrize("eventual", [(0, 1.0), (11, 1.0), (3, -1.0), (3, 61.0), (3,),
+                                      ("3", 1.0), [3, 1.0], (True, 1.0)])
+def test_eventual_rejects_unbounded_polling(eventual):
+    with pytest.raises(ValueError, match="eventual"):
+        reads_recipe("t", [children_case("dad", eventual=eventual)])
+
+
+def test_eventual_not_for_an_allow_empty_case():
+    with pytest.raises(ValueError, match="eventual"):
+        reads_recipe("t", [children_case("dad"),
+                           children_case("child", allow_empty=True, eventual=(3, 1.0))])

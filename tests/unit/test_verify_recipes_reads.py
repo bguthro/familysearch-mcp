@@ -23,7 +23,7 @@ from familysearch.api.registry import REGISTRY_PATH
 from familysearch.auth import Environment
 from familysearch.client import FSClient
 from tools.spec.resolve import SNAPSHOT_PATH, load_overrides, resolve
-from tools.verify import runner, world
+from tools.verify import reads, runner, world
 from tools.verify.recipes import RECIPES, validate_recipes
 from tools.verify.recipes import reads_tree_persons as rtp
 
@@ -39,6 +39,7 @@ GIVEN = {"dad": "ZZSPIKED100000000001", "mom": "ZZSPIKEM100000000002",
          "child": "ZZSPIKEC100000000003"}
 GENDER = {"dad": "Male", "mom": "Female", "child": "Male"}
 STRANGER = {"id": "KWZZ-STR", "name": "Somebody Else"}
+PID_FORMAT = re.compile(r"^[A-Z0-9]{4}-[A-Z0-9]{3,4}$")
 OWN_RECIPES = {r.name for r in rtp.READS_TREE_PERSONS}
 SCOPE_PREFIXES = ("/tree/persons", "/tree/search", "/tree/matches", "/tree/current-person")
 # Sub-resources of a person that Task 4 verifies (with the other relationship reads).
@@ -75,10 +76,11 @@ class FakeTree:
     populated list; ``stale_head`` answers HEAD with another revision than the GET.
     """
 
-    def __init__(self, mode=None):
+    def __init__(self, mode=None, *, search_lag=0):
         self.mode = mode
         self.role = {pid: role for role, pid in IDS.items() if role in GIVEN}
         self.search_params: list[dict] = []
+        self.search_lag = search_lag  # positive searches answered 204 before the index has them
 
     # ------------------------------------------------------------ shapes
 
@@ -122,7 +124,7 @@ class FakeTree:
 
     def changes(self, pid):
         role = self.role[pid]
-        url = f"{TREE}/persons/{pid}"
+        url = f"{TREE}/persons/{pid}?flag=fsh"  # as beta links it (live run)
         entry = {"id": "1729-1", "title": "Name Added", "updated": 1729000000000,
                  "links": {"person": {"href": url}},
                  "content": {"gedcomx": {"persons": [{
@@ -130,7 +132,8 @@ class FakeTree:
         created = {"id": "1729-0", "title": "Person Created", "updated": 1728000000000,
                    "links": {"person": {"href": url}}}
         return {"entries": [entry, created], "updated": 1729000000000,
-                "links": {"person": {"href": url}, "self": {"href": url + "/changes"}}}
+                "links": {"person": {"href": url},
+                          "self": {"href": f"{TREE}/persons/{pid}/changes"}}}
 
     # ------------------------------------------------------------ answers
 
@@ -166,8 +169,12 @@ class FakeTree:
         pids = [p for value in query["pids"] for p in value.split(",") if p]
         if self.mode == "ignore_pids":
             pids = [IDS[r] for r in GIVEN]
+        if self.mode != "catch_all" and not all(PID_FORMAT.match(p) for p in pids):
+            return self._answer(request, 400, {"errors": [{"message": "invalid person id"}]})
         if any(p not in self.role for p in pids):
-            return self._unknown(request)
+            # Beta (live run): an unknown well-formed id is reported as nothing, 204.
+            return self._unknown(request) if self.mode == "catch_all" else self._answer(
+                request, 204)
         return self._answer(request, 200,
                             {"persons": [self.person(self._who(p)) for p in pids]})
 
@@ -181,6 +188,8 @@ class FakeTree:
             return self._answer(request, 200, self.family(role, couple=True, cap=True))
         what = rest[0]
         if what == "changes":
+            if request.headers.get("Accept") != ATOM_JSON:
+                return 406, {}, ""  # beta (live run): /changes serves only the atom types
             return self._list(request, self.changes(self._who(pid)), ATOM_JSON)
         if what == "parents":
             body = self.family("dad", "mom", couple=True, cap=True) if role == "child" else None
@@ -200,8 +209,8 @@ class FakeTree:
                 if self.mode == "catch_all":
                     return self._answer(request, 200, {"persons": []})
                 return self._answer(request, 400, {"errors": [{"code": 400}]})
-            return self._answer(request, 200, self.family(
-                role, self.role[self._who(other)], cap=True))
+            # Live: the child-and-parents id is not in this answer; the persons are.
+            return self._answer(request, 200, self.family(role, self.role[self._who(other)]))
         return self._answer(request, 404, {"errors": [{"code": 404}]})
 
     def search(self, request):
@@ -211,6 +220,9 @@ class FakeTree:
             if self.mode == "catch_all":
                 return self._answer(request, 204)
             return self._answer(request, 400, {"errors": [{"message": "upstream 400"}]})
+        if self.search_lag:
+            self.search_lag -= 1
+            return self._answer(request, 204)
         if self.mode == "other_person":
             hits = [{"id": STRANGER["id"], "content": {"gedcomx": {"persons": [{
                 "id": STRANGER["id"], "display": {"name": STRANGER["name"]}}]}}}]
@@ -236,10 +248,13 @@ def fake_world(monkeypatch):
     # The registered recipes use default_world, which builds tools.verify.world.World:
     # replace that, so the very objects in RECIPES run (no test world factory).
     monkeypatch.setattr(world, "World", FakeWorld)
+    slept: list[float] = []
+    monkeypatch.setattr(reads, "sleep", slept.append)  # eventual polling, without waiting
+    return slept
 
 
-def run(name, reg_path, mode=None):
-    tree = FakeTree(mode)
+def run(name, reg_path, mode=None, **kw):
+    tree = FakeTree(mode, **kw)
     tree.serve()
     recipe = RECIPES[name]
     client = FSClient("tkn", Environment.BETA, min_write_interval=0)
@@ -270,6 +285,38 @@ def test_search_sends_the_proven_shape(reg_path, fake_world):
     assert positive["flag"] == "fst" and positive["q.surname"] == SURNAME
     # The control sends the parameter with a dead value and no flag: a server answer.
     assert "flag" not in control and control["q.surname"] != SURNAME
+
+
+@responses.activate
+def test_search_waits_for_the_index_but_not_forever(reg_path, fake_world):
+    attempts, pause = rtp.SEARCH_EVENTUAL
+    result, tree = run("reads.tree.search", reg_path, search_lag=attempts - 1)
+    assert result["passed"] is True, result["problems"]
+    assert fake_world == [pause] * (attempts - 1)
+    assert len(tree.search_params) == attempts + 1  # the control is asked once
+    fake_world.clear()
+    result, tree = run("reads.tree.search", reg_path, search_lag=attempts)
+    assert result["passed"] is False and "answered 204" in "\n".join(result["problems"])
+
+
+@responses.activate
+def test_read_persons_control_is_a_malformed_id(reg_path, fake_world):
+    # Live, an unknown well-formed pid answers 204, which readPersons does not document
+    # (so control_may_be_empty may not vouch for it); a malformed id must be refused.
+    _result, _tree = run("reads.tree.persons", reg_path)
+    controls = [c.request.url for c in responses.calls
+                if c.request.url.startswith(TREE + "/persons?")][1:]
+    assert len(controls) == 1 and rtp.MALFORMED_PERSON_ID in controls[0].replace("%2C", ",")
+    assert not PID_FORMAT.match(rtp.MALFORMED_PERSON_ID)
+
+
+@responses.activate
+def test_failures_carry_the_response_skeleton(reg_path, fake_world):
+    result, _tree = run("reads.tree.relatives", reg_path, "other_person")
+    assert "response: 200" in "\n".join(result["problems"])
+    # A search hit's person (and its name) is deep enough to be shown.
+    result, _tree = run("reads.tree.search", reg_path, "other_person")
+    assert STRANGER["name"] in "\n".join(result["problems"])
 
 
 # ------------------------------------------------------------------ the fake lies
