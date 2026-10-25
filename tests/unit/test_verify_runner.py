@@ -340,6 +340,19 @@ def test_runner_main_refuses_when_beta_check_fails(beta_status, reg_path, fake_r
 
 
 @responses.activate
+def test_runner_main_prints_a_passing_recipes_notes(reg_path, fake_recipes, no_cookies,
+                                                    clean_tree, capsys, monkeypatch):
+    monkeypatch.setattr(runner, "current_commit", lambda: "abc123")
+    monkeypatch.setattr(runner, "run_recipe", lambda recipe, ctx, **kw: {
+        "recipe": recipe.name, "passed": True, "problems": [],
+        "notes": ["readCurrentUser: content after 2 of 6 attempts"]})
+    serve_current_user()
+    assert runner.main(["run", "--recipe", "read-user", "--registry", str(reg_path)]) == 0
+    out = capsys.readouterr().out
+    assert "PASS read-user" in out and "  note: readCurrentUser: content after 2 of 6" in out
+
+
+@responses.activate
 def test_runner_main_runs_on_verified_beta(reg_path, fake_recipes, no_cookies, clean_tree,
                                            capsys, monkeypatch):
     monkeypatch.setattr(runner, "current_commit", lambda: "abc123")

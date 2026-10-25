@@ -1264,7 +1264,7 @@ def serve_children_control(bogus_status=204, bogus_body=""):
 
 
 @responses.activate
-def test_empty_control_accepted_with_reason_and_documented_204(reg_path):
+def test_empty_control_accepted_with_reason_after_an_anchored_positive(reg_path):
     serve_children_control()
     ctx = ctx_for("readPersonChildren", reg_path=reg_path)
     run_case(ctx, FakeWorld(), children_case("dad", control_may_be_empty=EMPTY_REASON))
@@ -1300,9 +1300,9 @@ def test_empty_control_with_a_body_fails(reg_path):
 
 
 @responses.activate
-def test_empty_control_for_a_list_read_whose_spec_omits_204(reg_path):
+def test_empty_control_for_a_get_whose_spec_omits_204(reg_path):
     # readPersons documents no 204, yet beta answers one for an unknown pid (the known
-    # "undocumented 204 for empty lists" defect): a collection read may still use it.
+    # "undocumented 204 for empty lists" defect): any GET read may still use it.
     assert 204 not in reads.documented_statuses("readPersons")
     responses.add(responses.GET, PERSONS, match=[
         responses.matchers.query_param_matcher({"pids": CHILD})], status=200,
@@ -1371,6 +1371,32 @@ def test_eventual_retries_the_positive_while_empty(reg_path, sleeps):
     assert sleeps == [2.5, 2.5]
     bogus = [c for c in responses.calls if BOGUS in c.request.url]
     assert len(bogus) == 1  # the control is never polled
+
+
+@responses.activate
+def test_eventual_attempts_are_recorded_in_the_pass_output(reg_path, sleeps):
+    url = f"{PERSONS}/{DAD}/children"
+    responses.add(responses.GET, url, status=204)
+    responses.add(responses.GET, url, status=204)
+    responses.add(responses.GET, url, status=200, content_type=FS_JSON,
+                  body=json.dumps({"persons": [{"id": CHILD}]}))
+    responses.add(responses.GET, f"{PERSONS}/{BOGUS}/children", status=404)
+    recipe = reads_recipe("reads.t.eventual", [eventual_children()], world_factory=FakeWorld)
+    with reads.allow_test_world_factories():
+        result = runner.run_recipe(recipe, make_ctx(recipe, reg_path), registry_path=reg_path,
+                                   commit="abc", today="2026-10-25")
+    assert result["passed"] is True, result["problems"]
+    assert result["notes"] == ["readPersonChildren: content after 3 of 4 attempts"]
+
+
+@responses.activate
+def test_unpolled_recipe_reports_no_notes(reg_path):
+    serve_person()
+    recipe = reads_recipe("reads.t.person", [read_child()], world_factory=FakeWorld)
+    with reads.allow_test_world_factories():
+        result = runner.run_recipe(recipe, make_ctx(recipe, reg_path), registry_path=reg_path,
+                                   commit="abc", today="2026-10-25")
+    assert "notes" not in result
 
 
 @responses.activate

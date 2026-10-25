@@ -2,9 +2,10 @@
 
 ``FakeTree`` keeps the fixture family (dad, mom, child, their couple and child-and-parents
 relationships) in memory and answers the person-centred reads in the GEDCOM X shapes the
-recon recorded (docs/superpowers/recon/2026-10-25-api-surface/shapes.json): relative
-lists answer 204 when empty, ``readPersons`` needs ``pids``, search answers 400 without
-``flag=fst``, change histories are atom feeds whose links carry the person id. The
+recon recorded (docs/superpowers/recon/2026-10-25-api-surface/shapes.json) and the live
+runs: relative lists answer 204 when empty, ``readPersons`` needs ``pids`` and answers
+an unknown one 204, search (over real beta data, with the canary) answers 400 to no
+parameter at all, change histories are atom feeds whose links carry the person id. The
 registered recipe objects run through the real ``run_recipe`` with the fixture world
 replaced (``tools.verify.world.World``) by one that serves the fake's ids and names; each
 ``mode`` makes the fake lie in one way the recipes must catch.
@@ -201,10 +202,14 @@ class FakeTree:
             other = {"dad": "mom", "mom": "dad"}.get(role)
             return self._list(request, self.family(other, couple=True) if other else None)
         if what == "families":
+            if self.mode == "families_as_parents":  # the child's /parents payload
+                return self._list(request, self.family("dad", "mom", couple=True, cap=True))
             return self._list(request, self.family(role, *[r for r in GIVEN if r != role],
                                                    couple=True, cap=True))
         if what == "relationships" and len(rest) == 2:
             other = rest[1]
+            if self.mode == "ignore_opid":  # answers the child-dad relationship for any opid
+                other = IDS["dad"]
             if other not in self.role:
                 if self.mode == "catch_all":
                     return self._answer(request, 200, {"persons": []})
@@ -281,7 +286,14 @@ def run(name, reg_path, mode=None, **kw):
 @pytest.mark.parametrize("name", sorted(OWN_RECIPES))
 def test_recipe_passes_against_the_honest_fake(name, reg_path, fake_world):
     result, _tree = run(name, reg_path)
+    notes = result.pop("notes", [])
     assert result == {"recipe": name, "passed": True, "problems": []}
+    # Only a polled case reports its attempts (the honest fake answers at once).
+    polled = [c.op for r in rtp.READS_TREE_PERSONS if r.name == name
+              for c in (rtp.RELATIVES_CASES if name == "reads.tree.relatives" else ())
+              if c.eventual]
+    assert notes == [f"{op}: content after 1 of {rtp.RELATIONSHIP_EVENTUAL[0]} attempts"
+                     for op in polled]
     registry = json.loads(reg_path.read_text())["operations"]
     for op in RECIPES[name].ops:
         entry = registry[op]["generated"]
@@ -374,6 +386,8 @@ LIES = {
     "empty": {"reads.tree.persons", "reads.tree.relatives", "reads.tree.search",
               "reads.tree.history"},
     "stale_head": {"reads.tree.persons", "reads.tree.history"},
+    "families_as_parents": {"reads.tree.relatives"},
+    "ignore_opid": {"reads.tree.relatives"},
 }
 # What each lie is caught by (so a recipe cannot fail for an unrelated reason).
 CAUGHT_BY = {
@@ -382,6 +396,8 @@ CAUGHT_BY = {
     "ignore_pids": "not the requested",
     "empty": "answered 204",
     "stale_head": "validator",
+    "families_as_parents": "readPersonFamilies: anchor",
+    "ignore_opid": "findRelationship: not-found control answered 200",
 }
 
 

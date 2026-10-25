@@ -91,7 +91,11 @@ def run_recipe(recipe: Recipe, ctx: VerifyContext, *, registry_path: Path, commi
                                         path=registry_path)
         except (ValueError, OSError) as e:
             problems.append(f"record: {e}")
-    return {"recipe": recipe.name, "passed": not problems, "problems": problems}
+    result = {"recipe": recipe.name, "passed": not problems, "problems": problems}
+    notes = list(getattr(ctx, "notes", None) or [])
+    if notes:
+        result["notes"] = notes
+    return result
 
 
 def build_beta_client() -> FSClient:
@@ -205,6 +209,8 @@ def _run(args) -> int:
             print(f"FAIL {recipe.name}:")
             for p in result["problems"]:
                 print(f"  {p}")
+        for note in result.get("notes", ()):
+            print(f"  note: {note}")
     print(f"{len(selected) - failed} passed, {failed} failed")
     return 1 if failed else 0
 

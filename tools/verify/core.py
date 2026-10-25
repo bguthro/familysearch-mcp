@@ -114,6 +114,8 @@ class VerifyContext:
     reason: str
     unique: str
     negative_controls: int = field(default=0)
+    # What a passing run should still report (e.g. how many polls a case needed).
+    notes: list[str] = field(default_factory=list)
 
     def expect_changed(self, before: Any, after: Any, what: str) -> None:
         """expect_changed, counted: a state-change recipe must pass at least one."""

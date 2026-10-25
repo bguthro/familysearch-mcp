@@ -131,9 +131,11 @@ class ReadCase:
     everything.
 
     ``eventual`` = ``(max_attempts, seconds_between)`` repeats the positive call (never
-    the control) while it answers 204, no content, or lacks an anchor, for an index
-    that lags behind fixtures created a moment ago (search). Bounded by ``MAX_ATTEMPTS``
-    and ``MAX_PAUSE``; the last answer is checked as usual, so it still has to pass.
+    the control) while it answers 204, no content, or lacks an anchor, for a server
+    that computes something lazily for fixtures created a moment ago (findRelationship
+    answers 204 at first). Bounded by ``MAX_ATTEMPTS`` and ``MAX_PAUSE``; the last
+    answer is checked as usual, so it still has to pass. The attempts a case needed go
+    into ``ctx.notes``, which the runner prints even when the recipe passes.
     """
 
     op: str
@@ -647,6 +649,13 @@ def _pending(result: ApiResult, anchors: list[str]) -> bool:
     return any(anchor not in haystack for anchor in anchors)
 
 
+def _note(ctx: VerifyContext, text: str) -> None:
+    """Something the run reports even when it passes (``VerifyContext.notes``)."""
+    notes = getattr(ctx, "notes", None)
+    if isinstance(notes, list):
+        notes.append(text)
+
+
 def _positive(ctx: VerifyContext, spec: OpSpec, case: ReadCase, args: dict, query, accept,
               anchors: list[str]) -> ApiResult:
     """The positive call; with ``eventual``, repeated (bounded) while it is pending.
@@ -659,7 +668,11 @@ def _positive(ctx: VerifyContext, spec: OpSpec, case: ReadCase, args: dict, quer
             result = _call(ctx, spec, args, query, accept, case.body)
         except FSHTTPError as e:
             raise AssertionError(f"positive call failed: {_snippet(e)}") from None
-        if attempt + 1 == attempts or not _pending(result, anchors):
+        pending = _pending(result, anchors)
+        if attempt + 1 == attempts or not pending:
+            if case.eventual:
+                state = "still pending" if pending else "content"
+                _note(ctx, f"{case.op}: {state} after {attempt + 1} of {attempts} attempts")
             return result
         sleep(pause)
     raise AssertionError("unreachable")  # pragma: no cover - attempts >= 1

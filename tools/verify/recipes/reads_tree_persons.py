@@ -29,8 +29,10 @@ UNKNOWN_PIDS_EMPTY = (
 RELATIONSHIP_EVENTUAL = (8, 5.0)
 UNKNOWN_OPID_EMPTY = (
     "beta answers findRelationship for an unknown opid (ZZZZ-ZZZ) with an empty 204 (live "
-    "run 3: no relationship and no such person look the same), while the positive call "
-    "returned both endpoints' names under their ids")
+    "run 3: no relationship and no such person look the same); beta also answers 204 "
+    "while a fresh relationship is not computed yet (live run 2), so this 204 control "
+    "counts only because the positive call in the same recipe returned content: both "
+    "endpoints' names under their ids")
 
 # ---------------------------------------------------------------- the search canary
 # A real, deceased person in beta's tree (the coordinator's read-only probe): tree
@@ -224,11 +226,15 @@ RELATIVES_CASES = (
              anchors=(_id("mom"), _name("mom"), _id("couple")), needs=FAMILY),
     ReadCase(op="readPersonSpouses", path_args=_pid("child"), missing=MISSING_PID,
              expect=_no_relatives("spouses"), allow_empty=True, needs=FAMILY),
-    ReadCase(op="readPersonFamilies", path_args=_pid("child"), missing=MISSING_PID,
+    # The dad's families: his spouse (couple) and their child (child-and-parents). Unlike
+    # the child's /parents payload, it must hold the child and both relationships.
+    ReadCase(op="readPersonFamilies", path_args=_pid("dad"), missing=MISSING_PID,
              expect=_both(_expect_persons("dad", "mom", "child"),
+                          _expect_relationship("relationships", "couple"),
                           _expect_relationship("childAndParentsRelationships",
                                                "child_and_parents")),
-             anchors=(_name("dad"), _name("mom"), _id("child_and_parents")), needs=FAMILY),
+             anchors=(_name("mom"), _name("child"), _id("couple"), _id("child_and_parents")),
+             needs=FAMILY),
     # The relationship between the child and the dad: both persons, each under its own
     # name (the request sends only their ids). The live answer did not carry the
     # child-and-parents id, so it is not required.
