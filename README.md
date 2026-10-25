@@ -58,7 +58,9 @@ separate, and the server checks that Brave is signed into the environment you co
 ### Guardrails
 
 - **Match gate:** `create_person` searches the tree first and, if there are plausible
-  matches, returns them (`matches_found`) instead of creating anything.
+  matches, returns them (`matches_found`) instead of creating anything. Candidates
+  with confidence >= 3 (or unknown confidence) block creation; weaker ones are
+  ignored but counted (`weak_candidates_ignored`).
 - **Living vs deceased:** living people are created private; a deceased person needs a
   recognizable past death date or an explicit `confirm_deceased`.
 - **Provenance:** `upload_memory` refuses images that appear to come from aggregators

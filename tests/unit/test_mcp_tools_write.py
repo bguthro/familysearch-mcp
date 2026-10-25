@@ -190,7 +190,7 @@ def test_create_person_returns_matches_and_does_not_create():
     tools, svc, _ = build(hits)
     out = tools["create_person"](**OLD)
     assert out["status"] == "matches_found"
-    assert [c["id"] for c in out["candidates"]] == ["B2", "D4", "A1", "C3"]
+    assert [c["id"] for c in out["candidates"]] == ["C3", "B2", "D4"]  # None first; conf-2 A1 ignored
     assert "Ben" in out["message"] and "create_despite_matches" in out["message"]
     assert writer_calls(svc) == 0
     assert svc.search.tree_search.calls[0][1]["count"] == 10
@@ -207,7 +207,7 @@ def test_create_person_creates_with_override():
     tools, svc, _ = build([hit(5)])
     out = tools["create_person"](**OLD, create_despite_matches=True)
     assert out == {"status": "created", "id": "NEW1-ABC", "living": False,
-                   "life_status": "deceased_by_age"}
+                   "life_status": "deceased_by_age", "weak_candidates_ignored": 0}
     assert svc.search.tree_search.calls == []
     assert len(svc.writer.create_person.calls) == 1
 
@@ -249,7 +249,7 @@ def test_living_true_creates_private_living():
     tools, svc, _ = build()
     out = tools["create_person"](**PERSON, birth_date="1990", living=True)
     assert out == {"status": "created", "id": "NEW1-ABC", "living": True,
-                   "life_status": "living"}
+                   "life_status": "living", "weak_candidates_ignored": 0}
     payload = svc.writer.create_person.calls[0][0][0]
     assert payload["living"] is True
 

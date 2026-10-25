@@ -1,6 +1,8 @@
 """Tree search and historical-record (persona) search."""
 from __future__ import annotations
 
+import re
+
 from .client import FSClient
 from .discovery import Discovery
 
@@ -23,6 +25,30 @@ def _entries(data: dict) -> list:
     return entries if isinstance(entries, list) else []
 
 
+_BARE_YEAR = re.compile(r"\d{4}")
+_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_YEAR_RUN = re.compile(r"(?<!\d)\d{4}(?!\d)")
+
+
+def normalize_search_date(text) -> str | None:
+    """Reduce a free-form date to what q.birthLikeDate accepts, or None to omit it.
+
+    The search endpoint accepts ONLY a bare year or an ISO date (anything else is
+    HTTP 400). A bare year or ISO date passes through; otherwise a single distinct
+    plausible year (1000-2999) is used; zero or several years omit the date (a
+    broader search is the safe direction for the anti-duplicate gate).
+    """
+    if not isinstance(text, str):
+        return None
+    s = text.strip()
+    if _BARE_YEAR.fullmatch(s) and 1000 <= int(s) <= 2999:
+        return s
+    if _ISO_DATE.fullmatch(s):
+        return s
+    years = {y for y in _YEAR_RUN.findall(s) if 1000 <= int(y) <= 2999}
+    return years.pop() if len(years) == 1 else None
+
+
 def _clean(params: dict) -> dict:
     return {k: v for k, v in params.items() if v is not None}
 
@@ -40,7 +66,7 @@ class Search:
         url = self._discovery.href("person-search").split("{", 1)[0]
         params = _clean({
             "q.givenName": given, "q.surname": surname,
-            "q.birthLikeDate": birth_date, "q.birthLikePlace": birth_place,
+            "q.birthLikeDate": normalize_search_date(birth_date), "q.birthLikePlace": birth_place,
             "count": count,
         })
         resp = self._client.get(url, accept=ATOM_ACCEPT, params=params)

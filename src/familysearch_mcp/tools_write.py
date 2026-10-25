@@ -140,9 +140,21 @@ def _fact_type(value: Any) -> tuple[str, str]:
     )
 
 
-def _confidence_key(candidate: dict) -> tuple[int, int]:
+# Tree-search confidence is a small integer. Measured live on beta (2026-10-24):
+# fuzzy/phonetic noise for nonsense names is always 2; real existing people score
+# 3-4. A hit blocks creation only at >= 3; an unknown confidence blocks (fail safe).
+MATCH_CONFIDENCE_MIN = 3
+
+
+def _blocks(candidate: dict) -> bool:
     c = candidate.get("confidence")
-    return (1, c) if isinstance(c, int) else (0, 0)
+    return not isinstance(c, int) or isinstance(c, bool) or c >= MATCH_CONFIDENCE_MIN
+
+
+def _confidence_key(candidate: dict) -> float:
+    """Sort key: unknown confidence counts as highest."""
+    c = candidate.get("confidence")
+    return c if isinstance(c, int) and not isinstance(c, bool) else float("inf")
 
 
 def _create_person(ctx: Any, given, surname, gender, reason, birth_date, birth_place,
@@ -166,7 +178,9 @@ def _create_person(ctx: Any, given, surname, gender, reason, birth_date, birth_p
     year = _current_year()
     _past_date("death_date", death_date, year)
 
-    # MATCH GATE: any hit blocks creation until Ben has reviewed the candidates.
+    # MATCH GATE: a hit with confidence >= MATCH_CONFIDENCE_MIN (or unknown
+    # confidence) blocks creation until Ben has reviewed the candidates.
+    weak_ignored = 0
     if not create_despite_matches:
         hits = ctx.call(
             lambda s: s.search.tree_search(
@@ -176,14 +190,17 @@ def _create_person(ctx: Any, given, surname, gender, reason, birth_date, birth_p
         )
         if not isinstance(hits, list):
             raise FSError("tree_search returned an unexpected response; refusing to create")
-        if hits:
-            candidates = [project_search_hit(e) for e in hits]
+        projected = [project_search_hit(e) for e in hits]
+        candidates = [c for c in projected if _blocks(c)]
+        weak_ignored = len(projected) - len(candidates)
+        if candidates:
             candidates.sort(key=_confidence_key, reverse=True)
             return {
                 "status": "matches_found",
                 "candidates": candidates[:_MAX_CANDIDATES],
                 "message": (
-                    "Possible existing matches were found in the tree. Nothing was "
+                    "Possible existing matches (candidates with confidence >= "
+                    f"{MATCH_CONFIDENCE_MIN}) were found in the tree. Nothing was "
                     "created. Show these candidates to Ben; only retry with "
                     "create_despite_matches=True after Ben says none of them is the "
                     "same person."
@@ -225,7 +242,7 @@ def _create_person(ctx: Any, given, surname, gender, reason, birth_date, birth_p
     )
     new_id = ctx.call(lambda s: s.writer.create_person(person, reason=reason))
     return {"status": "created", "id": new_id, "living": is_living,
-            "life_status": classification}
+            "life_status": classification, "weak_candidates_ignored": weak_ignored}
 
 
 def _add_fact(ctx: Any, person_id, fact_type, reason, date, place) -> dict:
@@ -596,7 +613,8 @@ def register_write_tools(mcp: Any, ctx: Any) -> None:
         mention the research archive folder or source when relevant.
 
         Safety gates (nothing is created when a gate blocks):
-        1. The tree is searched first. If ANY possible match exists the result is
+        1. The tree is searched first. If a possible match with confidence >= 3 (or
+           unknown confidence) exists the result is
            {"status": "matches_found", "candidates": [...]}. Show those candidates to
            Ben and get his explicit OK that none is the same person BEFORE retrying
            with create_despite_matches=True. Never set it on your own.

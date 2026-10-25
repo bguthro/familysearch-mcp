@@ -145,6 +145,14 @@ def test_search_tree_sees_real_results(call):
         assert isinstance(h["id"], str) and h["id"]
 
 
+def test_search_tree_accepts_natural_dates(call):
+    hits = call("search_tree", given="John", surname="Smith",
+                birth_date="25 December 1846")
+    assert isinstance(hits, list) and hits
+    for h in hits:
+        assert isinstance(h["name"], str) and h["name"]
+
+
 def test_match_gate_live_blocks_john_smith(call, cleanup):
     out = call("create_person", given="John", surname="Smith", gender="Male",
                birth_date="1846", reason=REASON)

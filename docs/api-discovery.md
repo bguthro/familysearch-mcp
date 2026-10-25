@@ -128,6 +128,17 @@ throttled (see `FSClient`).
   `/service/search/hr/v2/personas`, with its own `results`/`entries`/`links.next`
   shape.
 
+- **`q.birthLikeDate` accepts only a bare year (`1846`) or an ISO date
+  (`1846-12-25`).** Natural-language dates ("25 December 1846", "abt 1850") return
+  HTTP 400 ("Failure in upstream call: Search for tree persons"). Places in any form
+  are fine. `Search.tree_search` normalizes via `normalize_search_date` (single
+  distinct year -> that year; zero or several -> parameter omitted).
+- **Tree-search `confidence` is a small integer.** Measured on beta 2026-10-24: junk
+  names get 2 on every hit (fuzzy/phonetic noise); real existing people get 3-4. The
+  MCP `create_person` match gate blocks only at confidence >= 3 (`MATCH_CONFIDENCE_MIN`).
+- **The auth probe must send a browser `User-Agent`**: python-requests' default gets an
+  HTTP 403 from the edge on both hosts.
+
 ## 7. Adding a new endpoint later — the recipe
 
 1. Lift a fresh **beta** token (`extract_brave_token`, or copy it from DevTools).
