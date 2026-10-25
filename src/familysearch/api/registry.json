@@ -697,7 +697,7 @@
     "status": "unverified"
    },
    "handwritten": {
-    "recipe": "tests/integration/test_beta_roundtrip.py::test_source_create_and_attach",
+    "recipe": "tests/integration/test_mcp_beta.py::test_source_create_attach_list",
     "status": "verified"
    }
   },
@@ -706,7 +706,7 @@
     "status": "unverified"
    },
    "handwritten": {
-    "recipe": "tests/integration/test_beta_roundtrip.py::test_create_parent_child_relationship",
+    "recipe": "tests/integration/test_beta_roundtrip.py::test_create_couple_relationship",
     "status": "verified"
    }
   },

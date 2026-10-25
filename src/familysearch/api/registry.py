@@ -1,9 +1,12 @@
 """The write lock: which operations may run, where, and with which explicit flags.
 
-``registry.json`` records, per operation id, a ``status`` (``verified``,
-``unverifiable`` or ``excluded``), the ``fingerprint`` the verification was done
-against, and a ``reason``. An operation with no entry is unverified. A verified
-entry whose fingerprint no longer matches the spec is stale.
+``registry.json`` holds ``operations[id] = {"generated": {...}, "handwritten": {...}?}``.
+Each implementation entry has a ``status`` of ``verified``, ``unverified``,
+``unverifiable`` or ``excluded``; ``stale`` and ``unknown`` are computed, never
+stored. A ``generated`` verified entry carries the ``fingerprint`` it was verified
+against and is stale when that no longer matches the spec. ``handwritten`` entries
+carry no fingerprint and are informational only: the lock reads only ``generated``.
+An operation with no entry is unverified.
 """
 import json
 from pathlib import Path
@@ -59,6 +62,10 @@ def effective_status(
     only honored when both its stored fingerprint and ``fingerprint`` are
     non-empty and equal; otherwise it is stale. An unrecognised status string
     is reported as "unknown" (check_call refuses writes with it).
+
+    ``impl="handwritten"`` has no staleness semantics: handwritten entries carry
+    no fingerprint, so a verified one always reports "stale" here. The lock never
+    asks about them.
     """
     impl_entry = _impl_entry(operation_id, registry, impl)
     if impl_entry is None:

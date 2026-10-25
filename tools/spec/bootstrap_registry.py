@@ -26,15 +26,16 @@ _PERSON = _RT + "test_create_addfact_delete_person"
 _PARENT_CHILD = _RT + "test_create_parent_child_relationship"
 _UPLOAD_LINK = _RT + "test_upload_to_person_then_link_to_second_person"
 _SOURCE = _RT + "test_source_create_and_attach"
+_SOURCE_LIST = _MCP + "test_source_create_attach_list"
 
 # operation id -> live test node id that exercises its hand-written counterpart
 HANDWRITTEN = {
     "readPerson": _PERSON,
     "readPersonParents": _PARENT_CHILD,
     "readPersonChildren": _PARENT_CHILD,
-    "readPersonSpouses": _PARENT_CHILD,
+    "readPersonSpouses": _RT + "test_create_couple_relationship",
     "getPersonMemories": _UPLOAD_LINK,
-    "readPersonSources": _SOURCE,
+    "readPersonSources": _SOURCE_LIST,
     "readTreePersonMatches": _MCP + "test_matches_and_record_search",
     "searchTreePersons": _RT + "test_tree_search_runs",
     "readCurrentUser": _RT + "test_read_current_user",
