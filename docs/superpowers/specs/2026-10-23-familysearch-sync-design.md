@@ -29,6 +29,16 @@ The archive is the **source of truth**. Sync is **one-way, up** (archive → Fam
 
 ### Feasibility is proven, not assumed
 
+> **SUPERSEDED (2026-10-24): two rows below were WRONG.** "Create parent-child" (201) and
+> "Link a memory to a person" (204) returned success but created COUPLE links / did
+> nothing; only a read-back exposed it. Corrected rows: parent-child is `POST
+> /platform/tree/relationships` with a `childAndParentsRelationships` body (both parents
+> in one request, 201; resource `/platform/tree/child-and-parents-relationships/{id}`);
+> memory attach is a multipart POST to the PERSON's own `memories` link (upload and attach),
+> or a persona POST (ark + `media.description`) to `/memories/{id}/personas` (201). Couple
+> delete is `DELETE /platform/tree/couple-relationships/{id}`. See the Corrections in
+> [docs/api-discovery.md](../../api-discovery.md); a 2xx proves nothing.
+
 This design is written *after* a throwaway spike proved every required capability end to
 end against the FamilySearch **beta** environment, using only a token lifted from Brave's
 cookie store. Verified results (all test data created was then deleted; beta left clean):

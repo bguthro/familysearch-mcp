@@ -136,6 +136,8 @@ engine remains possible later but is no longer the primary path.
 2. **Search-before-create mechanics** — server-side match search parameters and the
    confidence threshold above which `create_person` refuses; the exact override
    parameter; whether near-misses are returned for Ben to pick from.
+   *(Resolved on live data: the threshold is confidence >= 3; nonsense names score 2,
+   plausible matches 3-5. A raw non-integer confidence blocks.)*
 3. **Provenance detection for `upload_memory`** — the library already has a 15 MB/type
    guard; the server adds the aggregator check. Decide its inputs: filename patterns, plus
    an explicit caller-supplied provenance/source string (Claude has read the

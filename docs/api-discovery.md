@@ -23,7 +23,7 @@ way, with the same confidence.
 | Environment | Website | Purpose |
 |---|---|---|
 | **beta** | `https://beta.familysearch.org` | A separate, isolated copy of the system with its own accounts and an empty tree. **Safe to create/delete test data.** All discovery and the test suite run here. |
-| **production** | `https://www.familysearch.org` | The real shared tree. Only touched by the sync engine, behind a dry-run + human approval + a supervised pilot. |
+| **production** | `https://www.familysearch.org` | The real shared tree. Written to only by the sync engine (behind a dry-run + human approval + a supervised pilot) or by the MCP server when `FS_ALLOW_PROD_WRITES` is set. **No production write has been exercised yet**; every endpoint here was proven on beta only. |
 
 Environments are isolated: a beta session token authenticates beta only (it returns
 `401` against production) and vice-versa. See `familysearch/auth.py`.
@@ -124,6 +124,11 @@ throttled (see `FSClient`).
 
 ## 6. Gotchas learned the hard way (each cost a wrong guess on beta)
 
+- **`living` is an explicit boolean on persons** (deceased -> `False` with a lifespan
+  ending "Deceased"; living -> `True`). The MCP tools use it: documents are NEVER
+  attached to living or unknown-status persons (`living_person_blocked`; policy:
+  documents tied to deceased persons only).
+
 - **Names need `parts`.** Creating a person whose name has only `fullText` and no
   `parts` (Given/Surname) silently fails — no id returned. `build_name` always emits
   parts.
@@ -150,23 +155,17 @@ throttled (see `FSClient`).
 - **`q.birthLikeDate` accepts only a bare year (`1846`) or an ISO date
   (`1846-12-25`).** Natural-language dates ("25 December 1846", "abt 1850") return
   HTTP 400 ("Failure in upstream call: Search for tree persons"). Places in any form
-  are fine. `Search.tree_search` normalizes via `normalize_search_date` (single
-  distinct year -> that year; zero or several -> parameter omitted).
+  are fine. `Search.tree_search` normalizes via `normalize_search_date`: a bare year or
+  VALID ISO date passes; bound/range qualifiers (after, before, from, to, until, since,
+  between) and decades ("1850s") omit the parameter because a single year would NARROW
+  the search; approximations ("abt 1850") use the single year; zero or several years omit
+  it; non-ASCII digits are not years.
 - **Tree-search `confidence` is a small integer.** Measured on beta 2026-10-24: junk
   names get 2 on every hit (fuzzy/phonetic noise); real existing people get 3-4
   (values from 2 to 5 have been observed). The
   MCP `create_person` match gate blocks only at confidence >= 3 (`MATCH_CONFIDENCE_MIN`).
 - **The auth probe must send a browser `User-Agent`**: python-requests' default gets an
   HTTP 403 from the edge on both hosts.
-
-## 6b. Teardown must verify deletion
-
-Teardown must VERIFY deletion by read-back, never blanket-tolerate 404: a tolerated 404
-hid a wrong delete URL (`delete_couple` hit `<relationships rel>/{id}`, which is 404;
-the suites stayed green because deleting the persons cascaded). The live trackers GET
-each relationship/memory first (404/410 = already gone), DELETE (non-2xx is an error),
-and GET again, requiring 404/410. Source descriptions are the one DELETE-only exception
-(their GET Accept is not established).
 
 ## 6a. Corrections (2026-10-24)
 
@@ -177,9 +176,19 @@ read-back on beta showed the parent-child POST created COUPLE links between the 
 and each parent (child: parents `[]`, spouses `[dad, mom]`), and the memory link
 created nothing (the person's memory list stayed empty). Both were corrected after
 that read-back; `delete_couple` was corrected the same way on 2026-10-24 (the couple
-resource is `/platform/tree/couple-relationships/{id}`); `get_matches` (HTTP 406 without the atom `Accept`) was fixed in the
-same pass. The unit tests passed throughout because they only asserted the request we
+resource is `/platform/tree/couple-relationships/{id}`); `get_matches` (HTTP 406 without
+the atom `Accept`) was fixed in the same pass. The unit tests passed throughout because they only asserted the request we
 sent, never the resulting state: hence the methodology rule at the top.
+
+## 6b. Teardown must verify deletion
+
+Teardown must VERIFY deletion by read-back, never blanket-tolerate 404: a tolerated 404
+hid a wrong delete URL (`delete_couple` hit `<relationships rel>/{id}`, which is 404;
+the suites stayed green because deleting the persons cascaded). The live trackers GET
+relationship/memory/source/person first (it must be readable), DELETE (non-2xx is an
+error), and GET again, requiring 404/410. Source descriptions are verified the same way (GET with the default
+Accept works: 200, DELETE 204, then GET 410). A pre-delete 404 on an object created in
+the same run is itself an ERROR (wrong URL or vanished), not "already gone".
 
 ## 7. Adding a new endpoint later — the recipe
 
@@ -198,5 +207,8 @@ sent, never the resulting state: hence the methodology rule at the top.
 7. Add a case to the **beta integration suite**, WITH the read-back assertion, so the
    new endpoint stays proven, and record any new gotcha in §6 above.
 
-Do experiments on **beta**. Only the sync engine writes to production, and only behind
-a dry-run, explicit approval, and a supervised pilot.
+Do experiments on **beta**. Production is written to only by the sync engine (behind a
+dry-run, explicit approval and a supervised pilot) or by the MCP server when
+`FS_ALLOW_PROD_WRITES` is set. No production write has been exercised yet: run the
+first ones as a supervised pilot WITH read-back, because several endpoints that looked
+proven on beta (parent-child, memory link, couple delete) turned out to be wrong.

@@ -2,7 +2,8 @@
 
 Two things live in this repo:
 
-- `familysearch`: a Python client library for the FamilySearch API (`requests` only).
+- `familysearch`: a Python client library for the FamilySearch API. The distribution depends on
+  `requests`, `browser_cookie3` and `mcp==1.30.0`, so library users also pull in the MCP SDK.
 - `familysearch_mcp`: an MCP server (stdio) that exposes 8 read tools and 8 guarded
   write tools over that library, for use from Claude Code and other MCP clients.
 
@@ -108,6 +109,20 @@ its own. The server instructions and tool descriptions say this.
 - A hard link inside the upload root to a file outside it is not detected.
 - A relative `file_path` resolves against the server's working directory; use absolute
   paths.
+- NO production write has ever been exercised. Every endpoint was proven on beta only,
+  and several originally "proven" beta endpoints turned out wrong (parent-child, memory
+  link, couple delete). Run the first production writes as a supervised pilot, reading
+  the result back.
+- A true duplicate that FamilySearch scores below 3 passes the match gate; it is visible
+  afterwards in the `weak_candidates` list of the `create_person` result.
+- Zero-width and other format (Cf) characters are accepted in free text.
+- Writes are not idempotent: if a call times out, check the tree before retrying (a
+  retry can duplicate a person, relationship or persona).
+- Documents are never attached to living persons (policy: deceased persons only);
+  `upload_memory(person_id=...)` and `link_memory` answer `living_person_blocked`, with
+  no override.
+- Tools run inline on the server's event loop, so a 15 MB upload blocks other calls
+  while it runs.
 - Privacy: `auth_status` returns only id, displayName and personId, nothing else from
   your account.
 
@@ -119,10 +134,11 @@ its own. The server instructions and tool descriptions say this.
 
 **Integration suite** (live FamilySearch *beta*; needs a session token). It creates
 and deletes clearly-labelled `ZZSPIKE` throwaway data. Without a token the whole
-module is skipped. Log in to beta.familysearch.org in Brave first.
+module is skipped. Always pass `--tb=short`: pytest's default traceback prints function
+arguments, which once showed a session token. Log in to beta.familysearch.org in Brave first.
 
-    FS_USE_BRAVE=1 .venv/bin/python -m pytest tests/integration        # reads the fssessionid cookie from Brave (Keychain prompt)
-    FS_BETA_TOKEN=<token> .venv/bin/python -m pytest tests/integration # or supply the token directly
+    FS_USE_BRAVE=1 .venv/bin/python -m pytest tests/integration --tb=short        # reads the fssessionid cookie from Brave (Keychain prompt)
+    FS_BETA_TOKEN=<token> .venv/bin/python -m pytest tests/integration --tb=short # or supply the token directly
 
 **MCP beta suite** (`tests/integration/test_mcp_beta.py`; drives the assembled MCP server
 through the real FastMCP call path). Needs `FS_USE_BRAVE=1` (reads the Brave session;
@@ -133,7 +149,7 @@ them at teardown through the library (there is no MCP delete tool), failing loud
 leftover. Uploads use a temporary `FS_UPLOAD_ROOT` that the test creates itself. Add `-s`
 to see the `[OBSERVED]` live-shape lines.
 
-    FS_USE_BRAVE=1 .venv/bin/python -m pytest tests/integration/test_mcp_beta.py -v -s
+    FS_USE_BRAVE=1 .venv/bin/python -m pytest tests/integration/test_mcp_beta.py -v -s --tb=short
 
 **Manual production read smoke** (no automated prod test): with a production login in
 Brave, run the server with `FS_ENVIRONMENT=production` and call `auth_status`,
