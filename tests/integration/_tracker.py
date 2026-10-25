@@ -11,39 +11,13 @@ A tolerated 404 once hid a wrong delete URL, so 404 is never accepted blindly. E
 item is handled in its own try so one failure never stops the rest; callers assert
 `not tracker.errors` so a failing teardown fails the run loudly.
 """
-from familysearch import FSHTTPError
 from familysearch._urls import join_path
 from familysearch.tree import child_and_parents_url, couple_url
+from tools.verify.teardown import verified_delete
+
+__all__ = ["CLEANUP_REASON", "Tracker", "verified_delete"]
 
 CLEANUP_REASON = "ZZSPIKE automated integration test cleanup"
-
-
-def _gone(get) -> bool:
-    """True when the resource 404/410s; False when readable; other errors propagate."""
-    try:
-        get()
-    except FSHTTPError as e:
-        if e.status in (404, 410):
-            return True
-        raise
-    return False
-
-
-def verified_delete(label, url, get, delete, errors) -> None:
-    """GET must succeed, DELETE must be 2xx, then GET must be 404/410."""
-    try:
-        try:
-            get()
-        except FSHTTPError as e:
-            errors.append(
-                f"{label}: tracked object not found at {url} "
-                f"(wrong URL or vanished): HTTP {e.status}")
-            return
-        delete()
-        if not _gone(get):
-            errors.append(f"{label}: still readable at {url} after delete")
-    except Exception as e:  # noqa: BLE001 - record, keep cleaning up
-        errors.append(f"{label}: {e}")
 
 
 class Tracker:
