@@ -1,0 +1,36 @@
+{
+ "operations": [
+  {
+   "area": "Memories Endpoints",
+   "method": "DELETE",
+   "operation_id": "deleteMemory",
+   "params": [
+    {"enum": null, "example": null, "in": "path", "name": "mid", "required": true, "type": "string"}
+   ],
+   "path": "/memories/memories/{mid}",
+   "summary": "Delete Memory"
+  },
+  {
+   "area": "Family Tree Endpoints",
+   "method": "POST",
+   "operation_id": "createPerson",
+   "params": [],
+   "path": "/tree/persons",
+   "summary": "Create Person"
+  },
+  {
+   "area": "Family Tree Endpoints",
+   "method": "GET",
+   "operation_id": "readPerson",
+   "params": [
+    {"enum": null, "example": "LZJW-C31", "in": "path", "name": "pid", "required": true, "type": "string"},
+    {"enum": ["application/x-fs-v1+json", "application/json"], "example": null, "in": "header", "name": "Accept", "required": true, "type": "string"},
+    {"enum": null, "example": null, "in": "query", "name": "relatives", "required": false, "type": "boolean"}
+   ],
+   "path": "/tree/persons/{pid}",
+   "summary": "Read Person"
+  }
+ ],
+ "schema": 1,
+ "source": "mini"
+}
