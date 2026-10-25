@@ -93,8 +93,46 @@ def total_calls(s):
 
 
 @pytest.fixture(autouse=True)
-def no_root(monkeypatch):
-    monkeypatch.delenv("FS_UPLOAD_ROOT", raising=False)
+def upload_root(tmp_path, monkeypatch):
+    """Uploads require FS_UPLOAD_ROOT; point it at tmp_path for every test."""
+    monkeypatch.setenv("FS_UPLOAD_ROOT", str(tmp_path))
+    return tmp_path
+
+
+class OpenSpy:
+    def __init__(self):
+        self.paths = []
+        self.fds = []
+
+
+@pytest.fixture
+def opens(monkeypatch):
+    """Record every os.open / builtins.open path and every fd os.open returns."""
+    spy = OpenSpy()
+    real_os_open, real_open = os.open, builtins.open
+
+    def os_open(path, *a, **k):
+        spy.paths.append(os.fspath(path))
+        fd = real_os_open(path, *a, **k)
+        spy.fds.append(fd)
+        return fd
+
+    def b_open(file, *a, **k):
+        if isinstance(file, (str, bytes, os.PathLike)):
+            spy.paths.append(os.fspath(file))
+        return real_open(file, *a, **k)
+
+    monkeypatch.setattr(os, "open", os_open)
+    monkeypatch.setattr(builtins, "open", b_open)
+    return spy
+
+
+def fd_closed(fd):
+    try:
+        os.fstat(fd)
+    except OSError:
+        return True
+    return False
 
 
 def mk(tmp_path, name, content=PDF):
@@ -184,10 +222,17 @@ def test_upload_explicit_title_and_strip(tmp_path):
 
 
 def test_upload_tilde_expansion(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    mk(tmp_path, "a.pdf")
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    mk(home, "a.pdf")
     tools, svc, _ = build()
     assert upload(tools, "~/a.pdf")["status"] == "uploaded"
+
+
+def test_upload_filename_with_space(tmp_path):
+    tools, svc, _ = build()
+    out = upload(tools, mk(tmp_path, "my scan.png", PNG))
+    assert out["status"] == "uploaded" and out["filename"] == "my scan.png"
 
 
 # ---- provenance gate ----------------------------------------------------------
@@ -203,21 +248,13 @@ def test_filename_aggregator_blocked_before_reading_content(tmp_path):
     assert svc.memories.upload.calls == []
 
 
-def test_gate_runs_before_any_file_open(tmp_path, monkeypatch):
+def test_gate_runs_before_any_file_open(tmp_path, opens):
     tools, svc, _ = build()
     path = mk(tmp_path, "Fold3 x.jpg", JPG)
-    real_open = builtins.open
-    opened = []
-
-    def spy(file, *a, **k):
-        opened.append(file)
-        return real_open(file, *a, **k)
-
-    monkeypatch.setattr(builtins, "open", spy)
     assert upload(tools, path)["status"] == "provenance_blocked"
     assert upload(tools, mk(tmp_path, "clean.jpg", JPG), provenance=None)["status"] \
         == "provenance_unknown"
-    assert not [f for f in opened if str(f).startswith(str(tmp_path))]
+    assert not [f for f in opens.paths if f.startswith(os.path.realpath(tmp_path))]
 
 
 def test_provenance_text_aggregator_blocked(tmp_path):
@@ -277,7 +314,7 @@ def test_override_with_unknown_provenance(tmp_path):
 
 def test_override_still_checks_magic(tmp_path):
     tools, svc, _ = build()
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="magic"):
         upload(tools, mk(tmp_path, "Fold3 x.pdf", b"nope"), override_rights=True)
     assert svc.memories.upload.calls == []
 
@@ -310,29 +347,22 @@ def test_directory(tmp_path):
     refused(tools, svc, str(d))
 
 
-def test_dev_zero_rejected_without_open(monkeypatch):
+def test_dev_zero_rejected_without_open(tmp_path, monkeypatch, opens):
     tools, svc, _ = build()
-    real_open = builtins.open
-    opened = []
-
-    def spy(file, *a, **k):
-        opened.append(str(file))
-        return real_open(file, *a, **k)
-
-    monkeypatch.setattr(builtins, "open", spy)
-    # /dev/zero has no allowed extension; use a symlink so the extension passes
-    # and ONLY the S_ISREG check stands in the way.
-    import tempfile
-    with tempfile.TemporaryDirectory() as td:
-        link = os.path.join(td, "z.pdf")
-        os.symlink("/dev/zero", link)
-        # real path /dev/zero has no extension -> also rejected, never opened
-        refused(tools, svc, link)
-    refused(tools, svc, "/dev/zero")
-    assert not [f for f in opened if f.startswith("/dev/")]
+    # Root /dev admits /dev/zero (and a symlink to it); the S_ISREG check is the
+    # only thing that stops it, and it runs before any open.
+    monkeypatch.setenv("FS_UPLOAD_ROOT", "/dev")
+    with pytest.raises(ValueError, match="regular file"):
+        upload(tools, "/dev/zero")
+    link = tmp_path / "z.pdf"
+    os.symlink("/dev/zero", link)
+    with pytest.raises(ValueError, match="regular file"):
+        upload(tools, str(link))
+    assert svc.memories.upload.calls == []
+    assert not [f for f in opens.paths if f.startswith("/dev/")]
 
 
-def test_non_regular_with_good_extension_never_opened(tmp_path, monkeypatch):
+def test_non_regular_with_good_extension_never_opened(tmp_path, monkeypatch, opens):
     """Extension is fine, S_ISREG is the only thing standing in the way."""
     tools, svc, _ = build()
     p = mk(tmp_path, "x.pdf")
@@ -346,15 +376,8 @@ def test_non_regular_with_good_extension_never_opened(tmp_path, monkeypatch):
         return FakeSt() if str(path) == os.path.realpath(p) else real_stat(path, *a, **k)
 
     monkeypatch.setattr(os, "stat", fake_stat)
-
-    def boom(*a, **k):
-        raise AssertionError("must not open a non-regular file")
-
-    real_open = builtins.open
-    monkeypatch.setattr(
-        builtins, "open",
-        lambda f, *a, **k: boom() if str(f) == os.path.realpath(p) else real_open(f, *a, **k))
     refused(tools, svc, p)
+    assert os.path.realpath(p) not in opens.paths
 
 
 def test_fifo(tmp_path):
@@ -366,22 +389,15 @@ def test_fifo(tmp_path):
     refused(tools, svc, str(f))  # would hang forever if it were opened
 
 
-def test_oversize_sparse_file_not_read(tmp_path, monkeypatch):
+def test_oversize_sparse_file_not_read(tmp_path, opens):
     tools, svc, _ = build()
     p = tmp_path / "big.pdf"
     with open(p, "wb") as f:
         f.write(PDF)
         f.truncate(MAX + 1)
-    real_open = builtins.open
-    opened = []
-
-    def spy(file, *a, **k):
-        opened.append(str(file))
-        return real_open(file, *a, **k)
-
-    monkeypatch.setattr(builtins, "open", spy)
+    opens.paths.clear()
     refused(tools, svc, str(p))
-    assert not [f for f in opened if f == os.path.realpath(p)]
+    assert os.path.realpath(p) not in opens.paths
 
 
 def test_exactly_max_size_allowed(tmp_path):
@@ -415,7 +431,9 @@ def test_bad_extension(tmp_path, name):
 ])
 def test_magic_mismatch(tmp_path, name, content):
     tools, svc, _ = build()
-    refused(tools, svc, mk(tmp_path, name, content))
+    with pytest.raises(ValueError, match="magic"):
+        upload(tools, mk(tmp_path, name, content))
+    assert svc.memories.upload.calls == []
 
 
 @pytest.mark.parametrize("bad", ["", "   ", "a\x00b.pdf", "a\nb.pdf", "a b.pdf",
@@ -425,11 +443,14 @@ def test_bad_path_values(bad):
     refused(tools, svc, bad)
 
 
-def test_symlink_to_etc_hosts(tmp_path):
+def test_symlink_to_etc_hosts_has_no_allowed_extension(tmp_path, monkeypatch):
     tools, svc, _ = build()
+    monkeypatch.setenv("FS_UPLOAD_ROOT", "/etc")  # containment passes; extension must stop it
     link = tmp_path / "x.pdf"
     os.symlink("/etc/hosts", link)
-    refused(tools, svc, str(link))
+    with pytest.raises(ValueError, match="allowed extensions"):
+        upload(tools, str(link))
+    assert svc.memories.upload.calls == []
 
 
 def test_bad_reason_title_provenance(tmp_path):
@@ -471,10 +492,12 @@ def test_root_rejects_symlink_escape(tmp_path, monkeypatch):
     tools, svc, _ = build()
     root = tmp_path / "root"
     root.mkdir()
-    outside = mk(tmp_path, "outside.pdf")
-    os.symlink(outside, root / "inside.pdf")
+    outside = mk(tmp_path, "outside.pdf", PDF)  # regular, .pdf, valid %PDF- header
+    os.symlink(outside, root / "x.pdf")
     monkeypatch.setenv("FS_UPLOAD_ROOT", str(root))
-    refused(tools, svc, str(root / "inside.pdf"))
+    with pytest.raises(ValueError, match="outside the allowed"):
+        upload(tools, str(root / "x.pdf"))
+    assert svc.memories.upload.calls == []
 
 
 def test_root_rejects_dotdot(tmp_path, monkeypatch):
@@ -493,10 +516,209 @@ def test_root_prefix_trick(tmp_path, monkeypatch):
     refused(tools, svc, mk(tmp_path, "ab/file.pdf"))
 
 
-def test_blank_root_means_unrestricted(tmp_path, monkeypatch):
+NOT_CONFIGURED = "upload_root_not_configured"
+INVALID = "upload_root_invalid"
+
+
+def _root_case(tmp_path, monkeypatch, kind):
+    if kind == "unset":
+        monkeypatch.delenv("FS_UPLOAD_ROOT", raising=False)
+    elif kind == "blank":
+        monkeypatch.setenv("FS_UPLOAD_ROOT", "")
+    elif kind == "spaces":
+        monkeypatch.setenv("FS_UPLOAD_ROOT", "   ")
+    elif kind == "relative":
+        monkeypatch.setenv("FS_UPLOAD_ROOT", "archive/dir")
+    elif kind == "missing":
+        monkeypatch.setenv("FS_UPLOAD_ROOT", str(tmp_path / "nope"))
+    elif kind == "notdir":
+        monkeypatch.setenv("FS_UPLOAD_ROOT", mk(tmp_path, "file.pdf"))
+    elif kind == "slash":
+        monkeypatch.setenv("FS_UPLOAD_ROOT", "/")
+    elif kind == "home":
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("FS_UPLOAD_ROOT", str(tmp_path))
+    elif kind == "home_tilde":
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("FS_UPLOAD_ROOT", "~")
+
+
+@pytest.mark.parametrize("kind,status", [
+    ("unset", NOT_CONFIGURED), ("blank", NOT_CONFIGURED), ("spaces", NOT_CONFIGURED),
+    ("relative", INVALID), ("missing", INVALID), ("notdir", INVALID),
+    ("slash", INVALID), ("home", INVALID), ("home_tilde", INVALID),
+])
+def test_upload_root_refusals(tmp_path, monkeypatch, opens, kind, status):
+    tools, svc, ctx = build()
+    f = mk(tmp_path, "good.pdf")
+    _root_case(tmp_path, monkeypatch, kind)
+    opens.paths.clear()
+    out = upload(tools, f)
+    assert out["status"] == status
+    assert "Nothing was uploaded" in out["message"] and "Ben" in out["message"]
+    assert "FS_UPLOAD_ROOT" in out["message"]
+    assert svc.memories.upload.calls == [] and ctx.call_count == 0
+    assert not [p for p in opens.paths if p.startswith(os.path.realpath(tmp_path))]
+
+
+def test_upload_root_messages_are_distinct(tmp_path, monkeypatch):
     tools, svc, _ = build()
-    monkeypatch.setenv("FS_UPLOAD_ROOT", "   ")
-    assert upload(tools, mk(tmp_path, "a.pdf"))["status"] == "uploaded"
+    f = mk(tmp_path, "good.pdf")
+    msgs = set()
+    for kind in ("relative", "missing", "notdir", "slash", "home"):
+        _root_case(tmp_path, monkeypatch, kind)
+        msgs.add(upload(tools, f)["message"])
+    assert len(msgs) == 5
+
+
+def test_upload_root_checked_before_other_validation(tmp_path, monkeypatch):
+    tools, svc, _ = build()
+    monkeypatch.delenv("FS_UPLOAD_ROOT", raising=False)
+    out = tools["upload_memory"]("\x00junk", "", override_rights="yes")
+    assert out["status"] == NOT_CONFIGURED
+
+
+def test_upload_root_after_write_gate(monkeypatch):
+    tools, svc, ctx = build(writes=False)
+    monkeypatch.delenv("FS_UPLOAD_ROOT", raising=False)
+    assert tools["upload_memory"]("/x.pdf", REASON)["status"] == "writes_disabled"
+
+
+def test_upload_root_symlinked_root_ok(tmp_path, monkeypatch):
+    tools, svc, _ = build()
+    real = tmp_path / "real"
+    real.mkdir()
+    os.symlink(real, tmp_path / "linkroot")
+    monkeypatch.setenv("FS_UPLOAD_ROOT", str(tmp_path / "linkroot"))
+    assert upload(tools, mk(real, "a.pdf"))["status"] == "uploaded"
+
+
+# ---- stat-to-open race (R2) ---------------------------------------------------
+
+def _swap_on_gate(monkeypatch, swap):
+    from familysearch_mcp import tools_write
+    orig = tools_write.provenance_blocked
+    state = {"done": False}
+
+    def wrapper(*a, **k):
+        if not state["done"]:
+            state["done"] = True
+            swap()
+        return orig(*a, **k)
+
+    monkeypatch.setattr(tools_write, "provenance_blocked", wrapper)
+
+
+def test_race_swap_to_outside_symlink(tmp_path, monkeypatch, opens):
+    tools, svc, _ = build()
+    root = tmp_path / "root"
+    root.mkdir()
+    monkeypatch.setenv("FS_UPLOAD_ROOT", str(root))
+    ok = root / "ok.png"
+    ok.write_bytes(PNG)
+    outside = tmp_path / "secret.png"
+    outside.write_bytes(PNG + b"SECRET")
+
+    def swap():
+        ok.unlink()
+        os.symlink(outside, ok)
+
+    _swap_on_gate(monkeypatch, swap)
+    with pytest.raises(ValueError):
+        upload(tools, str(ok))
+    assert svc.memories.upload.calls == []
+    assert all(fd_closed(fd) for fd in opens.fds)
+
+
+def test_race_swap_to_different_regular_file(tmp_path, monkeypatch, opens):
+    tools, svc, _ = build()
+    root = tmp_path / "root"
+    root.mkdir()
+    monkeypatch.setenv("FS_UPLOAD_ROOT", str(root))
+    ok = root / "ok.png"
+    ok.write_bytes(PNG)
+    other = root / "other.png"
+    other.write_bytes(PNG + b"OTHER")
+
+    def swap():
+        os.replace(other, ok)
+
+    _swap_on_gate(monkeypatch, swap)
+    with pytest.raises(ValueError):
+        upload(tools, str(ok))
+    assert svc.memories.upload.calls == []
+    assert opens.fds and all(fd_closed(fd) for fd in opens.fds)
+
+
+def test_no_fd_leak_on_success_and_magic_failure(tmp_path, opens):
+    tools, svc, _ = build()
+    upload(tools, mk(tmp_path, "a.pdf"))
+    with pytest.raises(ValueError, match="magic"):
+        upload(tools, mk(tmp_path, "b.pdf", b"nope"))
+    assert len(opens.fds) == 2 and all(fd_closed(fd) for fd in opens.fds)
+
+
+def test_open_uses_nofollow_nonblock(tmp_path, monkeypatch):
+    flags = []
+    real = os.open
+
+    def spy(path, fl, *a, **k):
+        flags.append(fl)
+        return real(path, fl, *a, **k)
+
+    monkeypatch.setattr(os, "open", spy)
+    tools, _, _ = build()
+    upload(tools, mk(tmp_path, "a.pdf"))
+    assert flags and flags[0] & os.O_NOFOLLOW and flags[0] & os.O_NONBLOCK
+
+
+# ---- title gate (R3) ------------------------------------------------------------
+
+def test_title_aggregator_blocked(tmp_path, opens):
+    tools, svc, _ = build()
+    p = mk(tmp_path, "clean.jpg", JPG)
+    opens.paths.clear()
+    out = upload(tools, p, title="Fold3 image of draft card")
+    assert out["status"] == "provenance_blocked" and out["aggregator"] == "fold3"
+    assert out["matched_in"] == "title"
+    assert svc.memories.upload.calls == []
+    assert os.path.realpath(p) not in opens.paths
+
+
+def test_title_aggregator_override_uploads(tmp_path):
+    tools, svc, _ = build()
+    out = upload(tools, mk(tmp_path, "clean.jpg", JPG), title="Fold3 image",
+                 override_rights=True)
+    assert out["status"] == "uploaded" and out["overridden_aggregator"] == "fold3"
+    assert svc.memories.upload.calls[0][1]["title"] == "Fold3 image"
+
+
+def test_matched_in_file_and_provenance(tmp_path):
+    tools, svc, _ = build()
+    assert upload(tools, mk(tmp_path, "Fold3 a.pdf"))["matched_in"] == "file"
+    assert upload(tools, mk(tmp_path, "clean.pdf"),
+                  provenance="Ancestry.com")["matched_in"] == "provenance"
+    link = tmp_path / "clean2.pdf"
+    os.symlink(mk(tmp_path, "Fold3 b.pdf"), link)
+    assert upload(tools, str(link))["matched_in"] == "file"
+
+
+# ---- bidi controls (R4) -----------------------------------------------------------
+
+@pytest.mark.parametrize("ch", ["‪", "‮", "⁦", "⁩"])
+def test_bidi_controls_rejected(tmp_path, ch):
+    tools, svc, _ = build()
+    with pytest.raises(ValueError):
+        upload(tools, mk(tmp_path, "a.pdf"), title="x" + ch + "y")
+    with pytest.raises(ValueError):
+        tools["create_source"]("https://example.org/x", "T", "c" + ch, REASON)
+    assert total_calls(svc) == 0
+
+
+def test_zwsp_not_rejected():
+    tools, svc, _ = build()
+    assert tools["create_source"]("https://example.org/x", "T​T", "C", REASON)["status"] \
+        == "created"
 
 
 def test_root_read_at_call_time(tmp_path, monkeypatch):
@@ -563,6 +785,8 @@ def test_create_source_ok():
     "javascript:alert(1)", "file:///etc/passwd", "ftp://x", "//host/x", "https://",
     "https://a b", "x" * 2001, "https://" + "a" * 2000, "data:text/html,hi", "example.org/x",
     "", "  ", None, 5, "https://a\x00b.org", "http:///x", "https://a.org/\nx",
+    "https://user:pw@example.org/x", "https://evil@example.org", "https://a.org\\@b.org/",
+    "https://example.org/a\\b", "https://example.org:99999/x", "https://example.org:abc/x",
 ])
 def test_create_source_bad_url(url):
     tools, svc, _ = build()
@@ -614,3 +838,11 @@ def test_attach_source_bad_person_id():
     with pytest.raises(ValueError):
         tools["attach_source"]("nope", "71FD-SL2", REASON)
     assert total_calls(svc) == 0
+
+
+def test_attach_source_strips_query_and_fragment():
+    tools, svc, _ = build()
+    svc.discovery = FakeDiscovery("https://api.example.org/platform/descriptions?flag=fsh#frag")
+    tools["attach_source"]("GKLV-DY8", "71FD-SL2", REASON)
+    assert svc.sources.attach_to_person.calls[0][0][1] == \
+        "https://api.example.org/platform/descriptions/71FD-SL2"

@@ -37,11 +37,13 @@ def validate_source_id(value: Any) -> str:
 
 
 def validate_memory_id(value: Any) -> str:
-    """Return a memory id as a string of 1-20 ASCII digits or raise ValueError."""
+    """Return a memory id as 1-20 ASCII digits (no leading zero) or raise ValueError."""
     if isinstance(value, int) and not isinstance(value, bool):
         value = str(value)
-    if isinstance(value, str) and value.isascii() and re.fullmatch(r"[0-9]{1,20}", value):
-        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isascii() and re.fullmatch(r"[1-9][0-9]{0,19}", stripped):
+            return stripped
     raise ValueError(
         f"invalid memory id {value!r}: expected 1-20 ASCII digits like '123456789'"
     )

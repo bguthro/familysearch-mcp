@@ -68,8 +68,12 @@ class PartialWriteError(FSError):
         self.created_ids = list(created_ids)
 
 
+# Bidi override/isolate characters: display spoofing in public titles/filenames.
+_BIDI = frozenset(chr(c) for c in (*range(0x202A, 0x202F), *range(0x2066, 0x206A)))
+
+
 def _no_control(name: str, value: str) -> None:
-    if any(unicodedata.category(ch) in ("Cc", "Zl", "Zp") for ch in value):
+    if any(unicodedata.category(ch) in ("Cc", "Zl", "Zp") or ch in _BIDI for ch in value):
         raise ValueError(f"{name} must not contain control characters")
 
 
@@ -317,18 +321,49 @@ def _upload_path(value: Any) -> str:
     return value
 
 
-def _validate_upload_file(file_path: str) -> tuple[str, str, int]:
-    """Resolve and vet the path WITHOUT reading it. Returns (real, content_type, size)."""
+def _upload_root() -> tuple[str | None, dict | None]:
+    """Return (resolved root, None) or (None, refusal payload). Reads env at call time."""
+    tell = " Do not set or change this setting yourself; tell Ben."
+    raw = os.environ.get("FS_UPLOAD_ROOT", "")
+    if not raw.strip():
+        return None, {
+            "status": "upload_root_not_configured",
+            "message": (
+                "Nothing was uploaded. Uploads are disabled until Ben sets FS_UPLOAD_ROOT "
+                "in the MCP server configuration to the absolute path of the research "
+                "archive directory." + tell
+            ),
+        }
+    expanded = os.path.expanduser(raw.strip())
+
+    def invalid(why: str) -> tuple[None, dict]:
+        return None, {"status": "upload_root_invalid",
+                      "message": f"Nothing was uploaded. FS_UPLOAD_ROOT {why}." + tell}
+
+    if not os.path.isabs(expanded):
+        return invalid("is not an absolute path")
+    root = os.path.realpath(expanded)
+    if not os.path.exists(root):
+        return invalid("does not exist")
+    if not os.path.isdir(root):
+        return invalid("is not a directory")
+    if root == os.path.realpath(os.sep):
+        return invalid("is the filesystem root, which is too broad")
+    home = os.path.expanduser("~")
+    if home != "~" and root == os.path.realpath(home):
+        return invalid("is the home directory, which is too broad")
+    return root, None
+
+
+def _validate_upload_file(file_path: str, root: str) -> tuple[str, str, os.stat_result]:
+    """Resolve and vet the path WITHOUT reading it. Returns (real, content_type, stat)."""
     real = os.path.realpath(os.path.expanduser(file_path))
-    root_env = os.environ.get("FS_UPLOAD_ROOT", "")
-    if root_env.strip():
-        root = os.path.realpath(os.path.expanduser(root_env.strip()))
-        try:
-            inside = os.path.commonpath([real, root]) == root
-        except ValueError:
-            inside = False
-        if not inside:
-            raise ValueError("file_path is outside the allowed upload directory")
+    try:
+        inside = os.path.commonpath([real, root]) == root
+    except ValueError:
+        inside = False
+    if not inside:
+        raise ValueError("file_path is outside the allowed upload directory")
     try:
         st = os.stat(real)
     except OSError as e:
@@ -346,16 +381,31 @@ def _validate_upload_file(file_path: str) -> tuple[str, str, int]:
         raise ValueError(
             "unsupported file type; allowed extensions: " + ", ".join(sorted(_UPLOAD_TYPES))
         )
-    return real, content_type, st.st_size
+    return real, content_type, st
 
 
-def _read_upload(real: str, content_type: str) -> bytes:
-    def opener(path: str, flags: int) -> int:  # never block on a swapped-in FIFO
-        return os.open(path, flags | getattr(os, "O_NONBLOCK", 0))
-
-    with open(real, "rb", opener=opener) as f:
-        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+def _read_upload(real: str, content_type: str, st: os.stat_result) -> bytes:
+    flags = (os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0)
+             | getattr(os, "O_CLOEXEC", 0))
+    try:
+        fd = os.open(real, flags)
+    except OSError as e:
+        raise ValueError(f"cannot read file: {e.strerror}") from None
+    f = None
+    try:
+        fst = os.fstat(fd)
+        if not stat.S_ISREG(fst.st_mode):
             raise ValueError("file_path must be a regular file")
+        if (fst.st_dev, fst.st_ino) != (st.st_dev, st.st_ino):
+            raise ValueError("file changed while being read; refusing to upload")
+        if not 0 < fst.st_size <= Memories.MAX_BYTES:
+            raise ValueError("file must be between 1 byte and 15 MB")
+        f = os.fdopen(fd, "rb")
+    except BaseException:
+        if f is None:
+            os.close(fd)
+        raise
+    with f:
         data = f.read(Memories.MAX_BYTES + 1)
     if not data or len(data) > Memories.MAX_BYTES:
         raise ValueError("file must be between 1 byte and 15 MB")
@@ -371,25 +421,36 @@ def _upload_memory(ctx: Any, file_path, reason, title, provenance, override_righ
     refused = _gate(ctx)
     if refused:
         return refused
+    root, root_refusal = _upload_root()
+    if root_refusal:
+        return root_refusal
     reason = _reason(reason)
     title = _text("title", title)
     provenance = _text("provenance", provenance)
     if not isinstance(override_rights, bool):
         raise ValueError("override_rights must be true or false")
     file_path = _upload_path(file_path)
-    real, content_type, _size = _validate_upload_file(file_path)
+    real, content_type, st = _validate_upload_file(file_path, root)
 
     given_name = os.path.basename(file_path)
     real_name = os.path.basename(real)
     aggregator = provenance_blocked(given_name, provenance)
-    shown = given_name
-    if aggregator is None:
+    shown, matched_in = given_name, None
+    if aggregator is not None:
+        matched_in = "file" if provenance_blocked(given_name, None) else "provenance"
+    else:
         aggregator = provenance_blocked(real_name, None)
-        shown = real_name
+        shown, matched_in = real_name, "file"
+    if aggregator is None and title:
+        aggregator = provenance_blocked(title, None)
+        shown, matched_in = given_name, "title"
+    if aggregator is None:
+        matched_in = None
     if aggregator and not override_rights:
         return {
             "status": "provenance_blocked",
             "aggregator": aggregator,
+            "matched_in": matched_in,
             "file": shown,
             "message": (
                 f"Nothing was uploaded. This looks like an image from {aggregator}. "
@@ -411,7 +472,7 @@ def _upload_memory(ctx: Any, file_path, reason, title, provenance, override_righ
             ),
         }
 
-    data = _read_upload(real, content_type)
+    data = _read_upload(real, content_type, st)
     memory_id = ctx.call(
         lambda s: s.memories.upload(
             data, filename=real_name, content_type=content_type,
@@ -441,15 +502,18 @@ def _link_memory(ctx: Any, person_id, memory_id, reason) -> dict:
 
 def _source_url(value: Any) -> str:
     url = _required_text("about_url", value)
-    if any(ch.isspace() for ch in url):
-        raise ValueError("about_url must not contain whitespace")
+    if any(ch.isspace() for ch in url) or "\\" in url:
+        raise ValueError("about_url must not contain whitespace or backslashes")
     try:
         parts = urllib.parse.urlsplit(url)
         host = parts.netloc
+        parts.port  # noqa: B018 - raises ValueError on an invalid port
     except ValueError as e:
         raise ValueError(f"about_url is not a valid URL: {e}") from None
     if parts.scheme.lower() not in ("http", "https") or not host or not parts.hostname:
         raise ValueError("about_url must be an http(s) URL with a host")
+    if "@" in host:
+        raise ValueError("about_url must not contain user info")
     return url
 
 
@@ -477,7 +541,9 @@ def _attach_source(ctx: Any, person_id, source_id, reason) -> dict:
 
     def attach(s: Any) -> None:
         # Body-embedded URL must be clean: drop the discovery href's query string.
-        url = join_path(s.discovery.href("source-descriptions").split("?")[0], sid)
+        parts = urllib.parse.urlsplit(s.discovery.href("source-descriptions"))
+        base = urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+        url = join_path(base, sid)
         s.sources.attach_to_person(pid, url, reason=reason)
 
     ctx.call(attach)
@@ -588,13 +654,16 @@ def register_write_tools(mcp: Any, ctx: Any) -> None:
         WARNING: uploaded documents become PUBLIC memories on the shared Family
         Tree. Only PNG, JPEG, TIFF and PDF files up to 15 MB are accepted; the type
         is taken from the file extension and verified against the file's header.
-        If the server administrator set FS_UPLOAD_ROOT, only files under that
-        directory are accepted.
+        Uploads require the server administrator to configure FS_UPLOAD_ROOT (the
+        research archive directory); only files under it are accepted. If this tool
+        answers {"status": "upload_root_not_configured"} or {"status":
+        "upload_root_invalid"}, tell Ben; never try to set or change it yourself.
 
         Rights/provenance gate (nothing is uploaded when it blocks):
         - Images sourced from aggregators (Fold3, Ancestry, Newspapers.com,
-          MyHeritage, Findagrave), detected from the file name or `provenance`, are
-          refused: {"status": "provenance_blocked", "aggregator", "file", "message"}.
+          MyHeritage, Findagrave), detected from the file name, `title` or
+          `provenance`, are refused: {"status": "provenance_blocked", "aggregator",
+          "matched_in", "file", "message"}.
         - Documents of unknown provenance are refused: {"status":
           "provenance_unknown"}. Always supply `provenance`: the source citation you
           read (for example from the person's ResearchSummary.md).

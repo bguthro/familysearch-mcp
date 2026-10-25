@@ -51,15 +51,16 @@ def test_clamp_infinity_and_overflow():
 
 
 @pytest.mark.parametrize("raw,expected", [
-    ("1", "1"), ("12345", "12345"), (42, "42"),
-    ("0", "0"), ("9" * 20, "9" * 20),
+    ("1", "1"), ("12345", "12345"), (42, "42"), (" 987 ", "987"),
+    ("9" * 20, "9" * 20),
 ])
 def test_validate_memory_id_ok(raw, expected):
     assert validate_memory_id(raw) == expected
 
 
 @pytest.mark.parametrize("raw", [
-    "", "abc", "12 34", "../1", "１２３", "9" * 21, "1a", "-1", "1.5", "1\n", " 987 ",
+    "", "abc", "12 34", "../1", "１２３", "9" * 21, "1a", "-1", "1.5", "1\n 2",
+    "0", "00000", "007", 0,
     True, False, None, 1.5, [1], b"12", -5, 10**20,
 ])
 def test_validate_memory_id_bad(raw):
