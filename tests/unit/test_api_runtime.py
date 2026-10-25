@@ -13,9 +13,9 @@ FP = "fp"
 
 
 def _spec(kind="read", method="GET", path="/tree/persons/{pid}", path_params=("pid",),
-          required_query=(), accepts=(), body="none", destructive=False):
+          required_query=(), accepts=(), body="none", destructive=False, operation_id="Op"):
     return OpSpec(
-        operation_id="Op", method_name="op", area="a", http_method=method, path=path,
+        operation_id=operation_id, method_name="op", area="a", http_method=method, path=path,
         summary="s", kind=kind, destructive=destructive, path_params=path_params,
         required_query=required_query, accepts=accepts, body=body, fingerprint=FP,
     )
@@ -153,9 +153,38 @@ def test_locked_write_makes_no_network_call():
 @responses.activate
 def test_read_kind_post_has_no_reason_header():
     responses.add(responses.POST, BETA + "/platform/tree/search", json={})
-    spec = _spec(kind="read", method="POST", path="/tree/search", path_params=(), body="json")
+    spec = _spec(kind="read", method="POST", path="/tree/search", path_params=(), body="json",
+                 operation_id="createNameSegments")
     _api()._call(spec, {}, body={"q": 1})
     assert "X-Reason" not in responses.calls[0].request.headers
+
+
+@responses.activate
+def test_read_kind_with_unsafe_method_is_a_write_in_lock_and_runtime():
+    from familysearch.api.registry import check_call
+    from familysearch.api.spec import is_write
+    spec = _spec(kind="read", method="DELETE", path="/tree/persons/{pid}")
+    assert is_write(spec)
+    with pytest.raises(OperationLockedError):
+        check_call(spec, Environment.BETA, {"schema": 1, "operations": {}},
+                   confirm_destructive=True)
+    with pytest.raises(OperationLockedError):
+        _api()._call(spec, {"pid": "1"})
+    assert len(responses.calls) == 0
+    # unlocked, the runtime still demands a reason (it sends write=True)
+    responses.add(responses.DELETE, BETA + "/platform/tree/persons/1", status=204)
+    with pytest.raises(FSError, match="reason"):
+        _api(_verified())._call(spec, {"pid": "1"}, allow_unverified=True,
+                                confirm_destructive=True)
+
+
+def test_resolved_read_ops_with_unsafe_methods_are_exactly_the_allowlist():
+    from familysearch.api import OPERATIONS
+    from familysearch.api.spec import READ_POST_ALLOWLIST, is_write
+    unsafe_reads = {k for k, v in OPERATIONS.items()
+                    if v.kind == "read" and v.http_method not in ("GET", "HEAD", "OPTIONS")}
+    assert unsafe_reads == set(READ_POST_ALLOWLIST)
+    assert not any(is_write(OPERATIONS[k]) for k in READ_POST_ALLOWLIST)
 
 
 @responses.activate

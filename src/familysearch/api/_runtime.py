@@ -7,7 +7,7 @@ from typing import Any
 from urllib.parse import quote
 
 from .registry import check_call, load_registry
-from .spec import OpSpec
+from .spec import OpSpec, is_write
 
 API_PREFIX = "/platform"
 _PLACEHOLDER = re.compile(r"\{([^{}]+)\}")
@@ -73,8 +73,8 @@ class ApiBase:
         confirm_destructive: bool = False,
     ) -> ApiResult:
         # The lock first, before anything that could touch the network.
-        is_write = spec.kind != "read"  # fail closed on any unexpected kind
-        if is_write:
+        write = is_write(spec)  # shared with check_call so they cannot disagree
+        if write:
             check_call(
                 spec, self._client.environment, self._registry,
                 allow_unverified=allow_unverified, allow_production=allow_production,
@@ -107,7 +107,7 @@ class ApiBase:
         if (files is not None or data is not None) and spec.body != "upload":
             raise ValueError(f"{spec.operation_id} does not accept an upload")
         resp = self._client.request(
-            spec.http_method, API_PREFIX + path, write=is_write,
+            spec.http_method, API_PREFIX + path, write=write,
             reason=reason, accept=accept, params=_render_query(query) or None,
             json=body, files=files, data=data, content_type=data_content_type,
         )

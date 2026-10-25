@@ -158,6 +158,16 @@ def test_invalid_kind_override_raises(snapshot, overrides):
         resolve(snapshot, ov)
 
 
+@pytest.mark.parametrize("method", ["DELETE", "PUT"])
+def test_read_override_on_delete_or_put_raises(snapshot, overrides, method):
+    sid = next(o["operation_id"] for o in snapshot["operations"]
+               if o["method"] == method and o["operation_id"] not in overrides["exclude"])
+    ov = copy.deepcopy(overrides)
+    ov["kind"] = {**ov["kind"], sid: "read"}
+    with pytest.raises(ValueError, match=sid):
+        resolve(snapshot, ov)
+
+
 def test_unknown_top_level_key_raises(tmp_path, overrides):
     p = tmp_path / "o.json"
     p.write_text(json.dumps({**overrides, "bogus": {}}))

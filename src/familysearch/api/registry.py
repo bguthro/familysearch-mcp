@@ -13,7 +13,7 @@ from pathlib import Path
 
 from ..auth import Environment
 from ..errors import FSError
-from .spec import OpSpec
+from .spec import OpSpec, is_write
 
 REGISTRY_PATH = Path(__file__).resolve().parent / "registry.json"
 
@@ -96,7 +96,7 @@ def check_call(
     only when it is exactly True, and an operation counts as non-destructive only
     when ``spec.destructive is False``.
     """
-    if spec.kind == "read":
+    if not is_write(spec):
         return
     name = spec.operation_id
     status = effective_status(name, spec.fingerprint, registry)
