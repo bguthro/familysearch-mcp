@@ -134,14 +134,26 @@ def project_source(desc: Any) -> dict:
     }
 
 
+def _title(v: Any) -> str | None:
+    """First title: titles may be a list of {"value": ...} dicts or of plain strings."""
+    for t in _l(v):
+        text = _s(t) if isinstance(t, str) else _s(_d(t).get("value"))
+        if text:
+            return text
+    return None
+
+
 def project_memory(mem: Any) -> dict:
     mem = _d(mem)
     desc = mem.get("description")
     if isinstance(desc, list):
         desc = _first(desc).get("value")
+    links = _d(mem.get("links"))
+    href = _s(_d(links.get("memory")).get("href")) or _s(_d(links.get("description")).get("href"))
     return {
         "id": _id(mem.get("id")),
-        "title": _s(_first(mem.get("titles")).get("value")),
+        "title": _title(mem.get("titles")),
         "description": _s(desc),
-        "link": _s(_d(_d(mem.get("links")).get("description")).get("href")),
+        "link": href,
+        "media_type": _s(mem.get("mediaType")),
     }

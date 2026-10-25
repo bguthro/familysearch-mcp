@@ -167,7 +167,7 @@ EXPECTED_TYPES = {
                  "place": {S, N}},
     "create_couple": {"person1_id": {S}, "person2_id": {S}, "reason": {S}},
     "create_parent_child": {"child_id": {S}, "parent_ids": {"array"}, "reason": {S}},
-    "upload_memory": {"file_path": {S}, "reason": {S}, "title": {S, N},
+    "upload_memory": {"file_path": {S}, "reason": {S}, "person_id": {S, N}, "title": {S, N},
                       "provenance": {S, N}, "override_rights": {"boolean"}},
     "link_memory": {"person_id": {S}, "memory_id": {S}, "reason": {S}},
     "create_source": {"about_url": {S}, "title": {S}, "citation": {S}, "reason": {S}},

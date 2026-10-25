@@ -91,9 +91,43 @@ def test_project_source():
 def test_project_memory_description_forms():
     base = {"id": "1", "titles": [{"value": "T"}], "links": {"description": {"href": "h"}}}
     m = project_memory({**base, "description": "D"})
-    assert m == {"id": "1", "title": "T", "description": "D", "link": "h"}
+    assert m == {"id": "1", "title": "T", "description": "D", "link": "h", "media_type": None}
     assert project_memory({**base, "description": [{"value": "D2"}]})["description"] == "D2"
     assert project_memory({"id": "2"})["link"] is None
+
+
+LIVE_MEMORY = {
+    "about": "https://cdn.example.org/img.png",
+    "attribution": {"contributor": {"resourceId": "X"}},
+    "created": 1761300000000,
+    "id": "238367374",
+    "links": {
+        "artifact": {"href": "https://beta.familysearch.org/platform/memories/artifacts/1"},
+        "memory": {"href": "https://beta.familysearch.org/platform/memories/memories/238367374"},
+        "persons": {"href": "https://beta.familysearch.org/platform/memories/memories/238367374/personas"},
+    },
+    "mediaType": "image/png",
+    "resourceType": "http://gedcomx.org/DigitalArtifact",
+    "titles": [{"value": "Birth cert"}],
+    "artifactMetadata": [{"filename": "a.png"}],
+}
+
+
+def test_project_memory_live_shape():
+    assert project_memory(LIVE_MEMORY) == {
+        "id": "238367374", "title": "Birth cert", "description": None,
+        "link": "https://beta.familysearch.org/platform/memories/memories/238367374",
+        "media_type": "image/png",
+    }
+
+
+def test_project_memory_tolerant_titles_and_link_fallback():
+    assert project_memory({"titles": ["plain"]})["title"] == "plain"
+    assert project_memory({"titles": [None, {"value": "second"}]})["title"] == "second"
+    assert project_memory({"titles": [{"value": 5}]})["title"] is None
+    old = {"links": {"description": {"href": "old"}}}
+    assert project_memory(old)["link"] == "old"
+    assert project_memory({"mediaType": 5})["media_type"] is None
 
 
 def test_int_ids_become_strings():

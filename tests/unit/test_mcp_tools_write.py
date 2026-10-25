@@ -7,7 +7,7 @@ import pytest
 from familysearch_mcp import tools_write
 from familysearch_mcp.context import ContextError
 from familysearch import FSError, TokenExpiredError
-from familysearch_mcp.tools_write import PartialWriteError, register_write_tools
+from familysearch_mcp.tools_write import register_write_tools
 
 FIX = Path(__file__).parent / "fixtures"
 HIT = json.loads((FIX / "search_entry.json").read_text())
@@ -51,18 +51,11 @@ def hit(conf, pid="KW1"):
 
 
 class ParentRec(Rec):
-    """Returns one relationship id per parent, REL-<parent>; can fail on a parent."""
-
-    def __init__(self):
-        super().__init__()
-        self.fail_on = {}
+    """Returns the single child-and-parents relationship id."""
 
     def __call__(self, *args, **kwargs):
         self.calls.append((args, kwargs))
-        pid = kwargs["parent_ids"][0]
-        if pid in self.fail_on:
-            raise self.fail_on[pid]
-        return [f"REL-{pid}"]
+        return "CP-1"
 
 
 def make_services(hits=()):
@@ -438,14 +431,31 @@ def test_create_couple_identical_ids():
 
 def test_create_parent_child_ok():
     tools, svc, ctx = build()
-    out = tools["create_parent_child"]("GKLV-DY8", ["GKLW-DY9", "GKLX-DY1"], REASON)
-    assert out == {"status": "created",
-                   "relationship_ids": ["REL-GKLW-DY9", "REL-GKLX-DY1"]}
+    out = tools["create_parent_child"]("gklv-dy8", ["GKLW-DY9", "GKLX-DY1"], REASON)
+    assert out == {"status": "created", "relationship_id": "CP-1"}
     assert svc.writer.create_parent_child.calls == [
-        ((), {"child_id": "GKLV-DY8", "parent_ids": ["GKLW-DY9"], "reason": REASON}),
-        ((), {"child_id": "GKLV-DY8", "parent_ids": ["GKLX-DY1"], "reason": REASON}),
+        ((), {"child_id": "GKLV-DY8", "parent_ids": ["GKLW-DY9", "GKLX-DY1"], "reason": REASON}),
     ]
-    assert ctx.call_count == 2
+    assert ctx.call_count == 1
+
+
+def test_create_parent_child_single_parent():
+    tools, svc, ctx = build()
+    out = tools["create_parent_child"]("GKLV-DY8", ["GKLW-DY9"], REASON)
+    assert out == {"status": "created", "relationship_id": "CP-1"}
+    assert svc.writer.create_parent_child.calls[0][1]["parent_ids"] == ["GKLW-DY9"]
+    assert ctx.call_count == 1
+
+
+def test_create_parent_child_docstring_describes_single_relationship():
+    doc = tools_doc()
+    assert "relationship_id" in doc and "relationship_ids" not in doc
+    assert "order" in doc and "couple" in doc
+
+
+def tools_doc():
+    tools, _, _ = build()
+    return tools["create_parent_child"].__doc__
 
 
 @pytest.mark.parametrize("parents", [
@@ -610,31 +620,29 @@ def test_reason_length_measured_after_strip():
         tools["create_couple"]("GKLV-DY8", "GKLW-DY9", " " + "x" * 501)
 
 
-def test_parent_child_first_parent_failure_propagates_unchanged():
+def test_parent_child_failure_propagates_unchanged():
     tools, svc, _ = build()
     err = RuntimeError("nope")
-    svc.writer.create_parent_child.fail_on["GKLW-DY9"] = err
+
+    def boom(*a, **k):
+        raise err
+    svc.writer.create_parent_child = boom
     with pytest.raises(RuntimeError) as ei:
         tools["create_parent_child"]("GKLV-DY8", ["GKLW-DY9", "GKLX-DY1"], REASON)
     assert ei.value is err
-    assert len(svc.writer.create_parent_child.calls) == 1
 
 
-def test_parent_child_second_parent_failure_is_partial():
-    tools, svc, _ = build()
-    err = RuntimeError("no such person")
-    svc.writer.create_parent_child.fail_on["GKLX-DY1"] = err
-    with pytest.raises(PartialWriteError) as ei:
-        tools["create_parent_child"]("GKLV-DY8", ["GKLW-DY9", "GKLX-DY1"], REASON)
-    e = ei.value
-    assert isinstance(e, FSError)
-    assert e.created_ids == ["REL-GKLW-DY9"]
-    assert "GKLX-DY1" in str(e) and "REL-GKLW-DY9" in str(e)
-    assert e.__cause__ is err
-
-
-def test_parent_child_token_expiry_reruns_only_one_post():
+def test_parent_child_token_expiry_reruns_single_post():
     tools, svc, ctx = build()
+    state = {"n": 0}
+    inner = svc.writer.create_parent_child
+
+    def flaky(*a, **k):
+        state["n"] += 1
+        if state["n"] == 1:
+            raise TokenExpiredError("expired")
+        return inner(*a, **k)
+    svc.writer.create_parent_child = flaky
 
     def retrying_call(fn):
         ctx.call_count += 1
@@ -644,11 +652,8 @@ def test_parent_child_token_expiry_reruns_only_one_post():
             return fn(svc)
 
     ctx.call = retrying_call
-    svc.writer.create_parent_child.fail_on["GKLX-DY1"] = TokenExpiredError("expired")
-    with pytest.raises(PartialWriteError):
-        tools["create_parent_child"]("GKLV-DY8", ["GKLW-DY9", "GKLX-DY1"], REASON)
-    posted = [c[1]["parent_ids"][0] for c in svc.writer.create_parent_child.calls]
-    assert posted == ["GKLW-DY9", "GKLX-DY1", "GKLX-DY1"]
+    out = tools["create_parent_child"]("GKLV-DY8", ["GKLW-DY9", "GKLX-DY1"], REASON)
+    assert out["relationship_id"] == "CP-1" and state["n"] == 2
 
 
 # ---- Step 0 fixes -------------------------------------------------------
@@ -677,33 +682,3 @@ def test_line_paragraph_separators_rejected(sep):
     with pytest.raises(ValueError):
         tools["create_couple"]("GKLV-DY8", "GKLW-DY9", "why" + sep + "x")
     assert writer_calls(svc) == 0 and svc.search.tree_search.calls == []
-
-
-class OddParentRec(ParentRec):
-    def __init__(self, bad_for, bad):
-        super().__init__()
-        self.bad_for, self.bad = bad_for, bad
-
-    def __call__(self, *args, **kwargs):
-        out = super().__call__(*args, **kwargs)
-        return self.bad if kwargs["parent_ids"][0] == self.bad_for else out
-
-
-@pytest.mark.parametrize("bad", ["REL-1", None, [], [""], [None], ("REL-1",), {"a": 1}])
-def test_parent_child_bad_return_second_parent_is_partial(bad):
-    tools, svc, _ = build()
-    svc.writer.create_parent_child = OddParentRec("GKLX-DY1", bad)
-    with pytest.raises(PartialWriteError) as ei:
-        tools["create_parent_child"]("GKLV-DY8", ["GKLW-DY9", "GKLX-DY1"], REASON)
-    assert ei.value.created_ids == ["REL-GKLW-DY9"]
-    assert isinstance(ei.value.__cause__, TypeError)
-
-
-@pytest.mark.parametrize("bad", ["REL-1", None, [], [""], [None]])
-def test_parent_child_bad_return_first_parent_is_fserror(bad):
-    tools, svc, _ = build()
-    svc.writer.create_parent_child = OddParentRec("GKLW-DY9", bad)
-    with pytest.raises(FSError, match="unexpected response") as ei:
-        tools["create_parent_child"]("GKLV-DY8", ["GKLW-DY9", "GKLX-DY1"], REASON)
-    assert not isinstance(ei.value, PartialWriteError)
-    assert len(svc.writer.create_parent_child.calls) == 1

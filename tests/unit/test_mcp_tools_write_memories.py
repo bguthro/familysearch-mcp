@@ -56,6 +56,7 @@ def make_services():
     s = Obj()
     s.memories = Obj()
     s.memories.upload = Rec("MEM123")
+    s.memories.upload_to_person = Rec("MEM456")
     s.memories.link_to_person = Rec(None)
     s.sources = Obj()
     s.sources.create_description = Rec("71FD-SL2")
@@ -89,6 +90,7 @@ def build(writes=True):
 
 def total_calls(s):
     return (len(s.memories.upload.calls) + len(s.memories.link_to_person.calls)
+            + len(s.memories.upload_to_person.calls)
             + len(s.sources.create_description.calls) + len(s.sources.attach_to_person.calls))
 
 
@@ -207,7 +209,8 @@ def test_upload_happy(tmp_path, name, content, ct):
     path = mk(tmp_path, name, content)
     out = tools["upload_memory"](path, "  " + REASON + "  ", provenance="NARA")
     assert out == {"status": "uploaded", "memory_id": "MEM123", "filename": name,
-                   "content_type": ct, "bytes": len(content), "rights_override": False}
+                   "content_type": ct, "bytes": len(content), "rights_override": False,
+                   "person_id": None}
     (args, kw), = svc.memories.upload.calls
     assert args == (content,)
     assert kw == dict(filename=name, content_type=ct, title=name, reason=REASON)
@@ -787,6 +790,50 @@ def test_root_read_at_call_time(tmp_path, monkeypatch):
     with pytest.raises(ValueError):
         upload(tools, p)
     assert len(svc.memories.upload.calls) == 1
+
+
+# ---- upload_memory with person_id ------------------------------------------
+
+def test_upload_with_person_id_uses_upload_to_person(tmp_path):
+    tools, svc, ctx = build()
+    path = mk(tmp_path, "a.png", PNG)
+    out = tools["upload_memory"](path, REASON, person_id=" gklv-dy8 ", provenance="NARA")
+    assert out == {"status": "uploaded", "memory_id": "MEM456", "filename": "a.png",
+                   "content_type": "image/png", "bytes": len(PNG),
+                   "rights_override": False, "person_id": "GKLV-DY8"}
+    (args, kw), = svc.memories.upload_to_person.calls
+    assert args == ("GKLV-DY8", PNG)
+    assert kw == dict(filename="a.png", content_type="image/png", title="a.png", reason=REASON)
+    assert svc.memories.upload.calls == [] and ctx.call_count == 1
+
+
+@pytest.mark.parametrize("bad", ["", "junk", "x" * 40, 5, "../etc", " "])
+def test_upload_bad_person_id_rejected_before_file_access(tmp_path, bad):
+    tools, svc, ctx = build()
+    with pytest.raises(ValueError):
+        tools["upload_memory"]("/nonexistent/never-touched.png", REASON,
+                               person_id=bad, provenance="NARA")
+    assert total_calls(svc) == 0 and ctx.call_count == 0
+
+
+def test_upload_with_person_id_still_gated(tmp_path):
+    tools, svc, ctx = build()
+    p = mk(tmp_path, "fold3-scan.png", PNG)
+    assert upload(tools, p, person_id="GKLV-DY8")["status"] == "provenance_blocked"
+    q = mk(tmp_path, "b.png", PNG)
+    out = tools["upload_memory"](q, REASON, person_id="GKLV-DY8")
+    assert out["status"] == "provenance_unknown"
+    tools_off, svc_off, _ = build(writes=False)
+    assert tools_off["upload_memory"](q, REASON, person_id="GKLV-DY8")["status"] == "writes_disabled"
+    assert total_calls(svc) == 0 and total_calls(svc_off) == 0
+
+
+def test_upload_docstrings_explain_attach_flow():
+    tools, _, _ = build()
+    doc = tools["upload_memory"].__doc__
+    assert "person_id" in doc and "link_memory" in doc and "floating" in doc
+    assert "never re-upload" in " ".join(doc.lower().split())
+    assert "persona" in tools["link_memory"].__doc__
 
 
 # ---- link_memory ------------------------------------------------------------------

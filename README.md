@@ -94,9 +94,9 @@ its own. The server instructions and tool descriptions say this.
 | `create_person` | Create a person (match gate, living/deceased routing) | write |
 | `add_fact` | Add a fact (birth, death, residence, ...) to a person | write |
 | `create_couple` | Create a couple relationship | write |
-| `create_parent_child` | Link a child to one or more parents | write |
-| `upload_memory` | Upload a document/image as a public Memory (provenance gated) | write |
-| `link_memory` | Attach an existing memory to a person | write |
+| `create_parent_child` | Record a child's 1-2 parents as ONE child-and-parents relationship (the couple link is derived) | write |
+| `upload_memory` | Upload a document/image as a public Memory (provenance gated); with `person_id` it is attached in the same step | write |
+| `link_memory` | Attach an existing memory to another person (upload once, link to each other person; never re-upload) | write |
 | `create_source` | Create a source description | write |
 | `attach_source` | Attach an existing source to a person | write |
 
@@ -108,8 +108,6 @@ its own. The server instructions and tool descriptions say this.
 - A hard link inside the upload root to a file outside it is not detected.
 - A relative `file_path` resolves against the server's working directory; use absolute
   paths.
-- `create_parent_child` can partially succeed. It then fails with a `PartialWriteError`
-  that reports which links were created. Do not retry the whole call.
 - Privacy: `auth_status` returns only id, displayName and personId, nothing else from
   your account.
 

@@ -31,6 +31,9 @@ Living people are created private. Documents need a `provenance` citation; image
 sourced from aggregators (Fold3, Ancestry, Newspapers.com, MyHeritage, Findagrave) are
 refused. upload_memory only works when the administrator has configured FS_UPLOAD_ROOT;
 if a tool says it is missing, tell Ben and never try to set it yourself.
+upload_memory(person_id=...) uploads and attaches in one step; to put one document on
+several people upload ONCE, then link_memory for the others (never re-upload).
+create_parent_child takes both parents in ONE call; the couple link is derived.
 
 There is no delete or merge tool. Every write needs a short `reason` (the change
 message recorded in FamilySearch).

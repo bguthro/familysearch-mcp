@@ -56,18 +56,6 @@ def _gate(ctx: Any) -> dict | None:
     return None
 
 
-class _BadResponse(TypeError):
-    """The library returned something other than a list of non-empty ids."""
-
-
-class PartialWriteError(FSError):
-    """A multi-step write failed part-way; some relationships already exist."""
-
-    def __init__(self, message: str, created_ids: list[str]) -> None:
-        super().__init__(message)
-        self.created_ids = list(created_ids)
-
-
 # Bidi override/isolate characters: display spoofing in public titles/filenames.
 _BIDI = frozenset(chr(c) for c in (*range(0x202A, 0x202F), *range(0x2066, 0x206A)))
 
@@ -289,31 +277,10 @@ def _create_parent_child(ctx: Any, child_id, parent_ids, reason) -> dict:
         raise ValueError("parent_ids must not contain duplicates")
     if child in parents:
         raise ValueError("a person cannot be their own parent")
-    # One ctx.call per parent: a failure (or a token-expiry re-run) on a later
-    # parent must never re-post an earlier, already-created relationship.
-    created: list[str] = []
-    for parent in parents:
-        try:
-            rels = ctx.call(
-                lambda s, p=parent: s.writer.create_parent_child(
-                    child_id=child, parent_ids=[p], reason=reason)
-            )
-            if not (isinstance(rels, list) and rels
-                    and all(isinstance(r, str) and r for r in rels)):
-                raise _BadResponse("create_parent_child returned an unexpected response")
-        except Exception as e:
-            if not created:
-                if isinstance(e, _BadResponse):
-                    raise FSError("unexpected response from create_parent_child") from e
-                raise
-            raise PartialWriteError(
-                f"Relationship(s) already created: {', '.join(created)}. Linking parent "
-                f"{parent} FAILED ({e}). Do NOT repeat the whole call; only the failed "
-                f"parent {parent} remains to be linked.",
-                created,
-            ) from e
-        created.extend(rels)
-    return {"status": "created", "relationship_ids": created}
+    rel = ctx.call(
+        lambda s: s.writer.create_parent_child(child_id=child, parent_ids=parents, reason=reason)
+    )
+    return {"status": "created", "relationship_id": rel}
 
 
 _PATH_MAX = 4096
@@ -457,7 +424,9 @@ def _read_upload(real: str, content_type: str, st: os.stat_result) -> bytes:
     return data
 
 
-def _upload_memory(ctx: Any, file_path, reason, title, provenance, override_rights) -> dict:
+def _upload_memory(
+    ctx: Any, file_path, reason, person_id, title, provenance, override_rights,
+) -> dict:
     refused = _gate(ctx)
     if refused:
         return refused
@@ -467,6 +436,7 @@ def _upload_memory(ctx: Any, file_path, reason, title, provenance, override_righ
     reason = _reason(reason)
     title = _text("title", title)
     provenance = _text("provenance", provenance)
+    pid = None if person_id is None else validate_person_id(person_id)
     if not isinstance(override_rights, bool):
         raise ValueError("override_rights must be true or false")
     file_path = _upload_path(file_path)
@@ -513,16 +483,24 @@ def _upload_memory(ctx: Any, file_path, reason, title, provenance, override_righ
         }
 
     data = _read_upload(real, content_type, st)
-    memory_id = ctx.call(
-        lambda s: s.memories.upload(
-            data, filename=real_name, content_type=content_type,
-            title=title or real_name, reason=reason,
+    if pid is None:
+        memory_id = ctx.call(
+            lambda s: s.memories.upload(
+                data, filename=real_name, content_type=content_type,
+                title=title or real_name, reason=reason,
+            )
         )
-    )
+    else:
+        memory_id = ctx.call(
+            lambda s: s.memories.upload_to_person(
+                pid, data, filename=real_name, content_type=content_type,
+                title=title or real_name, reason=reason,
+            )
+        )
     out = {
         "status": "uploaded", "memory_id": memory_id, "filename": real_name,
         "content_type": content_type, "bytes": len(data),
-        "rights_override": override_rights,
+        "rights_override": override_rights, "person_id": pid,
     }
     if aggregator and override_rights:
         out["overridden_aggregator"] = aggregator
@@ -672,12 +650,15 @@ def register_write_tools(mcp: Any, ctx: Any) -> None:
 
     @mcp.tool()
     def create_parent_child(child_id: str, parent_ids: list[str], reason: str) -> dict:
-        """Link a child to one or two parents in the shared Family Tree (a WRITE).
+        """Record a child's parents in the shared Family Tree (a WRITE).
         `parent_ids` is a list of 1 or 2 distinct person ids that do not include the
-        child. Every write needs a `reason`: a short change message (max 500 chars)
+        child. ONE child-and-parents relationship holds both parents (a single
+        request); parent order is not significant. FamilySearch derives the couple
+        link between two parents itself, so do not also call create_couple for them.
+        Every write needs a `reason`: a short change message (max 500 chars)
         recorded in FamilySearch's change history; mention the research archive
         folder or source when relevant. Returns {"status": "created",
-        "relationship_ids": [...]}, or {"status": "writes_disabled"} when writes
+        "relationship_id": "..."}, or {"status": "writes_disabled"} when writes
         are off.
         """
         return _create_parent_child(ctx, child_id, parent_ids, reason)
@@ -686,6 +667,7 @@ def register_write_tools(mcp: Any, ctx: Any) -> None:
     def upload_memory(
         file_path: str,
         reason: str,
+        person_id: str | None = None,
         title: str | None = None,
         provenance: str | None = None,
         override_rights: bool = False,
@@ -711,23 +693,31 @@ def register_write_tools(mcp: Any, ctx: Any) -> None:
         - Never set `override_rights=True` on your own. Obtain Ben's explicit OK
           that he holds the rights for THIS file first. An override skips both
           checks and is recorded in the result.
+        With `person_id` the document is uploaded AND attached to that person in one
+        step. Without it the memory is standalone ("floating") and `link_memory`
+        attaches it. To attach one document to several people, upload ONCE (with the
+        first person's id), then call `link_memory` for each other person; never
+        re-upload the same document.
         `title` defaults to the file name. Every write needs a `reason`: a short
         change message (max 500 chars) recorded in FamilySearch's change history.
         On success returns {"status": "uploaded", "memory_id", "filename",
-        "content_type", "bytes", "rights_override"} (plus "overridden_aggregator"
+        "content_type", "bytes", "rights_override", "person_id"} (plus "overridden_aggregator"
         when an aggregator was overridden), or {"status": "writes_disabled"} when
         writes are off.
         """
-        return _upload_memory(ctx, file_path, reason, title, provenance, override_rights)
+        return _upload_memory(ctx, file_path, reason, person_id, title, provenance,
+                              override_rights)
 
     @mcp.tool()
     def link_memory(person_id: str, memory_id: str, reason: str) -> dict:
-        """Link an existing Memory (by numeric memory id, e.g. from upload_memory)
-        to a person in the shared Family Tree (a WRITE). Every write needs a
-        `reason`: a short change message (max 500 chars) recorded in FamilySearch's
-        change history; mention the research archive folder or source when
-        relevant. Returns {"status": "linked", "person_id", "memory_id"}, or
-        {"status": "writes_disabled"} when writes are off.
+        """Attach an EXISTING Memory (by memory id, e.g. from upload_memory) to
+        another person in the shared Family Tree (a WRITE). This creates a persona
+        link: the same single document then appears on each linked person, with no
+        duplicate upload. Every write needs a `reason`: a short change message (max
+        500 chars) recorded in FamilySearch's change history; mention the research
+        archive folder or source when relevant. Returns {"status": "linked",
+        "person_id", "memory_id"}, or {"status": "writes_disabled"} when writes are
+        off.
         """
         return _link_memory(ctx, person_id, memory_id, reason)
 
