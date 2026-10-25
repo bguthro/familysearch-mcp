@@ -829,7 +829,12 @@
   },
   "readPersonSources": {
    "generated": {
-    "status": "unverified"
+    "commit": "391fc2ef12e37c4c9cc0a936667ce1a45ca49fa5",
+    "evidence": "read-content",
+    "fingerprint": "4d955c26ec8807a9a2ac6be8647b3fdf03e7071054fc5ebb1fcdded72d985ade",
+    "recipe": "reads.tree.sources",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    },
    "handwritten": {
     "recipe": "tests/integration/test_mcp_beta.py::test_source_create_attach_list",
@@ -927,17 +932,32 @@
   },
   "readSourceDescription": {
    "generated": {
-    "status": "unverified"
+    "commit": "391fc2ef12e37c4c9cc0a936667ce1a45ca49fa5",
+    "evidence": "read-content",
+    "fingerprint": "0d0c84b91fbebbadac76e4f4c7dd364a30b7659e9898b5be5bc7fe2bbe19bb30",
+    "recipe": "reads.tree.sources",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readSourceDescriptionHead": {
    "generated": {
-    "status": "unverified"
+    "commit": "391fc2ef12e37c4c9cc0a936667ce1a45ca49fa5",
+    "evidence": "read-content",
+    "fingerprint": "0e3f9e7577f520769e1183932828b934b3e0a083fdb6d958eb36b89bf89c8c98",
+    "recipe": "reads.tree.sources",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readSourceDescriptions": {
    "generated": {
-    "status": "unverified"
+    "commit": "391fc2ef12e37c4c9cc0a936667ce1a45ca49fa5",
+    "evidence": "read-content",
+    "fingerprint": "3d90630d93b160b25ebb1b53bfad500455a635f4ff768588e04bc8845a3db640",
+    "recipe": "reads.tree.source_queries",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readSourceFolders": {
@@ -947,7 +967,12 @@
   },
   "readSourceReferences": {
    "generated": {
-    "status": "unverified"
+    "commit": "391fc2ef12e37c4c9cc0a936667ce1a45ca49fa5",
+    "evidence": "read-content",
+    "fingerprint": "b4a2488ec979d1cf6aaa2f937f81e7d892d81900c51bda778f230f98ac967dd1",
+    "recipe": "reads.tree.source_queries",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readTree": {
