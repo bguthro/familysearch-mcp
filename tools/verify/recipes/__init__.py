@@ -5,8 +5,10 @@ from ..core import Recipe, evidence_problem
 from ..reads import read_recipe_problem
 from .pilot import PILOT
 from .reads_tree_persons import READS_TREE_PERSONS
+from .reads_tree_relations import READS_TREE_RELATIONS
 
-RECIPES: dict[str, Recipe] = {r.name: r for r in (*PILOT, *READS_TREE_PERSONS)}
+RECIPES: dict[str, Recipe] = {
+    r.name: r for r in (*PILOT, *READS_TREE_PERSONS, *READS_TREE_RELATIONS)}
 
 
 def validate_recipes(recipes: dict[str, Recipe]) -> list[str]:
