@@ -66,6 +66,7 @@ only by reading the resulting state back from the service and seeing the change.
 ## Non-goals
 
 * No new **MCP tools.** The MCP server is unchanged (its 16 tools keep their guardrails).
+  Superseded 2026-10-25: Ben asked for MCP integration; see docs/superpowers/plans/2026-10-25-mcp-generic-operation-tools.md (3 generic tools, 19 total).
 * No **production** verification. Everything is proven on beta; the library docs state this plainly.
   (The first production writes remain a separate, supervised pilot.)
 * No typed **response models.** Responses remain raw GEDCOM X data (as today). Real shapes are

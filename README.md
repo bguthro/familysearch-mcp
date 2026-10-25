@@ -123,12 +123,14 @@ Rules:
   any other operation needs `allow_unverified`.
 - `allow_unverified` and `confirm_destructive` (deletes and other destructive operations)
   are Ben's explicit decisions; the assistant never sets them on its own.
+- The 4 unverifiable operations (and the 2 excluded OAuth ones) can never run, even with
+  the flags.
 - Uploads are refused: use `upload_memory`.
 
 ### Residual risks (read these)
 
-- The override flags (`create_despite_matches`, `confirm_deceased`, `override_rights`)
-  are enforced only by the tool descriptions and server instructions: an MCP call cannot
+- The override flags (`create_despite_matches`, `confirm_deceased`, `override_rights`,
+  `allow_unverified`, `confirm_destructive`) are enforced only by the tool descriptions and server instructions: an MCP call cannot
   prove a human approved it. Use your client's per-tool approval for the write tools.
 - A hard link inside the upload root to a file outside it is not detected.
 - A relative `file_path` resolves against the server's working directory; use absolute
@@ -271,7 +273,7 @@ through the real FastMCP call path). Needs `FS_USE_BRAVE=1` (reads the Brave ses
 macOS Keychain prompt) or `FS_BETA_TOKEN`, and a FRESH login to beta.familysearch.org. It
 forces `FS_ENVIRONMENT=beta`, refuses to proceed unless `auth_status` reports beta, creates
 `ZZSPIKE` throwaway persons, relationships, memories and sources on beta ONLY, and deletes
-them at teardown through the library (there is no MCP delete tool), failing loudly on any
+them at teardown through the library (there is no dedicated MCP delete tool; call_operation can delete on beta only, with confirm_destructive), failing loudly on any
 leftover. Uploads use a temporary `FS_UPLOAD_ROOT` that the test creates itself. Add `-s`
 to see the `[OBSERVED]` live-shape lines.
 
