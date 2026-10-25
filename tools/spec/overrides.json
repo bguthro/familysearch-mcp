@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "exclude": {
+    "getAuthorizationPage": "OAuth endpoint on the identity host; this project authenticates with the browser session",
+    "getAccessToken": "OAuth endpoint on the identity host; this project authenticates with the browser session"
+  },
+  "rename": {
+    "delete": "deleteUserHistoryEntry"
+  },
+  "path_fix": {
+    "/tree/users/{uid}/preferred-parent-relationships/{pid}/tree/users/{uid}/preferred-parent-relationships/{pid}": "/tree/users/{uid}/preferred-parent-relationships/{pid}"
+  },
+  "kind": {
+    "performPersonMatchesByExample": "read",
+    "createNameSegments": "read",
+    "getSourceDescriptionChanges": "read",
+    "createPartnerAccount": "write"
+  },
+  "required_query": {
+    "readPersons": ["pids"]
+  },
+  "body_kind": {
+    "createPersonMemory": "upload",
+    "createMemories": "upload",
+    "updateMemoryArtifact": "upload"
+  },
+  "destructive": {
+    "add": [],
+    "remove": []
+  },
+  "notes": {
+    "empty_lists": "List endpoints return 204 when the result is empty.",
+    "genealogies_ids": "Genealogies ids need a prefix.",
+    "redirects": "Redirects are documented as success on readCurrentTreePerson and readSourceFolders."
+  }
+}
