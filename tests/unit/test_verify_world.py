@@ -24,6 +24,10 @@ REASON = "ZZSPIKE world test"
 UNIQUE = "ZZSPIKE0a1b2c3d"
 
 
+# The private-tree (Genealogies) groups have their own fake: tests/unit/test_verify_world_genealogies.py
+FAMILY_TREE_GROUPS = tuple(g for g in FIXTURE_GROUPS if g not in ("gtree", "gperson", "gsource"))
+
+
 def beta_client():
     return FSClient("tkn", Environment.BETA, min_write_interval=0)
 
@@ -253,7 +257,8 @@ def test_unknown_group_is_refused(beta):
 def test_groups_are_the_documented_ones():
     assert set(FIXTURE_GROUPS) == {"persons", "couple", "person_note", "couple_note",
                                    "child_and_parents_note", "notes", "source", "collection",
-                                   "memory", "relationship_source", "memory_comment"}
+                                   "memory", "relationship_source", "memory_comment",
+                                   "gtree", "gperson", "gsource"}
     assert set(GROUPS) == set(FIXTURE_GROUPS) | {CANARY_GROUP} and CANARY_GROUP == "canaries"
 
 
@@ -574,7 +579,7 @@ def test_failure_on_second_person_tracks_the_first(beta):
 
 def test_every_value_is_distinct_and_no_value_contains_another(beta):
     world, _ = make_world()
-    world.need(*FIXTURE_GROUPS)
+    world.need(*FAMILY_TREE_GROUPS)
     values = all_values(world)
     assert len(values) == len(set(values))
     for a, b in itertools.permutations(values, 2):
@@ -587,7 +592,7 @@ def test_every_value_is_distinct_and_no_value_contains_another(beta):
 
 def test_names_are_long_per_fixture_and_free_of_shared_constants(beta):
     world, _ = make_world()
-    world.need(*FIXTURE_GROUPS)
+    world.need(*FAMILY_TREE_GROUPS)
     assert set(world.names) == {"dad_name", "mom_name", "child_name", "person_note_text",
                                 "couple_note_text", "child_and_parents_note_text",
                                 "source_title", "collection_title", "memory_title",

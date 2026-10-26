@@ -4,11 +4,13 @@ from familysearch.api import OPERATIONS
 from ..core import Recipe, evidence_problem
 from ..reads import read_recipe_problem
 from .pilot import PILOT
+from .reads_genealogies import READS_GENEALOGIES
 from .reads_misc import READS_MISC
 from .reads_relationship_sources import READS_RELATIONSHIP_SOURCES
 from .reads_standards import READS_STANDARDS
 from .reads_tree_persons import READS_TREE_PERSONS
 from .reads_tree_relations import READS_TREE_RELATIONS
+from .writes_genealogies_trees import WRITES_GENEALOGIES_TREES
 from .writes_memories import WRITES_MEMORIES
 from .writes_memory_links import WRITES_MEMORY_LINKS
 from .writes_source_box import WRITES_SOURCE_BOX
@@ -21,11 +23,11 @@ from .writes_tree_relationships import WRITES_TREE_RELATIONSHIPS
 RECIPES: dict[str, Recipe] = {
     r.name: r for r in (*PILOT, *READS_TREE_PERSONS, *READS_TREE_RELATIONS,
                         *READS_RELATIONSHIP_SOURCES,
-                        *READS_STANDARDS, *READS_MISC, *WRITES_TREE_PERSONS,
+                        *READS_STANDARDS, *READS_MISC, *READS_GENEALOGIES, *WRITES_TREE_PERSONS,
                         *WRITES_TREE_NOTES, *WRITES_TREE_RELATIONSHIPS,
                         *WRITES_TREE_RELATIONSHIP_DETAILS, *WRITES_SOURCES,
                         *WRITES_SOURCE_BOX, *WRITES_MEMORIES,
-                        *WRITES_MEMORY_LINKS)}
+                        *WRITES_MEMORY_LINKS, *WRITES_GENEALOGIES_TREES)}
 
 
 def validate_recipes(recipes: dict[str, Recipe]) -> list[str]:

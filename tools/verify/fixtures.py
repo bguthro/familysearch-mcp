@@ -12,6 +12,7 @@ id 400 ("Unable to read collection", API recon), not 404: the read errors and th
 user's folder list (``/sources/collections``) no longer names it.
 """
 import base64
+import json
 import struct
 import uuid
 import zlib
@@ -28,9 +29,15 @@ from familysearch.tree import TreeWriter, child_and_parents_url, couple_url
 from .core import _require_beta, redact_account
 from .teardown import verified_delete
 
-# teardown order: a collection after its member descriptions, so it is empty
-KINDS = ("child_and_parents", "couple", "source", "collection", "memory", "person")
+# teardown order: a collection after its member descriptions, so it is empty; the private
+# (Genealogies) persons and sources before the tree that holds them
+KINDS = ("child_and_parents", "couple", "source", "collection", "memory", "person",
+         "genealogies_person", "genealogies_source", "genealogies_tree")
 COLLECTIONS_PATH = "/platform/sources/collections"
+GENEALOGIES_PATH = "/platform/genealogies"
+# fixture kind -> the collection segment of its resource under /genealogies
+GENEALOGIES_KINDS = {"genealogies_person": "persons", "genealogies_source": "sources",
+                     "genealogies_tree": "trees"}
 # An unknown collection id: beta answered 400 (API recon), so 400 joins 404/410 here,
 # but only together with the folder list not naming the collection.
 COLLECTION_GONE = (400, 404, 410)
@@ -104,6 +111,91 @@ def folder_titles(body) -> dict[str, str | None]:
     collections = body.get("collections") if isinstance(body, dict) else None
     return {str(c["id"]): c.get("title") for c in collections or []
             if isinstance(c, dict) and c.get("id")}
+
+
+# ------------------------------------------------------------------ private trees
+# The Genealogies API (/genealogies/**) is the one place a LIVING fictional person may be
+# written: the shared Family Tree never gets one. Every helper below posts only under a
+# tree this run created and tracked. The tree bodies are unproven guesses (a GEDCOM X
+# collection, else a source description, which the list read's spec text cites).
+TREE_SHAPES = ("collections", "sourceDescriptions")
+FACT_COUPLE = "http://gedcomx.org/Couple"
+
+
+def tree_body(title: str, shape: str = TREE_SHAPES[0]) -> dict:
+    """A private tree named ``title``, in one of the ``TREE_SHAPES``."""
+    if shape == "collections":
+        return {"collections": [{"title": title}]}
+    if shape == "sourceDescriptions":
+        return {"sourceDescriptions": [{"titles": [{"value": title}]}]}
+    raise ValueError(f"unknown tree body shape {shape!r}")
+
+
+def create_tree(call, title: str):
+    """Send the tree create with each body shape in turn until one is not refused 400.
+
+    ``call(body)`` posts one; returns ``(result, shape)``. A 400 created nothing, so the
+    next shape is safe to try; any other error, and the last 400, propagate.
+    """
+    for i, shape in enumerate(TREE_SHAPES):
+        try:
+            return call(tree_body(title, shape)), shape
+        except FSHTTPError as e:
+            if e.status != 400 or i == len(TREE_SHAPES) - 1:
+                raise
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
+def living_person_body(given: str, surname: str, gender: str = "Male", *,
+                       facts: list[dict] | None = None, local_id: str | None = None) -> dict:
+    """A LIVING fictional person, for the private space only (never ``/tree/persons``)."""
+    person = build_person(given=given, surname=surname, gender=gender, living=True,
+                          facts=facts)
+    if local_id:
+        person = {"id": local_id, **person}
+    return {"persons": [person]}
+
+
+def genealogies_description_body(about: str, title: str, citation: str) -> dict:
+    return {"sourceDescriptions": [{"about": about, "titles": [{"value": title}],
+                                    "citations": [{"value": citation}]}]}
+
+
+def couple_tree_body(male: dict, female: dict) -> dict:
+    """A tree update adding a male and a female person (local ids ``m1`` / ``f1``) and the
+    Couple joining them (the spec: ``person1`` must be male, ``person2`` female)."""
+    ref = lambda local: {"resource": f"#{local}", "resourceId": local}  # noqa: E731
+    return {"persons": [{"id": "m1", **male}, {"id": "f1", **female}],
+            "relationships": [{"type": FACT_COUPLE, "person1": ref("m1"),
+                               "person2": ref("f1")}]}
+
+
+def tree_entries(body) -> dict[str, dict]:
+    """The trees a list (or single read) answers: id -> its entry, whichever envelope."""
+    found: dict[str, dict] = {}
+    for key in ("collections", "sourceDescriptions", "trees"):
+        for entry in (body.get(key) if isinstance(body, dict) else None) or []:
+            if isinstance(entry, dict) and entry.get("id"):
+                found[str(entry["id"])] = entry
+    return found
+
+
+def entry_title(entry: dict) -> str | None:
+    """A tree entry's title: ``title``, else ``name``, else the first of ``titles``."""
+    for key in ("title", "name"):
+        if isinstance(entry.get(key), str):
+            return entry[key]
+    titles = entry.get("titles")
+    first = titles[0] if isinstance(titles, list) and titles else None
+    return first.get("value") if isinstance(first, dict) else None
+
+
+def new_persons(body, local_ids) -> list[str]:
+    """The server ids a tree update answers for the persons it created (those not named
+    by one of the posted local ids)."""
+    persons = body.get("persons") if isinstance(body, dict) else None
+    return [str(p["id"]) for p in persons or []
+            if isinstance(p, dict) and p.get("id") and str(p["id"]) not in local_ids]
 
 
 class FixtureSet:
@@ -315,6 +407,116 @@ class FixtureSet:
         self.track("child_and_parents", rid)
         return rid
 
+    # ---------------------------------------------------------------- private trees
+
+    def genealogies_url(self, *segments: str) -> str:
+        """A resource of the Genealogies (private tree) API; segments are quoted."""
+        return join_path(self._client.base_url + GENEALOGIES_PATH, *segments)
+
+    def _own_tree(self, tid: str) -> None:
+        if tid not in self._tracked["genealogies_tree"]:
+            raise ValueError("private tree fixtures live only in this run's tracked trees")
+
+    def genealogies_trees(self) -> dict[str, dict]:
+        """The signed-in user's private trees: id -> entry. 204 means none."""
+        resp = self._client.get(self.genealogies_url("trees"))
+        if resp.status_code == 204 or not resp.text.strip():
+            return {}
+        return tree_entries(resp.json())
+
+    def genealogies_tree(self, title: str) -> str:
+        """Create a ZZSPIKE private tree with the raw client and track it at once.
+
+        The body shape is not proven (``create_tree`` tries each); the id is the
+        create's X-ENTITY-ID / Entity-Id / Location, else the one new tree titled so.
+        """
+        if not (isinstance(title, str) and title.startswith("ZZSPIKE")):
+            raise ValueError("a fixture tree's title must start with ZZSPIKE")
+        before = self.genealogies_trees()
+        resp, _shape = create_tree(
+            lambda body: self._client.post(self.genealogies_url("trees"), json=body,
+                                           reason=self._reason), title)
+        tid = created_header_id(resp.headers)
+        if tid:
+            self.track("genealogies_tree", tid)
+            return tid
+        new = [t for t, e in self.genealogies_trees().items()
+               if t not in before and title in (entry_title(e) or json.dumps(e))]
+        for found in new:
+            self.track("genealogies_tree", found)
+        if len(new) != 1:
+            raise FSError(f"tree create answered no id and {len(new)} new trees are "
+                          f"titled {title}")
+        return new[0]
+
+    def genealogies_person(self, tid: str, given: str = "Test", gender: str = "Male", *,
+                           facts: list[dict] | None = None, surname: str | None = None,
+                           plain: bool = False) -> str:
+        """Create a LIVING ZZSPIKE person in a tracked private tree; track it at once.
+
+        The name is ``ZZSPIKE {given} Test<hex>`` unless ``surname`` is given; with
+        ``plain`` ``given`` is used as is (it must already start with ZZSPIKE).
+        """
+        self._own_tree(tid)
+        if plain and not given.startswith("ZZSPIKE"):
+            raise ValueError("a fixture person's given name must start with ZZSPIKE")
+        body = living_person_body(given if plain else f"ZZSPIKE {given}",
+                                  surname or f"Test{uuid.uuid4().hex[:8]}", gender,
+                                  facts=facts)
+        resp = self._client.post(self.genealogies_url("trees", tid, "persons"), json=body,
+                                 reason=self._reason)
+        pid = created_header_id(resp.headers)
+        if not pid:
+            raise FSError("private person created but no id was returned")
+        self.track("genealogies_person", pid)
+        return pid
+
+    def genealogies_source(self, tid: str, title: str) -> str:
+        """Create a ZZSPIKE source description in a tracked private tree; track it."""
+        self._own_tree(tid)
+        if not (isinstance(title, str) and title.startswith("ZZSPIKE")):
+            raise ValueError("a fixture source's title must start with ZZSPIKE")
+        resp = self._client.post(
+            self.genealogies_url("trees", tid, "sources"),
+            json=genealogies_description_body(f"https://example.org/{title.lower()}", title,
+                                              f"{title} citation"), reason=self._reason)
+        sdid = created_header_id(resp.headers)
+        if not sdid:
+            raise FSError("private source created but no id was returned")
+        self.track("genealogies_source", sdid)
+        return sdid
+
+    def genealogies_couple(self, tid: str, marker: str) -> tuple[str, str]:
+        """A living male and female ZZSPIKE person joined by a Couple, added to a tracked
+        private tree with one tree update. Returns the two ids, both tracked at once.
+
+        The ids are the update's answer (``persons`` ids that are not the local ones),
+        else the two new persons found by ``marker`` in the tree's person list.
+        """
+        self._own_tree(tid)
+        given = {"m1": f"ZZSPIKE {marker}M", "f1": f"ZZSPIKE {marker}F"}
+        surname = f"Test{uuid.uuid4().hex[:8]}"
+        male = living_person_body(given["m1"], surname, "Male")["persons"][0]
+        female = living_person_body(given["f1"], surname, "Female")["persons"][0]
+        resp = self._client.post(self.genealogies_url("trees", tid),
+                                 json=couple_tree_body(male, female), reason=self._reason)
+        body = resp.json() if resp.text.strip() else {}
+        ids = new_persons(body, {"m1", "f1"})
+        if len(ids) != 2:  # no ids answered: find the two persons by their marker names
+            listed = self._client.get(self.genealogies_url("trees", tid, "persons"))
+            persons = (listed.json() if listed.text.strip() else {}).get("persons") or []
+            ids = [str(p["id"]) for p in persons if isinstance(p, dict) and p.get("id")
+                   and marker in json.dumps(p.get("names"))]
+        for pid in ids:
+            self.track("genealogies_person", pid)
+        if len(ids) != 2:
+            raise FSError(f"the couple update made {len(ids)} persons, not 2")
+        by_name = {}
+        for pid in ids:
+            by_name[pid] = self._client.get(self.genealogies_url("persons", pid)).text
+        male_id = next((p for p, t in by_name.items() if given["m1"] in t), ids[0])
+        return male_id, next(p for p in ids if p != male_id)
+
     def _collection(self, rel: str) -> str:
         href = self._discovery.href(rel).split("?")[0]
         return href if href.startswith("http") else self._client.base_url + href
@@ -336,6 +538,9 @@ class FixtureSet:
         if kind == "memory":
             return (self._memories.memory_url(oid),
                     lambda: self._memories.delete(oid, reason=reason))
+        if kind in GENEALOGIES_KINDS:
+            url = self.genealogies_url(GENEALOGIES_KINDS[kind], oid)
+            return url, lambda: self._client.delete(url, reason=reason)
         return (join_path(self._collection("persons"), oid),
                 lambda: self._writer.delete_person(oid, reason=reason))
 

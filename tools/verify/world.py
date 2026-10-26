@@ -56,6 +56,9 @@ GROUPS: dict[str, tuple[str, ...]] = {
     "memory": ("persons",),
     "memory_comment": ("memory",),
     "relationship_source": ("couple", "source"),
+    "gtree": (),
+    "gperson": ("gtree",),
+    "gsource": ("gtree",),
 }
 FIXTURE_GROUPS = tuple(GROUPS)
 CANARY_GROUP = "canaries"
@@ -349,6 +352,30 @@ class World:
             self._fixtures.add_to_collection(self._ids["collection"],
                                              [self._ids["source_description"]])
             self._filed = True
+
+    def _build_gtree(self) -> None:
+        """A ZZSPIKE private (Genealogies) tree, made with the raw client; nothing else in
+        the world touches it. The account has none of its own (live: 204)."""
+        if "gtree" not in self._ids:
+            title = self._value("gtree_title", "t")
+            self._ids["gtree"] = self._fixtures.genealogies_tree(title)  # tracked there
+            self._named("gtree_title", title)
+
+    def _build_gperson(self) -> None:
+        """A LIVING fictional person in the private tree (never in the shared tree)."""
+        if "gperson" in self._ids:
+            return
+        given = self._value("gperson_given", "g")
+        self._ids["gperson"] = self._fixtures.genealogies_person(  # tracked there
+            self._ids["gtree"], given, surname=self._surname, plain=True)
+        # The full name as build_person writes it (its fullText), as the persons group.
+        self._named("gperson_name", f"{given} {self._surname}", "gperson_given")
+
+    def _build_gsource(self) -> None:
+        if "gsource" not in self._ids:
+            title = self._value("gsource_title", "s")
+            self._ids["gsource"] = self._fixtures.genealogies_source(self._ids["gtree"], title)
+            self._named("gsource_title", title)
 
     def _build_canaries(self) -> None:
         """Real beta reference data (the CANARY block): constants, no request at all."""

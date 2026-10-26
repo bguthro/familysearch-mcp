@@ -20,8 +20,9 @@ from pathlib import Path
 from familysearch.api.registry import effective_status
 from tools.spec.coverage import load_inputs
 
-from .recipes import (RECIPES, reads_misc, reads_standards, reads_tree_persons,
-                      reads_tree_relations, writes_memories, writes_memory_links,
+from .recipes import (RECIPES, reads_genealogies, reads_misc, reads_standards,
+                      reads_tree_persons, reads_tree_relations, writes_memories,
+                      writes_memory_links,
                       writes_tree_relationship_details,
                       writes_tree_relationships)
 
@@ -30,10 +31,13 @@ REPORT_PATH = (Path(__file__).resolve().parents[2] / "docs" / "superpowers" / "r
 
 PRIVATE_TREE_REASON = ("needs a private tree/genealogy/group fixture; creating one is an "
                        "unverified write (P7)")
-PRIVATE_TREE_AREAS = ("Genealogies Endpoints", "User Tree Endpoints")
+# The Genealogies reads are no longer all deferred: P7 gives each a read case or a concrete
+# reason of its own (reads_genealogies); only the User Tree area (Task C) is still blanket.
+PRIVATE_TREE_AREAS = ("User Tree Endpoints",)
 
 DEFERRED: dict[str, str] = {}
-for _module in (reads_tree_persons, reads_tree_relations, reads_standards, reads_misc):
+for _module in (reads_tree_persons, reads_tree_relations, reads_standards, reads_misc,
+                reads_genealogies):
     DEFERRED.update(_module.DEFERRED)
 
 # The later tier whose writes or fixtures unblock each deferred read (P3..P9 per the
@@ -57,6 +61,10 @@ TIERS: dict[str, str] = {
     "readPendingModifications": "P8",
     "readPlaceTypes": "P9", "readPlaceTypeGroups": "P9", "checkPlaceIsChild": "P9",
     "getNameScript": "P9",
+    "readGenealogiesTree": "P7", "readGenealogiesPersons": "P7", "readGenealogiesPerson": "P7",
+    "readGenealogiesSourceDescription": "P7", "readGenealogiesTrees": "P7",
+    "readGenealogiesNote": "P7", "readGenealogiesPersonMatches": "P7",
+    "readGenealogiesBulkMatch": "P7",
 }
 
 
