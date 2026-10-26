@@ -115,5 +115,5 @@ def test_real_registry(capsys):
     assert r["total"] == 205
     flat = [(s, n) for counts in r["by_area"].values() for s, n in counts.items()]
     assert sum(n for s, n in flat if s == "excluded") == 2
-    assert sum(n for s, n in flat if s == "unverifiable") == 4
+    assert sum(n for s, n in flat if s == "unverifiable") == 5
     assert "unknown" not in r["by_area"]

@@ -482,3 +482,56 @@ def test_readme_documents_generic_tools():
         assert w in readme
     assert "beta only" in readme
     assert "No delete or merge tools exist" not in readme
+    assert "Merges are never performed" in readme
+
+
+# ---- merge policy: mergePerson is never executed ----
+
+MERGE = "mergePerson"
+
+
+@responses.activate
+def test_merge_person_is_unverifiable_with_policy_reason():
+    reg = load_registry()
+    gen = reg["operations"][MERGE]["generated"]
+    assert gen["status"] == "unverifiable" and "never executed" in gen["reason"]
+    t = tools(registry=reg)
+    row = next(r for r in t["list_operations"](status="unverifiable", limit=200)
+               if r["operation_id"] == MERGE)
+    assert row["status"] == "unverifiable"
+    d = t["describe_operation"](MERGE)
+    assert d["status"] == "unverifiable" and d["can_run_here"] is False
+    assert "FamilySearch website" in d["blocked_reason"]
+    assert len(responses.calls) == 0
+
+
+@responses.activate
+@pytest.mark.parametrize("env", [Environment.BETA, Environment.PRODUCTION])
+def test_merge_person_refused_via_mcp_with_every_flag(env):
+    reg = load_registry()
+    ctx = FakeCtx(env=env, registry=reg)
+    with pytest.raises(OperationLockedError) as e:
+        tools(ctx, registry=reg)["call_operation"](
+            MERGE, path_args={"pid": "A1", "dpid": "A2"}, reason=REASON,
+            allow_unverified=True, confirm_destructive=True)
+    msg = str(e.value)
+    assert "deliberately never executed by this server" in msg
+    assert "FamilySearch website" in msg
+    assert ctx.call_count == 0 and len(responses.calls) == 0
+
+
+@responses.activate
+def test_merge_person_refused_via_library_with_every_flag():
+    reg = load_registry()
+    api = FamilySearchApi(FSClient("tkn", Environment.BETA, min_write_interval=0),
+                          registry=reg)
+    with pytest.raises(OperationLockedError, match="can never be run"):
+        api.merge_person("A1", "A2", reason=REASON, allow_unverified=True,
+                         confirm_destructive=True)
+    assert len(responses.calls) == 0
+
+
+def test_instructions_forbid_merging():
+    from familysearch_mcp.server import SERVER_INSTRUCTIONS as s
+    low = s.lower()
+    assert "merg" in low and "never" in low and "website" in low

@@ -17,9 +17,8 @@ from .tools_write import register_write_tools
 
 SERVER_INSTRUCTIONS = """\
 FamilySearch tools for Ben's family tree work.
-
-Start with auth_status: it shows the environment (beta or production) and whether
-writes are enabled. Production writes are opt-in; if disabled, tell Ben.
+Start with auth_status (environment, writes). Production writes are opt-in;
+if disabled, tell Ben.
 
 Before creating anything, search (search_tree, search_records) and check get_matches.
 Show Ben the evidence. Never create a duplicate.
@@ -38,8 +37,11 @@ call. Documents attach to deceased persons only; no override.
 list_operations, describe_operation and call_operation reach any API operation.
 call_operation writes run on beta only; on production use the guarded tools above.
 Uploads always use upload_memory. There is no delete or merge tool on production; on
-beta call_operation can run destructive operations only with Ben's confirm_destructive.
+beta call_operation runs destructive operations only with Ben's confirm_destructive.
 Every write needs a short `reason`.
+
+Merging persons is NOT supported here: never attempt or work around it; tell Ben to
+merge on FamilySearch's website.
 """
 
 

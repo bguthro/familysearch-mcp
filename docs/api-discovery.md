@@ -197,6 +197,14 @@ error), and GET again, requiring 404/410. Source descriptions are verified the s
 Accept works: 200, DELETE 204, then GET 410). A pre-delete 404 on an object created in
 the same run is itself an ERROR (wrong URL or vanished), not "already gone".
 
+## 6c. Person merges are never run (2026-10-26)
+
+`mergePerson` (`POST /tree/persons/{pid}/merges/{dpid}`) is deliberately not probed,
+verified or executed by any tool in this project. It is registered as `unverifiable` with
+a policy reason, so the library lock and the MCP `call_operation` refuse it with every
+flag set. Merge persons on the FamilySearch website. The read-only `readPersonMerge` and
+`allowPersonMerge` are separate and unaffected.
+
 ## 7. Adding a new endpoint later — the recipe
 
 1. Lift a fresh **beta** token (`extract_brave_token`, or copy it from DevTools).

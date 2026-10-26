@@ -44,6 +44,9 @@ def test_every_family_tree_write_is_verified_or_listed_exactly_once():
     assert len(listed) == len(set(listed))
     writes = _writes()
     for op, status in writes.items():
+        if status == "unverifiable":  # never run (e.g. mergePerson): not pending work
+            assert op not in listed, op
+            continue
         assert (status == "verified") != (op in listed), op
     verified = {op for cells in _section("## Verified writes by recipe", None)
                 for op in cells[1].split(", ")}

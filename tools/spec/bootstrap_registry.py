@@ -21,6 +21,10 @@ UNVERIFIABLE = {
     "updateVocabTranslation": "edits shared reference data; never executed",
     "createPartnerAccount": "partner-only account feature; never executed",
     "updatePartnerAccount": "partner-only account feature; never executed",
+    "mergePerson": (
+        "Merging persons combines shared Family Tree records and is hard to undo; by "
+        "policy it is never executed by this project's tools \u2014 merge in the "
+        "FamilySearch website (Ben's decision, 2026-10-26)"),
 }
 
 _RT = "tests/integration/test_beta_roundtrip.py::"

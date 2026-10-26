@@ -153,14 +153,14 @@ WRITE_DEFERRED_TIERS: dict[str, str] = {
     "deletePersonMemoriesPersonaReference": "P9"}
 
 _MATCHES = ("matches, merges and change history are the P6 tier: P3 excludes "
-            "mergePerson, match resolution and not-a-match by plan")
+            "match resolution and not-a-match by plan (mergePerson is never run: see the "
+            "merge policy)")
 _DISCUSSIONS = "discussions and their comments are the P8 tier"
 _ACCOUNT = ("changes the signed-in account's state (preferred relationships, publishing), "
             "which P3 excludes by plan: the P8 tier")
 
 # The Family Tree writes P3 did not attempt: (tier, reason).
 NOT_ATTEMPTED: dict[str, tuple[str, str]] = {
-    "mergePerson": ("P6", _MATCHES),
     "updateMatchResolution": ("P6", _MATCHES),
     "updatePersonNotAMatches": ("P6", _MATCHES),
     "deletePersonNotAMatch": ("P6", _MATCHES),
@@ -210,7 +210,9 @@ def _writes_report(area: str, title: str, label: str, blurb: str) -> str:
             recipe_of.setdefault(op, name)
     verified = [o for o in writes
                 if effective_status(o.operation_id, o.fingerprint, registry) == "verified"]
-    pending = [o for o in writes if o not in verified]
+    # Unverifiable and excluded operations never run, so they are not pending work.
+    pending = [o for o in writes if o not in verified and effective_status(
+        o.operation_id, o.fingerprint, registry) not in ("unverifiable", "excluded")]
     rows = []
     for o in pending:
         reason, tier = _write_reason(o.operation_id, recipe_of)

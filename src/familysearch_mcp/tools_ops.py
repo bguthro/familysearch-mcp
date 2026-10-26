@@ -43,6 +43,11 @@ _PRODUCTION_REFUSAL = (
     "call_operation writes run on beta only. On production use the guarded tools "
     f"({_GUARDED_TOOLS}), or set FS_ENVIRONMENT=beta."
 )
+_MERGE_REFUSAL = (
+    "mergePerson can never be run: person merges are deliberately never executed by this "
+    "server, with any flags and in any environment. Merge on the FamilySearch website "
+    "instead (Ben's decision, 2026-10-26). Do not attempt a workaround."
+)
 _UPLOAD_REFUSAL = "{} uploads a file; call_operation refuses uploads: use upload_memory."
 
 
@@ -67,6 +72,8 @@ def _tool_refusal(spec: OpSpec, environment: Any) -> str | None:
     """The MCP's own write rules (upload, then beta-only); None for reads."""
     if not is_write(spec):
         return None
+    if spec.operation_id == "mergePerson":
+        return _MERGE_REFUSAL
     if spec.body == "upload":
         return _UPLOAD_REFUSAL.format(spec.operation_id)
     if environment is not Environment.BETA:  # fails closed: only literal BETA
@@ -240,6 +247,8 @@ def register_op_tools(mcp: Any, ctx: Any, registry: dict | None = None) -> None:
         write = is_write(spec)
         if write:
             refusal = _tool_refusal(spec, ctx.environment)
+            if refusal == _MERGE_REFUSAL:
+                raise OperationLockedError(refusal)
             if spec.body == "upload":
                 raise ValueError(refusal)
             if refusal:

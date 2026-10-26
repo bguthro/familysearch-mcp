@@ -130,7 +130,7 @@ Rules:
   `updateMemoryPersona`, `deleteMemoryPersona`); see Verification status) runs on beta as is; any other write needs `allow_unverified`.
 - `allow_unverified` and `confirm_destructive` (deletes and other destructive operations)
   are Ben's explicit decisions; the assistant never sets them on its own.
-- The 4 unverifiable operations (and the 2 excluded OAuth ones) can never run, even with
+- The 5 unverifiable operations (and the 2 excluded OAuth ones) can never run, even with
   the flags.
 - Uploads are refused: use `upload_memory`.
 
@@ -158,6 +158,17 @@ Rules:
   while it runs.
 - Privacy: `auth_status` returns only id, displayName and personId, nothing else from
   your account.
+
+## Merges are never performed
+
+Person merges (`mergePerson`) combine shared Family Tree records and are hard to undo, so
+this project never runs them. The operation is classified `unverifiable` in the registry
+with that reason: the library, the generic `call_operation` tool and every flag
+(`allow_unverified`, `confirm_destructive`, `allow_production`) refuse it before any
+network call, on beta and production alike, and the MCP server instructions tell the
+assistant never to attempt or work around a merge. Merge persons on the FamilySearch
+website yourself (Ben's decision, 2026-10-26). The read-only merge analysis operations
+(`readPersonMerge`, `allowPersonMerge`) are unaffected.
 
 ## Generated API
 
@@ -254,7 +265,7 @@ completion gate.
 ### Verification status
 
 As of the P5 memories verification (2026-10-26), `python -m tools.spec.coverage`
-reports 205 operations: 113 `verified` (all on **beta only**), 86 `unverified`, 4
+reports 205 operations: 113 `verified` (all on **beta only**), 85 `unverified`, 5
 `unverifiable` and 2 `excluded`. Of the 107 reads, 64 are verified and 43 are deferred;
 of the 60 Family Tree writes, 41 are verified and 8 of the 10 Memories writes. Those numbers change as recipes are run:
 regenerate them with `python -m tools.spec.coverage` rather than trusting this paragraph.
