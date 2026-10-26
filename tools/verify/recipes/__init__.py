@@ -8,6 +8,7 @@ from .reads_misc import READS_MISC
 from .reads_standards import READS_STANDARDS
 from .reads_tree_persons import READS_TREE_PERSONS
 from .reads_tree_relations import READS_TREE_RELATIONS
+from .writes_source_box import WRITES_SOURCE_BOX
 from .writes_sources import WRITES_SOURCES
 from .writes_tree_notes import WRITES_TREE_NOTES
 from .writes_tree_persons import WRITES_TREE_PERSONS
@@ -18,7 +19,8 @@ RECIPES: dict[str, Recipe] = {
     r.name: r for r in (*PILOT, *READS_TREE_PERSONS, *READS_TREE_RELATIONS,
                         *READS_STANDARDS, *READS_MISC, *WRITES_TREE_PERSONS,
                         *WRITES_TREE_NOTES, *WRITES_TREE_RELATIONSHIPS,
-                        *WRITES_TREE_RELATIONSHIP_DETAILS, *WRITES_SOURCES)}
+                        *WRITES_TREE_RELATIONSHIP_DETAILS, *WRITES_SOURCES,
+                        *WRITES_SOURCE_BOX)}
 
 
 def validate_recipes(recipes: dict[str, Recipe]) -> list[str]:

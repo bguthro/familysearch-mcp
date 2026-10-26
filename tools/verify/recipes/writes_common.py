@@ -270,11 +270,12 @@ def person_memories(ctx: VerifyContext, pid: str) -> Listing:
 def poll(ctx: VerifyContext, fetch: Callable[[], T], done: Callable[[T], bool], what: str,
          *, eventual: tuple[int, float] = EVENTUAL,
          result_of: Callable[[T], ApiResult | None] = lambda v: getattr(v, "result", None),
+         shown: Callable[[ApiResult | None], str] | None = None,
          ) -> T:
     """Read until ``done`` (bounded), for state beta shows only after a lag.
 
     Errors are never retried. The attempts used go into ``ctx.notes``; running out
-    fails with the last response's skeleton.
+    fails with the last response's skeleton (``shown``, default ``describe``).
     """
     attempts, pause = eventual
     value = None
@@ -286,7 +287,7 @@ def poll(ctx: VerifyContext, fetch: Callable[[], T], done: Callable[[T], bool], 
         if n < attempts:
             sleep(pause)
     raise AssertionError(f"{what}: not seen after {attempts} attempts {pause:g}s apart; "
-                         f"{describe(result_of(value))}")
+                         f"{(shown or describe)(result_of(value))}")
 
 
 # ------------------------------------------------------------------ request bodies

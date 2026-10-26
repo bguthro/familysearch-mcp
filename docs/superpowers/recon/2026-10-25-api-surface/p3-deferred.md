@@ -9,13 +9,13 @@ Family Tree writes: 60. Verified: 31. Not verified: 29.
 | Operation | Reason unverified | Unblocked by |
 |---|---|---|
 | createSourceDescription | claimed by recipe writes.sources.description_create; awaiting its live run on beta | P4 |
-| createSourceFolder | source descriptions and user collections are the P4 tier (the fixture world makes descriptions with the hand-written library, not this generated operation) | P4 |
+| createSourceFolder | claimed by recipe writes.sources.collection_create; awaiting its live run on beta | P4 |
 | deleteSourceDescription | claimed by recipe writes.sources.description_delete; awaiting its live run on beta | P4 |
-| deleteSourceDescriptionsFromCollections | source descriptions and user collections are the P4 tier (the fixture world makes descriptions with the hand-written library, not this generated operation) | P4 |
-| deleteUserDefinedCollection | source descriptions and user collections are the P4 tier (the fixture world makes descriptions with the hand-written library, not this generated operation) | P4 |
+| deleteSourceDescriptionsFromCollections | claimed by recipe writes.sources.collection_remove; awaiting its live run on beta | P4 |
+| deleteUserDefinedCollection | claimed by recipe writes.sources.collection_delete; awaiting its live run on beta | P4 |
 | updateSourceDescription | claimed by recipe writes.sources.description_update; awaiting its live run on beta | P4 |
-| updateSourceDescriptionsToCollection | source descriptions and user collections are the P4 tier (the fixture world makes descriptions with the hand-written library, not this generated operation) | P4 |
-| updateUserDefinedCollection | source descriptions and user collections are the P4 tier (the fixture world makes descriptions with the hand-written library, not this generated operation) | P4 |
+| updateSourceDescriptionsToCollection | claimed by recipe writes.sources.collection_add; awaiting its live run on beta | P4 |
+| updateUserDefinedCollection | claimed by recipe writes.sources.collection_update; awaiting its live run on beta | P4 |
 | deletePersonMemoriesPersonaReference | portraits and memory personas are memories: the P5 tier | P5 |
 | deletePersonPortrait | portraits and memory personas are memories: the P5 tier | P5 |
 | updatePersonPortraits | portraits and memory personas are memories: the P5 tier | P5 |

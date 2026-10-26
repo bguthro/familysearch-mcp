@@ -133,9 +133,6 @@ for _module in (writes_tree_relationships, writes_tree_relationship_details):
     WRITE_DEFERRED.update(_module.DEFERRED)
 WRITE_DEFERRED_TIERS: dict[str, str] = {"restoreChildAndParentsRelationship": "P6"}
 
-_SOURCES = ("source descriptions and user collections are the P4 tier (the fixture "
-            "world makes descriptions with the hand-written library, not this generated "
-            "operation)")
 _MEMORIES = "portraits and memory personas are memories: the P5 tier"
 _MATCHES = ("matches, merges and change history are the P6 tier: P3 excludes "
             "mergePerson, match resolution and not-a-match by plan")
@@ -145,11 +142,6 @@ _ACCOUNT = ("changes the signed-in account's state (preferred relationships, pub
 
 # The Family Tree writes P3 did not attempt: (tier, reason).
 NOT_ATTEMPTED: dict[str, tuple[str, str]] = {
-    "createSourceFolder": ("P4", _SOURCES),
-    "updateUserDefinedCollection": ("P4", _SOURCES),
-    "deleteUserDefinedCollection": ("P4", _SOURCES),
-    "updateSourceDescriptionsToCollection": ("P4", _SOURCES),
-    "deleteSourceDescriptionsFromCollections": ("P4", _SOURCES),
     "deletePersonMemoriesPersonaReference": ("P5", _MEMORIES),
     "updatePersonPortraits": ("P5", _MEMORIES),
     "deletePersonPortrait": ("P5", _MEMORIES),
