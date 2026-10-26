@@ -43,7 +43,7 @@ from familysearch.api._runtime import ApiResult
 from familysearch.api.spec import OpSpec, is_write
 from familysearch.errors import FSHTTPError
 
-from .core import Recipe, VerifyContext
+from .core import Recipe, VerifyContext, redact_account
 
 MAX_CASES = 12  # one bad case should fail only a small group
 # Not-found means the id (or query) does not exist; nothing else proves the server looked.
@@ -403,10 +403,11 @@ class ContentFailure(AssertionError):
 
 
 def _failure_text(e: Exception) -> str:
-    """The failure message for a recipe report: the skeleton is kept whole (bounded)."""
+    """The failure message for a recipe report: the skeleton is kept whole (bounded), and
+    the signed-in account's ids are redacted (ruling I-4: a response may link the user)."""
     if isinstance(e, ContentFailure):
-        return f"{_snippet(AssertionError(e.message))} | response: {e.shape}"
-    return _snippet(e)
+        return redact_account(f"{_snippet(AssertionError(e.message))} | response: {e.shape}")
+    return redact_account(_snippet(e))
 
 
 def _check_content(case: ReadCase, result: ApiResult, world: World, anchors: list[str],

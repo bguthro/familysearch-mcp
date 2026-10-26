@@ -185,4 +185,4 @@ def test_create_fails_without_an_id(reg_path, slept, monkeypatch):
     result = runner.run_recipe(recipe, ctx, registry_path=reg_path, commit="abc123",
                                today="2026-10-26")
     assert not result["passed"]
-    assert "no X-ENTITY-ID or Location" in "\n".join(result["problems"])
+    assert "no X-ENTITY-ID, Entity-Id or Location" in "\n".join(result["problems"])

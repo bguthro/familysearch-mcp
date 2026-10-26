@@ -550,6 +550,18 @@ def test_relation_recipes_registered():
 
 
 @responses.activate
+def test_a_collection_read_failure_never_reports_the_users_id(reg_path, fake_world):
+    # The collection links its owner (the user); the failure skeleton must not show it.
+    from _fake_tree import UID
+    result, _tree = run("reads.sources.collection", reg_path, "other_record")
+    assert result["passed"] is False
+    text = "\n".join(result["problems"])
+    assert "response:" in text and "owner" in text  # the skeleton is there...
+    # ...without the account id, not even the part the 60-character cut leaves
+    assert UID not in text and "cis.user.M" not in text and "cis.user.<redacted>" in text
+
+
+@responses.activate
 def test_collection_reads_send_only_the_collection_id_and_anchor_on_titles(reg_path,
                                                                           fake_world):
     for name in ("reads.sources.collection", "reads.sources.collection_descriptions"):

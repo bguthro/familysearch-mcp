@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from ..core import Recipe, VerifyContext
 from .writes_common import (GONE, created_id, description_body, describe_box, expect_same,
-                            read_description, status_of, token)
+                            read_description, redacted, require_created_id, status_of, token)
 
 
 def _about(title: str) -> str:
@@ -40,6 +40,7 @@ def _own(ctx: VerifyContext, sid: str) -> None:
                              "and tracked by this run")
 
 
+@redacted
 def description_create(ctx: VerifyContext) -> None:
     """Create a ZZSPIKE source description with createSourceDescription; read it back.
 
@@ -55,7 +56,7 @@ def description_create(ctx: VerifyContext) -> None:
     citation, about = f"{title} citation", _about(title)
     result = ctx.api.create_source_description(
         reason=ctx.reason, body=description_body(about, title, citation))
-    sid = created_id(result, "source description")
+    sid = require_created_id(result, "source description")
     ctx.fixtures.track("source", sid)
     d = read_description(ctx, sid)
     ctx.expect_changed(before, title in (d.title or ""),
@@ -65,6 +66,7 @@ def description_create(ctx: VerifyContext) -> None:
                              f"title, citation and about; {describe_box(d.result)}")
 
 
+@redacted
 def description_update(ctx: VerifyContext) -> None:
     """Change the title and citation of a fixture description with updateSourceDescription.
 
@@ -81,7 +83,7 @@ def description_update(ctx: VerifyContext) -> None:
     title, citation = token("t"), token("c")
     result = ctx.api.update_source_description(
         sid, reason=ctx.reason, body=description_body(d0.about, title, citation, sid=sid))
-    other = result.entity_id
+    other = created_id(result, "source description")
     if other and other != sid:
         ctx.fixtures.track("source", other)
         raise AssertionError(f"the update of {sid} answered another description's id "
@@ -96,6 +98,7 @@ def description_update(ctx: VerifyContext) -> None:
     expect_same(s0, read_description(ctx, sibling), f"the other source description {sibling}")
 
 
+@redacted
 def description_delete(ctx: VerifyContext) -> None:
     """Delete a fixture description with deleteSourceDescription; read it back gone.
 

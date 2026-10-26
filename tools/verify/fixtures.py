@@ -16,11 +16,11 @@ import uuid
 from familysearch._urls import join_path
 from familysearch.client import FSClient
 from familysearch.discovery import Discovery
-from familysearch.errors import FSHTTPError
+from familysearch.errors import FSError, FSHTTPError
 from familysearch.memories import Memories
 from familysearch.models import FACT_BIRTH, build_fact, build_person
 from familysearch.sources import Sources
-from familysearch.tree import TreeWriter, _new_id, child_and_parents_url, couple_url
+from familysearch.tree import TreeWriter, child_and_parents_url, couple_url
 
 from .core import _require_beta, redact_account
 from .teardown import verified_delete
@@ -44,6 +44,17 @@ def collection_body(title: str, *, udcid: str | None = None) -> dict:
 def descriptions_body(sids) -> dict:
     """Source descriptions by id, as added (or moved) to a collection."""
     return {"sourceDescriptions": [{"id": sid} for sid in sids]}
+
+
+def created_header_id(headers) -> str | None:
+    """A create's id: X-ENTITY-ID, Entity-Id (the createSourceFolder spec's name), else
+    the Location's last segment."""
+    lowered = {k.lower(): v for k, v in (headers or {}).items()}
+    for name in ("x-entity-id", "entity-id"):
+        if lowered.get(name):
+            return lowered[name]
+    location = (lowered.get("location") or "").split("?")[0].split("#")[0].rstrip("/")
+    return location.rsplit("/", 1)[-1] or None if location else None
 
 
 def folder_titles(body) -> dict[str, str | None]:
@@ -118,11 +129,21 @@ class FixtureSet:
         """Create a ZZSPIKE user-defined collection with the raw client and track it."""
         if not (isinstance(title, str) and title.startswith("ZZSPIKE")):
             raise ValueError("a fixture collection's title must start with ZZSPIKE")
+        before = self.folders()
         resp = self._client.post(self.collection_url(), json=collection_body(title),
                                  reason=self._reason)
-        udcid = _new_id(resp)
-        self.track("collection", udcid)
-        return udcid
+        udcid = created_header_id(resp.headers)
+        if udcid:
+            self.track("collection", udcid)
+            return udcid
+        # No id answered: the new folders under this title are ours; track them all.
+        new = [u for u, t in self.folders().items() if u not in before and t == title]
+        for found in new:
+            self.track("collection", found)
+        if len(new) != 1:
+            raise FSError(f"collection create answered no id and {len(new)} new folders "
+                          f"are titled {title}")
+        return new[0]
 
     def collection_url(self, udcid: str | None = None) -> str:
         base = self._client.base_url + COLLECTIONS_PATH
@@ -136,13 +157,17 @@ class FixtureSet:
         self._client.post(join_path(self.collection_url(udcid), "descriptions"),
                           json=descriptions_body(sids), reason=self._reason)
 
-    def folder_listed(self, udcid: str) -> bool:
-        """Does the user's folder list (``/sources/collections``, which redirects to the
-        signed-in user's) name the collection? 204 means no folders."""
+    def folders(self) -> dict[str, str | None]:
+        """The user's folder list (``/sources/collections``, which redirects to the
+        signed-in user's): id -> title. 204 means no folders."""
         resp = self._client.get(self.collection_url())
         if resp.status_code == 204 or not resp.text.strip():
-            return False
-        return udcid in folder_titles(resp.json())
+            return {}
+        return folder_titles(resp.json())
+
+    def folder_listed(self, udcid: str) -> bool:
+        """Does the user's folder list name the collection?"""
+        return udcid in self.folders()
 
     def _collection_get(self, udcid: str, url: str):
         """GET the collection; a 400 counts as gone only when the folder list agrees."""

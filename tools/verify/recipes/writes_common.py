@@ -18,6 +18,7 @@ updated, one without an id is created.
 """
 from __future__ import annotations
 
+import functools
 import json
 import time
 import uuid
@@ -30,7 +31,7 @@ from familysearch.api._runtime import ApiResult
 from familysearch.models import GEDCOMX, GENDER_URI, build_name
 
 from ..core import VerifyContext, redact_account
-from ..fixtures import folder_titles
+from ..fixtures import created_header_id, folder_titles
 from ..reads import skeleton
 
 GONE = (404, 410)
@@ -607,14 +608,36 @@ def read_description(ctx: VerifyContext, sid: str) -> Description:
     return description_view(ctx.api.read_source_description(sid), sid)
 
 
-def created_id(result: ApiResult, what: str) -> str:
-    """A created resource's id: X-ENTITY-ID, else the Location's last segment (as the
-    library's proven ``_new_id``)."""
-    sid = result.entity_id
+def created_id(result: ApiResult, what: str) -> str | None:
+    """A created resource's id: X-ENTITY-ID, Entity-Id, else the Location's last segment
+    (as the library's proven ``_new_id``); None when the create answered none."""
+    return created_header_id(result.headers)
+
+
+def require_created_id(result: ApiResult, what: str) -> str:
+    sid = created_id(result, what)
     if not sid:
-        raise AssertionError(f"the {what} create answered no X-ENTITY-ID or Location; "
-                             f"{describe_box(result)}")
+        raise AssertionError(f"the {what} create answered no X-ENTITY-ID, Entity-Id or "
+                             f"Location; {describe_box(result)}")
     return sid
+
+
+def redacted(run: Callable[[VerifyContext], None]) -> Callable[[VerifyContext], None]:
+    """Run ``run`` so that no account id reaches the report (failure text or notes)."""
+    @functools.wraps(run)
+    def wrapper(ctx: VerifyContext) -> None:
+        try:
+            run(ctx)
+        except FSHTTPError as e:
+            raise FSHTTPError(e.status, redact_account(e.body or ""),
+                              redact_account(str(e))) from None
+        except AssertionError as e:
+            raise AssertionError(redact_account(str(e))) from None
+        except Exception as e:  # noqa: BLE001 - re-raised, account ids removed
+            raise AssertionError(f"{type(e).__name__}: {redact_account(str(e))}") from None
+        finally:
+            ctx.notes[:] = [redact_account(n) for n in ctx.notes]
+    return wrapper
 
 
 # ------------------------------------------------------------------ source box read-back

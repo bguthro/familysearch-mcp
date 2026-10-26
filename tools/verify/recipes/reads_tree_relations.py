@@ -84,11 +84,11 @@ DEFERRED: dict[str, str] = {
         "recon answered 204 for the child-and-parents fixture; a populated case needs a "
         "source attached to that relationship, which no proven library call makes"),
     "getSourceDescriptionChanges": (
-        "the spec says it answers only the ids of the changed descriptions, which the "
-        "request body must name, so every anchor would echo the request (and ReadCase.body "
-        "is static, so it cannot name a description created at run time); an unknown id "
-        "is a documented 204, and an empty control is allowed only for a GET; recon never "
-        "called it"),
+        "ReadCase.body is static, not resolved against the world, so the POST body cannot "
+        "name the source description created at run time; its control would be an "
+        "unknown id, for which the spec documents a 204 ('none of the specified source "
+        "descriptions has changed'), and an empty control is allowed only for a GET read; "
+        "recon never called it"),
     "readSourceFolders": (
         "takes no path or query parameter, so no not-found control can be built (every "
         "request reads the same signed-in user's folders, by its documented 307); the "
@@ -97,7 +97,8 @@ DEFERRED: dict[str, str] = {
         "the uid path segment can only be 'current' (the sealed world holds no account "
         "id, ruling I-4), and beta ignored the uid of the sibling path "
         "/sources/{uid}/collections/descriptions (a bogus uid answered 200, P2 Task 4 "
-        "live run 2), so a not-found control on the uid is not expected to hold"),
+        "live run 2); inferred from that sibling, not tried live: a not-found control on "
+        "the uid is unlikely to hold"),
     "readUserSourceDescriptions": (
         "beta ignores or does not validate the uid path segment: with uid=current the "
         "positive call listed the fixture source, but the control uid=cis.user.ZZZZ-ZZZZ "

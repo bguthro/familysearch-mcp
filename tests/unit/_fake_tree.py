@@ -367,7 +367,10 @@ class FakeTree:
         if rest:
             return self._answer(request, 404, {"errors": [{"code": 404}]})
         cid, title = OTHER_COLLECTION if self.mode == "other_record" else COLLECTION
-        return self._list(request, {"collections": [{"id": cid, "title": title, "size": 1}]})
+        # As beta may: the folder links its owner, the signed-in user (never reported).
+        return self._list(request, {"collections": [{
+            "id": cid, "title": title, "size": 1,
+            "links": {"owner": {"href": f"{BETA}/platform/sources/{UID}/collections"}}}]})
 
     def search(self, request):
         """Beta's tree search over real data, as probed: the canary is the best hit for
@@ -491,6 +494,8 @@ WRITE_LIES = frozenset({
     "desc_delete_noop",      # the first description delete answers 204, changes nothing
     # source box (user-defined collections)
     "folder_create_ignored",  # a collection create answers 201 with an id, stores nothing
+    "folder_create_no_id",    # a collection create answers 201 with no id header at all
+    "folder_create_entity_id",  # ... with the id in Entity-Id only (the spec's name)
     "folder_rename_ignored",  # a collection update answers 204, changes nothing
     "folder_update_creates",  # ... makes a new collection with the new title instead
     "folder_delete_noop",     # the first collection delete answers 204, changes nothing
@@ -922,6 +927,10 @@ class WriteTree:
             udcid = self._id("collection")
         else:
             udcid = self._new_collection(posted["title"])
+        if self.mode == "folder_create_no_id":
+            return 201, {}, ""
+        if self.mode == "folder_create_entity_id":
+            return 201, {"Entity-Id": udcid}, ""
         return 201, {"X-ENTITY-ID": udcid, "Location": f"{COLLECTIONS}/{udcid}"}, ""
 
     def user_collections(self, request):

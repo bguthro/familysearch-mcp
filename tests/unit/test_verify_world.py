@@ -142,6 +142,10 @@ class FakeBeta:
 
     def _get(self, request):
         path = self.path(request.url)
+        if path == "/platform/sources/collections":  # the user's folder list
+            return 200, {}, json.dumps({"collections": [
+                {"id": p.rsplit("/", 1)[-1], "title": b["collections"][0]["title"]}
+                for p, b in self.live.items() if p.startswith(path + "/")]})
         m = re.fullmatch(r"(/platform/memories/memories/[^/]+)/personas", path)
         if m:
             if self.personas_status:

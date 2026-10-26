@@ -373,10 +373,13 @@ def test_description_view_is_exactly_the_description_read():
         wc.description_view(result(body), "SD-2")
     assert wc.description_body("a", "t", "c", sid="SD-1") == {"sourceDescriptions": [
         {"id": "SD-1", "about": "a", "titles": [{"value": "t"}], "citations": [{"value": "c"}]}]}
-    with pytest.raises(AssertionError, match="no X-ENTITY-ID or Location"):
-        wc.created_id(ApiResult(201, {}, "", None, ""), "source description")
+    with pytest.raises(AssertionError, match="no X-ENTITY-ID, Entity-Id or Location"):
+        wc.require_created_id(ApiResult(201, {}, "", None, ""), "source description")
+    assert wc.created_id(ApiResult(201, {}, "", None, ""), "x") is None
     located = ApiResult(201, {"Location": f"{DESCRIPTIONS}/SD-9"}, "", None, "")
-    assert wc.created_id(located, "source description") == "SD-9"
+    assert wc.require_created_id(located, "source description") == "SD-9"
+    entity = ApiResult(201, {"Entity-Id": "UD-7"}, "", None, "")
+    assert wc.created_id(entity, "collection") == "UD-7"
 
 
 @responses.activate

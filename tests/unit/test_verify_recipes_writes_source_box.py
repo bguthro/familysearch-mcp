@@ -224,6 +224,18 @@ def test_recipe_fails_when_the_fake_lies(name, mode, reg_path, slept):
 
 
 @responses.activate
+@pytest.mark.parametrize("mode", ["folder_create_no_id", "folder_create_entity_id"])
+@pytest.mark.parametrize("name", sorted(OPS))
+def test_a_create_without_x_entity_id_is_still_tracked(name, mode, reg_path, slept):
+    # Every collection (the recipe's own and the fixtures') is found and torn down.
+    result, tree, _ctx = run(name, reg_path, mode)
+    assert result["passed"], result["problems"]
+    assert tree.live() == []
+    if name == "writes.sources.collection_create" and mode == "folder_create_no_id":
+        assert any("answered no id" in n for n in result["notes"])
+
+
+@responses.activate
 def test_an_error_body_naming_the_user_is_redacted(reg_path, slept, monkeypatch):
     tree = WriteTree()
     monkeypatch.setattr(tree, "box_route", lambda request: (

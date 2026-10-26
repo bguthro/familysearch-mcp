@@ -20,36 +20,14 @@ account id is sent; failure text drops links and attribution and redacts account
 """
 from __future__ import annotations
 
-import functools
-from collections.abc import Callable
-
-from familysearch import FSHTTPError
-
-from ..core import Recipe, VerifyContext, redact_account
+from ..core import Recipe, VerifyContext
 from ..fixtures import COLLECTION_GONE, collection_body, descriptions_body
 from .writes_common import (GONE, Listing, created_id, describe_box, expect_same, folders,
-                            members, read_description, read_folder, status_of, token)
+                            members, read_description, read_folder, redacted, status_of,
+                            token)
 from .writes_common import poll as _poll
 
 USER = "current"  # the uid path segment of the removal (spec example)
-
-
-def _redacted(run: Callable[[VerifyContext], None]) -> Callable[[VerifyContext], None]:
-    """Run ``run`` so that no account id reaches the report (failure text or notes)."""
-    @functools.wraps(run)
-    def wrapper(ctx: VerifyContext) -> None:
-        try:
-            run(ctx)
-        except FSHTTPError as e:
-            raise FSHTTPError(e.status, redact_account(e.body or ""),
-                              redact_account(str(e))) from None
-        except AssertionError as e:
-            raise AssertionError(redact_account(str(e))) from None
-        except Exception as e:  # noqa: BLE001 - re-raised, account ids removed
-            raise AssertionError(f"{type(e).__name__}: {redact_account(str(e))}") from None
-        finally:
-            ctx.notes[:] = [redact_account(n) for n in ctx.notes]
-    return wrapper
 
 
 def poll(ctx: VerifyContext, fetch, done, what: str):
@@ -81,12 +59,13 @@ def _exactly(found: Listing, wanted: set[str], what: str) -> None:
                              f"{sorted(wanted)}; {describe_box(found.result)}")
 
 
-@_redacted
+@redacted
 def collection_create(ctx: VerifyContext) -> None:
     """Create a ZZSPIKE collection with createSourceFolder; read it back.
 
     Body ``{"collections": [{"title": marker}]}``; the id is the create's X-ENTITY-ID
-    (the spec: "Expect an Entity-Id header"), else its Location, tracked at once.
+    or Entity-Id (the spec: "Expect an Entity-Id header"), else its Location, tracked at
+    once; with none, the one new folder bearing the marker (every such folder tracked).
     Negative control: the new id among the user's folders (readSourceFolders), before
     (absent) and after (polled). The folder list must name it with the marker title
     and show no other new folder, and readUserDefinedCollection must answer the title.
@@ -97,11 +76,15 @@ def collection_create(ctx: VerifyContext) -> None:
         raise AssertionError(f"a folder is titled {title} before the create")
     result = ctx.api.create_source_folder(reason=ctx.reason, body=collection_body(title))
     udcid = created_id(result, "collection")
-    ctx.fixtures.track("collection", udcid)
+    if udcid:
+        ctx.fixtures.track("collection", udcid)
     lowered = {k.lower(): v for k, v in result.headers.items()}
     ctx.notes.append(f"collection create answered {result.status} "
                      f"Location={lowered.get('location')!r} "
-                     f"X-ENTITY-ID={lowered.get('x-entity-id')!r}")
+                     f"X-ENTITY-ID={lowered.get('x-entity-id')!r} "
+                     f"Entity-Id={lowered.get('entity-id')!r}")
+    if not udcid:
+        udcid = _the_new_folder(ctx, before, title)
     after = poll(ctx, lambda: folders(ctx), lambda f: udcid in f.items,
                  f"readSourceFolders: collection {udcid}")
     _no_new_folders(ctx, before, after, {udcid})
@@ -116,7 +99,24 @@ def collection_create(ctx: VerifyContext) -> None:
                              f"{title!r}; {describe_box(folder.result)}")
 
 
-@_redacted
+def _the_new_folder(ctx: VerifyContext, before: Listing, title: str) -> str:
+    """No id answered: every new folder titled ``title`` is ours (tracked at once); the
+    create proves something only if there is exactly one."""
+    after = poll(ctx, lambda: folders(ctx),
+                 lambda f: any(t == title for u, t in f.items.items() if u not in before.items),
+                 f"readSourceFolders: a new folder titled {title}")
+    new = [u for u, t in after.items.items() if u not in before.items and t == title]
+    for found in new:
+        ctx.fixtures.track("collection", found)
+    if len(new) != 1:
+        raise AssertionError(f"the create answered no id and {len(new)} new folders are "
+                             f"titled {title}; {describe_box(after.result)}")
+    ctx.notes.append(f"collection create answered no id: {new[0]} is the one new folder "
+                     f"titled {title}")
+    return new[0]
+
+
+@redacted
 def collection_update(ctx: VerifyContext) -> None:
     """Rename a fixture collection with updateUserDefinedCollection.
 
@@ -145,7 +145,7 @@ def collection_update(ctx: VerifyContext) -> None:
     expect_same(s0, read_folder(ctx, sibling), f"the other collection {sibling}")
 
 
-@_redacted
+@redacted
 def collection_add(ctx: VerifyContext) -> None:
     """Add two fixture descriptions to a fixture collection with
     updateSourceDescriptionsToCollection.
@@ -171,7 +171,7 @@ def collection_add(ctx: VerifyContext) -> None:
     expect_same(titles, dict(m1.items), f"the titles of the members of {udcid}")
 
 
-@_redacted
+@redacted
 def collection_remove(ctx: VerifyContext) -> None:
     """Remove one of two members of a fixture collection with
     deleteSourceDescriptionsFromCollections.
@@ -204,7 +204,7 @@ def collection_remove(ctx: VerifyContext) -> None:
     expect_same(a0, read_description(ctx, a), f"the removed description {a}")
 
 
-@_redacted
+@redacted
 def collection_delete(ctx: VerifyContext) -> None:
     """Delete a fixture collection with deleteUserDefinedCollection; read it back gone.
 
