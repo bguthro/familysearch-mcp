@@ -248,12 +248,12 @@ completion gate.
 ### Verification status
 
 As of the P3 tree-write verification (2026-10-26), `python -m tools.spec.coverage`
-reports 205 operations: 86 `verified` (all on **beta only**), 113 `unverified`, 4
+reports 205 operations: 88 `verified` (all on **beta only**), 111 `unverified`, 4
 `unverifiable` and 2 `excluded`. Of the 107 reads, 57 are verified and 50 are deferred;
-of the 60 Family Tree writes, 29 are verified. Those numbers change as recipes are run:
+of the 60 Family Tree writes, 31 are verified. Those numbers change as recipes are run:
 regenerate them with `python -m tools.spec.coverage` rather than trusting this paragraph.
 
-The 29 verified writes are the pilot's `createPerson`, `deletePerson` and
+The 31 verified writes are the pilot's `createPerson`, `deletePerson` and
 `restorePerson` (with `readPerson`; recipes `family_tree.person_create_read` and
 `family_tree.person_delete_restore`) and the P3 Family Tree writes proven by the
 `writes.tree.*` recipes: `updatePerson`, the person conclusion, source reference and
