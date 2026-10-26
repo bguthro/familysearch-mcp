@@ -248,19 +248,24 @@ completion gate.
 ### Verification status
 
 As of the P3 tree-write verification (2026-10-26), `python -m tools.spec.coverage`
-reports 205 operations: 88 `verified` (all on **beta only**), 111 `unverified`, 4
-`unverifiable` and 2 `excluded`. Of the 107 reads, 57 are verified and 50 are deferred;
-of the 60 Family Tree writes, 31 are verified. Those numbers change as recipes are run:
+reports 205 operations: 102 `verified` (all on **beta only**), 97 `unverified`, 4
+`unverifiable` and 2 `excluded`. Of the 107 reads, 63 are verified and 44 are deferred;
+of the 60 Family Tree writes, 39 are verified. Those numbers change as recipes are run:
 regenerate them with `python -m tools.spec.coverage` rather than trusting this paragraph.
 
-The 31 verified writes are the pilot's `createPerson`, `deletePerson` and
+The 39 verified Family Tree writes are the pilot's `createPerson`, `deletePerson` and
 `restorePerson` (with `readPerson`; recipes `family_tree.person_create_read` and
 `family_tree.person_delete_restore`) and the P3 Family Tree writes proven by the
 `writes.tree.*` recipes: `updatePerson`, the person conclusion, source reference and
 memory writes, the person / couple / child-and-parents note writes,
 `createRelationship` with the relationship updates, deletes, couple restore and parent
-removal, and the couple / child-and-parents source reference create and delete and
-conclusion delete. Because they are verified they can run on production, but only with
+removal, the couple / child-and-parents source reference create and delete and
+conclusion delete, the two ordering operations (`updateCoupleRelationshipSpousesOrder`,
+`updateChildAndParentsRelationshipParentsOrder`), and the P4 source writes
+(`createSourceDescription`, `updateSourceDescription`, `deleteSourceDescription`,
+`createSourceFolder`, `updateUserDefinedCollection`,
+`updateSourceDescriptionsToCollection`, `deleteSourceDescriptionsFromCollections`,
+`deleteUserDefinedCollection`). Because they are verified they can run on production, but only with
 `allow_production=True` (plus `confirm_destructive=True` for the destructive ones),
 even though they were proven on beta only. Every other generated write is still
 unverified and locked: it needs `allow_unverified=True` and runs on beta only. The
