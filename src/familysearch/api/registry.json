@@ -221,7 +221,7 @@
   },
   "deleteCoupleRelationship": {
    "generated": {
-    "commit": "acd43920a37d81ac0d25c35b2c7a61d5d2ee3d5b",
+    "commit": "d0ba628e240336c964b858eca91dbac8b6ce8b48",
     "evidence": "state-change",
     "fingerprint": "9d3b852336c203c18f952978a19eb034d1bb704d2e4d7c11738c82184fae664e",
     "recipe": "writes.tree.couple_delete_restore",
@@ -1251,7 +1251,7 @@
   },
   "restoreCoupleRelationship": {
    "generated": {
-    "commit": "acd43920a37d81ac0d25c35b2c7a61d5d2ee3d5b",
+    "commit": "d0ba628e240336c964b858eca91dbac8b6ce8b48",
     "evidence": "state-change",
     "fingerprint": "54434ed1d9a82e5fa56982c313191413e33a43341502baae9e63cf7d19445516",
     "recipe": "writes.tree.couple_delete_restore",
