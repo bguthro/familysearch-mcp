@@ -15,7 +15,7 @@ from familysearch.errors import FSError, FSHTTPError
 from tools.verify import runner
 from tools.verify.fixtures import FixtureSet
 from tools.verify.reads import ReadCase, json_path, reads_recipe, seal
-from tools.verify.world import GROUPS, World
+from tools.verify.world import CANARY_GROUP, CANARY_NAMES, FIXTURE_GROUPS, GROUPS, World
 
 BETA = Environment.BETA.base_url
 P = BETA + "/platform"
@@ -44,6 +44,9 @@ class FakeBeta:
         self.noid: set[str] = set()  # kinds whose create answers 201 with no id header
         self.list_refs = True  # source-references lists attached sources
         self.refs_status = None  # set: source-references answers this error status
+        self.list_personas = True  # a memory's personas list the person it was uploaded to
+        self.personas_status = None  # set: the personas read answers this error status
+        self.personas: dict[str, str] = {}  # memory path -> its persona id
         self.fail_person_at = 0  # the n-th person POST answers 500
         self.person_posts = 0
         rsps.add(responses.GET, P + "/collections/tree", json={"collections": [{
@@ -127,6 +130,16 @@ class FakeBeta:
 
     def _get(self, request):
         path = self.path(request.url)
+        m = re.fullmatch(r"(/platform/memories/memories/[^/]+)/personas", path)
+        if m:
+            if self.personas_status:
+                return self.personas_status, {}, json.dumps({"errors": [{"code": 404}]})
+            memory = self.live.get(m.group(1))
+            if memory is None or not self.list_personas:
+                return 204, {}, ""
+            pid = self.personas.setdefault(m.group(1), f"PRS{next(self.counter):04d}Q")
+            return 200, {}, json.dumps({"persons": [{"id": pid, "identifiers": {
+                "http://familysearch.org/v1/FamilyTreePerson": [memory["person"]]}}]})
         m = re.fullmatch(r"/platform/tree/persons/([^/]+)/source-references", path)
         if m:
             if self.refs_status:
@@ -202,8 +215,9 @@ def test_unknown_group_is_refused(beta):
 
 
 def test_groups_are_the_documented_ones():
-    assert set(GROUPS) == {"persons", "couple", "person_note", "couple_note",
-                           "child_and_parents_note", "notes", "source", "memory"}
+    assert set(FIXTURE_GROUPS) == {"persons", "couple", "person_note", "couple_note",
+                                   "child_and_parents_note", "notes", "source", "memory"}
+    assert set(GROUPS) == set(FIXTURE_GROUPS) | {CANARY_GROUP} and CANARY_GROUP == "canaries"
 
 
 def test_requires_reason_and_unique():
@@ -439,11 +453,36 @@ def test_memory_uploads_to_child_and_is_tracked(beta):
     world.need("memory")
     mid = world.ids["memory"]
     assert fixtures.tracked("memory") == [mid]
+    # The persona the upload made for the child, read back as deep.py does.
+    assert world.ids["memory_persona"] == beta.personas["/platform/memories/memories/" + mid]
+    assert fixtures.tracked("memory") == [mid]  # the persona goes with the memory
     stored = beta.live["/platform/memories/memories/" + mid]
     assert stored["person"] == world.ids["child"]
     assert world.names["memory_title"] in unquote(stored["query"]).replace("+", " ")
     assert not any("relationships" in p or "sources" in p or "/notes" in p
                    for p in beta.posts())
+    assert fixtures.teardown() == [] and beta.live == {}
+
+
+@pytest.mark.parametrize("status", [None, 400, 404])
+def test_memory_persona_is_best_effort(beta, status):
+    world, fixtures = make_world()
+    beta.list_personas = False  # None: the personas read answers 204
+    beta.personas_status = status
+    world.need("memory")
+    assert "memory" in world.ids and "memory_persona" not in world.ids
+    assert fixtures.teardown() == [] and beta.live == {}
+
+
+def test_memory_persona_lookup_server_error_is_not_swallowed(beta):
+    world, fixtures = make_world()
+    beta.personas_status = 500
+    with pytest.raises(FSHTTPError):
+        world.need("memory")
+    assert fixtures.tracked("memory") == [world.ids["memory"]]
+    beta.personas_status = None
+    world.need("memory")  # the retry looks the persona up, uploads nothing new
+    assert world.ids["memory_persona"] and len(beta.posts("/platform/tree/persons/")) == 1
     assert fixtures.teardown() == [] and beta.live == {}
 
 
@@ -487,19 +526,20 @@ def test_failure_on_second_person_tracks_the_first(beta):
 
 def test_every_value_is_distinct_and_no_value_contains_another(beta):
     world, _ = make_world()
-    world.need(*GROUPS)
+    world.need(*FIXTURE_GROUPS)
     values = all_values(world)
     assert len(values) == len(set(values))
     for a, b in itertools.permutations(values, 2):
         assert a not in b, f"{a!r} is contained in {b!r}"
     assert set(world.ids) == {"dad", "mom", "child", "couple", "child_and_parents",
                               "person_note", "couple_note", "child_and_parents_note",
-                              "source_description", "source_reference", "memory"}
+                              "source_description", "source_reference", "memory",
+                              "memory_persona"}
 
 
 def test_names_are_long_per_fixture_and_free_of_shared_constants(beta):
     world, _ = make_world()
-    world.need(*GROUPS)
+    world.need(*FIXTURE_GROUPS)
     assert set(world.names) == {"dad_name", "mom_name", "child_name", "person_note_text",
                                 "couple_note_text", "child_and_parents_note_text",
                                 "source_title", "memory_title"}
@@ -526,6 +566,45 @@ def test_collision_between_values_is_refused():
     world._ids.update({"dad": "ABCD-123", "mom": "XABCD-1234"})  # noqa: SLF001
     with pytest.raises(FSError, match="contained"):
         world._check_distinct()  # noqa: SLF001
+
+
+# ------------------------------------------------------------------ canaries
+
+
+def test_canaries_are_the_canary_block_and_touch_no_network(beta):
+    world, fixtures = make_world()
+    world.need(CANARY_GROUP)
+    assert dict(world.names) == dict(CANARY_NAMES) and dict(world.ids) == {}
+    assert len(beta.rsps.calls) == 0  # no discovery, no write: constants only
+    assert fixtures.teardown() == []
+    world.need(CANARY_GROUP)  # idempotent
+
+
+def test_canary_values_are_long_distinct_and_contain_no_other():
+    values = list(CANARY_NAMES.values())
+    assert values and len(values) == len(set(values))
+    for a, b in itertools.permutations(values, 2):
+        assert a not in b, f"{a!r} is contained in {b!r}"
+    for value in values:
+        # Anchors are found by containment and checked against a random hex marker:
+        # a short or all-digit/hex value could match by chance.
+        assert len(value) >= 6 and not re.fullmatch(r"[0-9a-f]+", value), value
+        assert "ZZSPIKE" not in value
+
+
+@pytest.mark.parametrize("groups", [("canaries", "persons"), ("persons", "canaries"),
+                                    ("memory", "canaries")])
+def test_canaries_never_share_a_world_with_fixtures(beta, groups):
+    # Canaries are real beta reference data; the fixtures' random digits could contain
+    # them, so one world holds either, never both (in one call or call by call).
+    world, _ = make_world()
+    with pytest.raises(ValueError, match="canaries"):
+        world.need(*groups)
+    assert beta.posts() == []
+    world, _ = make_world()
+    world.need(groups[0])
+    with pytest.raises(ValueError, match="canaries"):
+        world.need(groups[1])
 
 
 # ------------------------------------------------------------------ sealing

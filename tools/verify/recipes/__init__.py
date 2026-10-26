@@ -4,11 +4,14 @@ from familysearch.api import OPERATIONS
 from ..core import Recipe, evidence_problem
 from ..reads import read_recipe_problem
 from .pilot import PILOT
+from .reads_misc import READS_MISC
+from .reads_standards import READS_STANDARDS
 from .reads_tree_persons import READS_TREE_PERSONS
 from .reads_tree_relations import READS_TREE_RELATIONS
 
 RECIPES: dict[str, Recipe] = {
-    r.name: r for r in (*PILOT, *READS_TREE_PERSONS, *READS_TREE_RELATIONS)}
+    r.name: r for r in (*PILOT, *READS_TREE_PERSONS, *READS_TREE_RELATIONS,
+                        *READS_STANDARDS, *READS_MISC)}
 
 
 def validate_recipes(recipes: dict[str, Recipe]) -> list[str]:

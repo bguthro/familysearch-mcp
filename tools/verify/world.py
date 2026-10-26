@@ -10,6 +10,10 @@ tracked before the note is posted) and go with it at teardown.
 value belongs to one fixture: names carry their own uuid digits, the run's shared
 surname and the ``ZZSPIKE`` prefix are never values on their own, and no value may be
 contained in another, so an anchor can only match its own record.
+
+The ``canaries`` group is not a fixture: it adds the CANARY block's real beta standards
+values to ``names`` (no request, nothing to tear down) and never shares a world with a
+fixture group. ``memory`` also reads back the persona the upload made (best effort).
 """
 from __future__ import annotations
 
@@ -42,6 +46,44 @@ GROUPS: dict[str, tuple[str, ...]] = {
     "source": ("persons",),
     "memory": ("persons",),
 }
+FIXTURE_GROUPS = tuple(GROUPS)
+CANARY_GROUP = "canaries"
+GROUPS[CANARY_GROUP] = ()
+
+# ------------------------------------------------------------------ CANARY BLOCK
+# Real beta STANDARDS reference data (places, vocabularies, name/date standards), NOT
+# fixtures: nothing is created, nothing is torn down. The standards reads are checked
+# against these stable values, and are MEANT TO FAIL LOUDLY if beta's reference data
+# ever changes. Edit them only here. The ids below are only sent (path/query values) and
+# never become world values: short numbers would match by containment. Only the anchor
+# strings in CANARY_NAMES are world names. Values marked UNVERIFIED are not yet known:
+# the first live run's failure skeleton shows the real value to put here.
+CANARY_PLACE_DESCRIPTION = "4229303"  # spec example; recon: 200 for description/children/related/attributes
+CANARY_PLACE_GROUP = "15"             # spec example; recon: 200
+CANARY_PLACE = "1"                    # GUESS (no spec example; recon 404 for "X")
+CANARY_PLACE_TYPE = "186"             # GUESS (no spec example)
+CANARY_PLACE_TYPE_GROUP = "1"         # GUESS (no spec example)
+CANARY_VOCAB_LIST = "122774"          # spec example; recon: 200
+CANARY_VOCAB_TERM = "123363"          # spec example; recon: 200 (as term and as concept)
+CANARY_VOCAB_CONCEPT = "123363"
+CANARY_LOCALE = "en"                  # GUESS (recon used "X": 404)
+CANARY_PLACE_QUERY = "Provo"          # spec example (searchForParentPlaces value)
+CANARY_NAMES: Mapping[str, str] = MappingProxyType({
+    # medium confidence: FamilySearch's standard full name for the city of Provo
+    "provo_full_name": "Provo, Utah, Utah, United States",
+    "place_name": "UNVERIFIED name of place description 4229303",
+    "place_child_name": "UNVERIFIED name of a child place of 4229303",
+    "place_by_id_name": "UNVERIFIED name of place 1",
+    "place_group_title": "UNVERIFIED title of place group 15",
+    "place_attribute_value": "UNVERIFIED attribute value of 4229303",
+    "place_type_label": "UNVERIFIED label of place type 186",
+    "place_type_group_label": "UNVERIFIED label of place type group 1",
+    "vocab_list_title": "UNVERIFIED title of vocab list 122774",
+    "vocab_term_label": "UNVERIFIED label of vocab term 123363",
+    "vocab_search_hit": "UNVERIFIED a concept found by string:List",
+    "vocab_definition": "UNVERIFIED definition text of concept 123363",
+})
+# ------------------------------------------------------------------ end of CANARY BLOCK
 # Each part of these is tried even if another fails: one wrong note envelope (only the
 # person note's is proven on beta) must not keep the other notes from being built.
 INDEPENDENT = frozenset({"notes"})
@@ -110,6 +152,10 @@ class World:
         if unknown:
             raise ValueError(f"unknown fixture group(s) {', '.join(unknown)}; "
                              f"expected some of {', '.join(GROUPS)}")
+        wanted = set(groups) | self._built
+        if CANARY_GROUP in wanted and wanted - {CANARY_GROUP}:
+            raise ValueError("canaries never share a world with fixture groups (a fixture's "
+                             "random digits could contain a canary value)")
         for group in groups:
             self._build(group)
 
@@ -264,16 +310,39 @@ class World:
                 return str(ref["id"])
         return str(refs[0]["id"]) if len(refs) == 1 else None
 
+    def _build_canaries(self) -> None:
+        """Real beta reference data (the CANARY block): constants, no request at all."""
+        self._names.update(CANARY_NAMES)
+
     def _build_memory(self) -> None:
-        if "memory" in self._ids:
+        if "memory" not in self._ids:
+            title = self._value("memory_title", "m")
+            mid = self._memories.upload_to_person(
+                self._ids["child"], PNG, filename="zzspike.png", content_type="image/png",
+                title=title, reason=self._reason)
+            self._fixtures.track("memory", mid)
+            self._ids["memory"] = mid
+            self._named("memory_title", title)
+        if "memory_persona" in self._ids:
             return
-        title = self._value("memory_title", "m")
-        mid = self._memories.upload_to_person(
-            self._ids["child"], PNG, filename="zzspike.png", content_type="image/png",
-            title=title, reason=self._reason)
-        self._fixtures.track("memory", mid)
-        self._ids["memory"] = mid
-        self._named("memory_title", title)
+        # Best effort, as deep.py: the persona the upload made for the child (it goes
+        # with the memory). A 204 or 4xx means "not discoverable"; a 5xx fails the build.
+        url = join_path(self._client.base_url + "/platform/memories/memories",
+                        self._ids["memory"], "personas")
+        try:
+            resp = self._client.get(url)
+        except FSHTTPError as e:
+            if not 400 <= e.status < 500:
+                raise
+            return
+        try:
+            body = resp.json() if resp.text.strip() else {}
+        except ValueError:
+            return
+        persons = body.get("persons") if isinstance(body, dict) else None
+        first = persons[0] if isinstance(persons, list) and persons else {}
+        if isinstance(first, dict) and first.get("id"):
+            self._ids["memory_persona"] = str(first["id"])
 
     # ---------------------------------------------------------------- anchors safety
 
