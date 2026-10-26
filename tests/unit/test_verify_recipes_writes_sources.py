@@ -153,6 +153,7 @@ LIES = {
     ("writes.sources.description_update", "desc_update_creates"): "made a new one",
     ("writes.sources.description_update", "desc_update_sibling"):
         "the other source description",
+    ("writes.sources.description_update", "desc_update_merges"): "exactly one of each",
     ("writes.sources.description_delete", "desc_delete_noop"): "negative control failed",
 }
 

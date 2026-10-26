@@ -73,8 +73,8 @@ def description_update(ctx: VerifyContext) -> None:
     Two ZZSPIKE descriptions are made with the library; only the first is updated, with
     the whole description (its id and about, a fresh title and citation).
     Negative control: its title, read back with readSourceDescription, before and
-    after. It must read back the new title and citation under the same id (so the old
-    title is gone) and the about unchanged. Sibling: the other description reads back as it was.
+    after. Its titles and citations must each be exactly the new value (nothing
+    prepended or merged) under the same id and the about unchanged. Sibling: the other description reads back as it was.
     """
     sid = ctx.fixtures.source(token("u"))
     sibling = ctx.fixtures.source(token("k"))
@@ -90,9 +90,9 @@ def description_update(ctx: VerifyContext) -> None:
                              f"{other} (status {result.status}): it made a new one")
     d1 = read_description(ctx, sid)
     ctx.expect_changed(d0.title, d1.title, f"title of source description {sid}")
-    if (d1.title, d1.citation) != (title, citation):
-        raise AssertionError(f"source description {sid} reads back title {d1.title!r} and "
-                             f"citation {d1.citation!r} after the update to {title!r} / "
+    if d1.titles != (title,) or d1.citations != (citation,):
+        raise AssertionError(f"source description {sid} reads back titles {list(d1.titles)!r} and "
+                             f"citations {list(d1.citations)!r} (exactly one of each wanted) after the update to {title!r} / "
                              f"{citation!r}; {describe_box(d1.result)}")
     expect_same(d0.about, d1.about, f"the about of source description {sid}")
     expect_same(s0, read_description(ctx, sibling), f"the other source description {sibling}")

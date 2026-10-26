@@ -51,9 +51,9 @@ UNKNOWN_DESCRIPTION_EMPTY = (
     "empty 204 (Task 4 live run 2), not the spec's 404; it counts only because the "
     "positive call in the same recipe named the child, which the request did not send")
 UNKNOWN_COLLECTION_EMPTY = (
-    "beta answers readUserDefinedCollectionSourceDescriptions for an unknown collection "
-    "(ZZZZ-ZZZ) with an empty 204 (P4 live run), not the 400 the recon saw for the "
-    "collection itself; it counts only because the positive call in the same recipe "
+    "beta answered readUserDefinedCollectionSourceDescriptions for the unknown collection "
+    "id ZZZZ-ZZZ with an empty-bodied 204 (P4 live run); the recon had seen 400 only for "
+    "the literal id 'None' on this endpoint. The empty 204 counts only because the positive call in the same recipe "
     "returned the fixture description under its title, which the request did not send")
 SOURCE_HEAD_NO_VALIDATORS = (
     "beta answers readSourceDescriptionHead with no ETag, Last-Modified or Content-Length "

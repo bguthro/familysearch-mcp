@@ -42,12 +42,15 @@ def _own(ctx: VerifyContext, kind: str, oid: str) -> None:
 
 
 def _no_new_folders(ctx: VerifyContext, before: Listing, after: Listing,
-                    expected: set[str]) -> None:
-    """Any folder that appeared besides ``expected`` is tracked (teardown deletes it), then
-    fails the recipe: the write made a collection nobody asked for."""
+                    expected: set[str], ours: set[str]) -> None:
+    """Fail the recipe for any folder that appeared besides ``expected``: the write made
+    a collection nobody asked for. Only a stray titled with a marker this recipe itself
+    posted (``ours``) is tracked, so teardown deletes it; a folder anyone else made in
+    the window is never adopted (and never deleted)."""
     stray = sorted(set(after.items) - set(before.items) - expected)
     for udcid in stray:
-        ctx.fixtures.track("collection", udcid)
+        if after.items[udcid] in ours:
+            ctx.fixtures.track("collection", udcid)
     if stray:
         raise AssertionError(f"new folder(s) {stray} appeared besides {sorted(expected)}; "
                              f"{describe_box(after.result)}")
@@ -68,7 +71,8 @@ def collection_create(ctx: VerifyContext) -> None:
     once; with none, the one new folder bearing the marker (every such folder tracked).
     Negative control: the new id among the user's folders (readSourceFolders), before
     (absent) and after (polled). The folder list must name it with the marker title
-    and show no other new folder, and readUserDefinedCollection must answer the title.
+    and show no other new folder (a stray is tracked for teardown only if it bears our
+    marker; a foreign one fails the recipe but is left alone), and readUserDefinedCollection must answer the title.
     """
     title = token("f")
     before = folders(ctx)
@@ -87,7 +91,7 @@ def collection_create(ctx: VerifyContext) -> None:
         udcid = _the_new_folder(ctx, before, title)
     after = poll(ctx, lambda: folders(ctx), lambda f: udcid in f.items,
                  f"readSourceFolders: collection {udcid}")
-    _no_new_folders(ctx, before, after, {udcid})
+    _no_new_folders(ctx, before, after, {udcid}, {title})
     ctx.expect_changed(udcid in before.items, udcid in after.items,
                        f"presence of collection {udcid} among the user's folders")
     if after.items[udcid] != title:
@@ -123,8 +127,8 @@ def collection_update(ctx: VerifyContext) -> None:
     Two ZZSPIKE collections; only the first is posted, as
     ``{"collections": [{"id": udcid, "title": new}]}``. Negative control: its title read
     back with readUserDefinedCollection, before and after; it must be the new one. The
-    folder list must show no new folder (an update that made one fails, the stray
-    tracked) and the new title under the same id. Sibling: the other collection reads
+    folder list must show no new folder (an update that made one fails; the stray is
+    tracked only if it bears our new title) and the new title under the same id. Sibling: the other collection reads
     back as it was.
     """
     udcid = ctx.fixtures.collection(token("f"))
@@ -135,7 +139,7 @@ def collection_update(ctx: VerifyContext) -> None:
     ctx.api.update_user_defined_collection(udcid, reason=ctx.reason,
                                            body=collection_body(title, udcid=udcid))
     l1 = folders(ctx)
-    _no_new_folders(ctx, l0, l1, set())
+    _no_new_folders(ctx, l0, l1, set(), {title})
     f1 = read_folder(ctx, udcid)
     ctx.expect_changed(f0.title, f1.title, f"title of collection {udcid}")
     if f1.title != title or l1.items.get(udcid) != title:
@@ -150,25 +154,31 @@ def collection_add(ctx: VerifyContext) -> None:
     """Add two fixture descriptions to a fixture collection with
     updateSourceDescriptionsToCollection.
 
-    One POST of ``{"sourceDescriptions": [{"id": a}, {"id": b}]}``; a third description
-    is never added. Negative control: the collection's members
-    (readUserDefinedCollectionSourceDescriptions), before (none: a fresh collection) and
-    after (polled until both show). Membership is then exactly the two, each under its
-    own title.
+    A third description is first planted in the collection with
+    ``FixtureSet.add_to_collection`` (not claimed), then one POST of
+    ``{"sourceDescriptions": [{"id": a}, {"id": b}]}``; a fourth is never added.
+    Negative control: the collection's members
+    (readUserDefinedCollectionSourceDescriptions), before (exactly the planted one,
+    polled) and after (polled until both show). Membership is then exactly the planted
+    one plus the two (so an add that replaced the members fails), each under its own title.
     """
     udcid = ctx.fixtures.collection(token("f"))
+    planted = ctx.fixtures.source(token("p"))
     titles = {ctx.fixtures.source(t): t for t in (token("a"), token("b"))}
     ctx.fixtures.source(token("o"))  # never added: must not show up
     _own(ctx, "collection", udcid)
-    m0 = members(ctx, udcid)
-    _exactly(m0, set(), f"the fresh collection {udcid}")
+    ctx.fixtures.add_to_collection(udcid, [planted])
+    m0 = poll(ctx, lambda: members(ctx, udcid), lambda m: planted in m.items,
+              f"members of collection {udcid}: {planted} planted")
+    _exactly(m0, {planted}, f"collection {udcid} before the add")
     ctx.api.update_source_descriptions_to_collection(udcid, reason=ctx.reason,
                                                      body=descriptions_body(list(titles)))
     m1 = poll(ctx, lambda: members(ctx, udcid), lambda m: set(titles) <= set(m.items),
               f"members of collection {udcid}: {sorted(titles)}")
     ctx.expect_changed(sorted(m0.items), sorted(m1.items), f"members of collection {udcid}")
-    _exactly(m1, set(titles), f"collection {udcid}")
-    expect_same(titles, dict(m1.items), f"the titles of the members of {udcid}")
+    _exactly(m1, {planted, *titles}, f"collection {udcid} (planted plus added)")
+    expect_same({planted: m0.items[planted], **titles}, dict(m1.items),
+                f"the titles of the members of {udcid}")
 
 
 @redacted

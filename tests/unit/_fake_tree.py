@@ -503,6 +503,7 @@ WRITE_LIES = frozenset({
     "desc_update_ignored",   # a description update answers 204, changes nothing
     "desc_update_creates",   # ... makes a new description (201, X-ENTITY-ID) instead
     "desc_update_sibling",   # ... also retitles the user's other descriptions
+    "desc_update_merges",    # ... keeps the old title and citation after the new ones
     "desc_delete_noop",      # the first description delete answers 204, changes nothing
     # source box (user-defined collections)
     "folder_create_ignored",  # a collection create answers 201 with an id, stores nothing
@@ -510,9 +511,12 @@ WRITE_LIES = frozenset({
     "folder_create_entity_id",  # ... with the id in Entity-Id only (the spec's name)
     "folder_rename_ignored",  # a collection update answers 204, changes nothing
     "folder_update_creates",  # ... makes a new collection with the new title instead
+    "folder_foreign_create",  # a create also makes a collection nobody asked for (not ours)
+    "folder_foreign_update",  # ... an update does
     "folder_delete_noop",     # the first collection delete answers 204, changes nothing
     "members_add_ignored",    # adding descriptions to a collection answers 204, no change
     "members_add_one",        # ... adds only the first one posted
+    "members_add_replaces",   # ... replaces the collection's members with the posted ones
     "members_remove_noop",    # removing descriptions from collections answers 204, no change
     "members_remove_all",     # ... empties every collection they were in
     "members_remove_wrong",   # ... removes another member instead
@@ -829,8 +833,12 @@ class WriteTree:
 
     def description_json(self, sid):
         d = self.descriptions[sid]
-        return {"id": sid, "about": d["about"], "titles": [{"value": d["title"]}],
-                "citations": [{"value": d["citation"]}]}
+        titles, citations = [d["title"]], [d["citation"]]
+        if d.get("kept"):
+            titles.append(d["kept"][0])
+            citations.append(d["kept"][1])
+        return {"id": sid, "about": d["about"], "titles": [{"value": t} for t in titles],
+                "citations": [{"value": c} for c in citations]}
 
     def create_description(self, request):
         self._record(request)
@@ -875,6 +883,8 @@ class WriteTree:
             return self._new_description(posted)
         fields = {"about": posted["about"], "title": posted["titles"][0]["value"],
                   "citation": posted["citations"][0]["value"]}
+        if self.mode == "desc_update_merges":
+            fields["kept"] = (self.descriptions[sid]["title"], self.descriptions[sid]["citation"])
         self.descriptions[sid].update(fields)
         if self.mode == "desc_update_sibling":
             for other in self.descriptions.values():
@@ -939,6 +949,8 @@ class WriteTree:
             udcid = self._id("collection")
         else:
             udcid = self._new_collection(posted["title"])
+        if self.mode == "folder_foreign_create":
+            self._new_collection("Somebody Else's Folder")
         if self.mode == "folder_create_no_id":
             return 201, {}, ""
         if self.mode == "folder_create_entity_id":
@@ -987,6 +999,8 @@ class WriteTree:
             if self.mode == "folder_update_creates":
                 self._new_collection(posted["title"])
                 return 204, {}, ""
+            if self.mode == "folder_foreign_update":
+                self._new_collection("Somebody Else's Folder")
             folder["title"] = posted["title"]
             return 204, {}, ""
         if self._members_now(udcid):  # DELETE
@@ -1004,6 +1018,9 @@ class WriteTree:
             return 404, {}, "One or more of the descriptions referenced was invalid."
         if self.mode == "members_add_ignored":
             return 204, {}, ""
+        if self.mode == "members_add_replaces":
+            for old in self._members_now(udcid):
+                self._set_folder(old, DEFAULT_FOLDER)
         for sid in sids[:1] if self.mode == "members_add_one" else sids:
             self._set_folder(sid, udcid)
         return 204, {}, ""

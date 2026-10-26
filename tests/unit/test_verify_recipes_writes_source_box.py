@@ -134,10 +134,11 @@ def test_update_posts_the_collection_by_id_and_renames_the_first_only(reg_path, 
 def test_add_posts_both_ids_in_one_request(reg_path, slept):
     result, tree, _ctx = run("writes.sources.collection_add", reg_path)
     assert result["passed"], result["problems"]
-    [post] = requests_to("POST", COLLECTIONS + "/")
+    planting, post = requests_to("POST", COLLECTIONS + "/")  # the planted member first
+    assert json.loads(planting.body) == {"sourceDescriptions": [{"id": "SDWZ-001"}]}
     assert post.url.split("?")[0] == f"{COLLECTIONS}/UDWZ-001/descriptions"
-    assert json.loads(post.body) == {"sourceDescriptions": [{"id": "SDWZ-001"},
-                                                           {"id": "SDWZ-002"}]}
+    assert json.loads(post.body) == {"sourceDescriptions": [{"id": "SDWZ-002"},
+                                                           {"id": "SDWZ-003"}]}
 
 
 @responses.activate
@@ -201,6 +202,7 @@ LIES = {
     ("writes.sources.collection_update", "folder_update_creates"): "appeared besides",
     ("writes.sources.collection_add", "members_add_ignored"): "not seen after",
     ("writes.sources.collection_add", "members_add_one"): "not seen after",
+    ("writes.sources.collection_add", "members_add_replaces"): "not exactly",
     ("writes.sources.collection_remove", "members_remove_noop"): "not seen after",
     ("writes.sources.collection_remove", "members_remove_wrong"): "not seen after",
     ("writes.sources.collection_remove", "members_remove_all"): "not exactly",
@@ -250,3 +252,19 @@ def test_an_error_body_naming_the_user_is_redacted(reg_path, slept, monkeypatch)
     assert "FSHTTPError" in "\n".join(result["problems"])
     no_account_ids(result)
     assert tree.live() == []
+
+
+@responses.activate
+@pytest.mark.parametrize("name, mode", [
+    ("writes.sources.collection_create", "folder_foreign_create"),
+    ("writes.sources.collection_update", "folder_foreign_update")])
+def test_a_foreign_folder_fails_the_recipe_but_is_never_adopted(name, mode, reg_path, slept):
+    result, tree, ctx = run(name, reg_path, mode)
+    assert result["passed"] is False
+    assert "appeared besides" in "\n".join(result["problems"])
+    foreign = [u for u, c in tree.collections.items() if c["title"] == "Somebody Else's Folder"]
+    assert len(foreign) == 1 and not tree.collections[foreign[0]]["deleted"]
+    assert foreign[0] not in ctx.fixtures.tracked("collection")
+    assert foreign[0] not in [d.url.rsplit("/", 1)[-1].split("?")[0]
+                              for d in requests_to("DELETE", COLLECTIONS + "/")]
+    assert tree.live() == foreign  # only the stranger's folder is left

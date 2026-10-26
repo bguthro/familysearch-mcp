@@ -589,6 +589,13 @@ class Description:
     title: str | None
     citation: str | None
     result: ApiResult = field(compare=False, repr=False)
+    titles: tuple = ()  # every title / citation value, in the order answered
+    citations: tuple = ()
+
+
+def _values(items: Any) -> tuple:
+    return tuple(i.get("value") if isinstance(i, dict) else i
+                 for i in (items if isinstance(items, list) else []))
 
 
 def description_view(result: ApiResult, sid: str) -> Description:
@@ -601,7 +608,8 @@ def description_view(result: ApiResult, sid: str) -> Description:
                              f"{describe_box(result)}")
     d = found[0]
     return Description(sid, d.get("about"), _first_value(d.get("titles")),
-                       _first_value(d.get("citations")), result)
+                       _first_value(d.get("citations")), result,
+                       _values(d.get("titles")), _values(d.get("citations")))
 
 
 def read_description(ctx: VerifyContext, sid: str) -> Description:
