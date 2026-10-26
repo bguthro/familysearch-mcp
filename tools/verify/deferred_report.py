@@ -5,9 +5,10 @@ why the rest are not.
 docs/superpowers/recon/2026-10-25-api-surface/p2-deferred.md and p3-deferred.md;
 ``--check`` exits 1 when either committed file is stale. Reasons come verbatim from the
 ``DEFERRED`` tables in the recipe modules; the private-tree areas share one reason
-(they are P7's job). A write claimed by a recipe but not yet verified is awaiting its
-live run (P3, or the later tier in ``AWAITING_TIERS``, such as the P4 source writes);
-the writes not attempted yet carry their later tier's reason.
+(they are P7's job). A read claimed by a recipe but not yet verified is awaiting its
+live run (its tier in ``TIERS``), and so is such a write (P3, or the later tier in
+``AWAITING_TIERS``, such as the P4 source writes); the writes not attempted yet carry
+their later tier's reason.
 """
 from __future__ import annotations
 
@@ -78,6 +79,10 @@ def build_report() -> str:
     for o in sorted(deferred, key=lambda o: (o.area, o.operation_id)):
         if o.area in PRIVATE_TREE_AREAS:
             reason, tier = PRIVATE_TREE_REASON, "P7"
+        elif o.operation_id in recipe_of:  # a read case exists; the live run is pending
+            reason = (f"claimed by recipe {recipe_of[o.operation_id]}; awaiting its live "
+                      "run on beta")
+            tier = TIERS[o.operation_id]
         elif o.operation_id in DEFERRED:
             reason, tier = DEFERRED[o.operation_id], TIERS[o.operation_id]
         else:

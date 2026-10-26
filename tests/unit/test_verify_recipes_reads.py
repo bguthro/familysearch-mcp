@@ -31,8 +31,8 @@ from tools.verify.recipes import reads_tree_persons as rtp
 from tools.verify.recipes import reads_tree_relations as rtr
 
 # The fake tree lives in tests/unit/_fake_tree.py (shared with the write recipe tests).
-from _fake_tree import (ATOM_JSON, BETA, FS_JSON, GIVEN, IDS, MEMORY, NOTE_IDS, NOTE_TEXT,
-                        SOURCE, SURNAME, TREE, FakeTree)
+from _fake_tree import (ATOM_JSON, BETA, COLLECTION, FS_JSON, GIVEN, IDS, MEMORY, NOTE_IDS,
+                        NOTE_TEXT, SOURCE, SURNAME, TREE, FakeTree)
 
 PID_FORMAT = re.compile(r"^[A-Z0-9]{4}-[A-Z0-9]{3,4}$")
 OWN_RECIPES = {r.name for r in rtp.READS_TREE_PERSONS}
@@ -53,10 +53,12 @@ class FakeWorld:
     """The fixture world as the fake tree knows it (what tools/verify/world.py would hold)."""
 
     def __init__(self, client, fixtures, reason, unique):
-        self.ids = {**IDS, **NOTE_IDS, "source_description": SOURCE[0], "memory": MEMORY[0]}
+        self.ids = {**IDS, **NOTE_IDS, "source_description": SOURCE[0], "memory": MEMORY[0],
+                    "collection": COLLECTION[0]}
         self.names = {f"{role}_name": f"{given} {SURNAME}" for role, given in GIVEN.items()}
         self.names.update({f"{key}_text": text for key, text in NOTE_TEXT.items()})
-        self.names.update(source_title=SOURCE[1], memory_title=MEMORY[1])
+        self.names.update(source_title=SOURCE[1], memory_title=MEMORY[1],
+                          collection_title=COLLECTION[1])
         self.needed: list[str] = []
 
     def need(self, *groups):
@@ -295,6 +297,8 @@ RELATION_CASES = {
     "reads.tree.sources": rtr.SOURCES_CASES,
     "reads.tree.source_queries": rtr.SOURCE_QUERIES_CASES,
     "reads.tree.memories": rtr.MEMORIES_CASES,
+    "reads.sources.collection": rtr.COLLECTION_CASES,
+    "reads.sources.collection_descriptions": rtr.COLLECTION_DESCRIPTIONS_CASES,
 }
 # Only the groups each recipe reads: the couple and child-and-parents note envelopes are
 # unproven on beta, so each has a recipe of its own, apart from the person note and source.
@@ -308,6 +312,8 @@ RELATION_NEEDS = {
     "reads.tree.sources": {"source"},
     "reads.tree.source_queries": {"source"},
     "reads.tree.memories": {"memory"},
+    "reads.sources.collection": {"collection"},
+    "reads.sources.collection_descriptions": {"collection"},
 }
 
 
@@ -374,9 +380,11 @@ def test_source_queries_send_the_fixture_ids_and_anchor_on_what_comes_back(
     assert not any("/collections/descriptions" in u for u in urls)
 
 
-def test_only_the_person_to_source_reads_poll():
+def test_only_the_person_to_source_and_membership_reads_poll():
     polled = {c.op for cases in RELATION_CASES.values() for c in cases if c.eventual}
-    assert polled == {"readPersonSources", "readSourceReferences"}
+    # A source just moved into the fixture folder may show late, as the attach did.
+    assert polled == {"readPersonSources", "readSourceReferences",
+                      "readUserDefinedCollectionSourceDescriptions"}
     empty_controls = {c.op for cases in RELATION_CASES.values() for c in cases
                       if c.control_may_be_empty}
     assert empty_controls == {"readSourceDescriptions", "readSourceReferences"}
@@ -434,7 +442,8 @@ RELATION_LIES = {
                      "reads.tree.memories"},
     "other_record": {"reads.tree.notes", "reads.tree.couple_notes",
                      "reads.tree.child_and_parents_notes", "reads.tree.sources",
-                     "reads.tree.source_queries", "reads.tree.memories"},
+                     "reads.tree.source_queries", "reads.tree.memories",
+                     "reads.sources.collection", "reads.sources.collection_descriptions"},
     "swap_relationships": {"reads.tree.relationships", "reads.tree.relationship_history",
                            "reads.tree.couple_notes", "reads.tree.child_and_parents_notes"},
     "catch_all": RELATION_RECIPES,
@@ -538,3 +547,25 @@ def test_relation_recipes_registered():
     for recipe in rtr.READS_TREE_RELATIONS:
         assert RECIPES[recipe.name] is recipe
         assert len(recipe.ops) <= 12
+
+
+@responses.activate
+def test_collection_reads_send_only_the_collection_id_and_anchor_on_titles(reg_path,
+                                                                          fake_world):
+    for name in ("reads.sources.collection", "reads.sources.collection_descriptions"):
+        result, _tree = run(name, reg_path)
+        assert result["passed"] is True, result["problems"]
+    urls = [c.request.url for c in responses.calls]
+    base = f"{BETA}/platform/sources/collections"
+    assert f"{base}/{COLLECTION[0]}" in urls and f"{base}/{COLLECTION[0]}/descriptions" in urls
+    # The controls: an unknown collection, which beta answers 400 (recon).
+    assert f"{base}/{rtr.NO_SUCH_COLLECTION}" in urls
+    assert f"{base}/{rtr.NO_SUCH_COLLECTION}/descriptions" in urls
+    for case in (*rtr.COLLECTION_CASES, *rtr.COLLECTION_DESCRIPTIONS_CASES):
+        assert case.anchors and case.control_may_be_empty is None
+    # The uid-bearing and parameterless source box reads stay deferred.
+    for op in ("readUserSourceFolders", "readSourceFolders", "readUserSourceDescriptions",
+               "getSourceDescriptionChanges"):
+        assert op in rtr.DEFERRED
+    assert not any("/sources/current" in u or "/collections/descriptions" in u
+                   for u in urls if "/platform/sources/collections/" not in u)

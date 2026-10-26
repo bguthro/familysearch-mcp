@@ -41,6 +41,7 @@ class FakeBeta:
         self.fail: set[str] = set()  # kinds whose create answers fail_status
         self.fail_status = 500
         self.attached: dict[str, list[str]] = {}  # person id -> source description urls
+        self.filed: dict[str, list[str]] = {}  # collection path -> description ids
         self.noid: set[str] = set()  # kinds whose create answers 201 with no id header
         self.list_refs = True  # source-references lists attached sources
         self.refs_status = None  # set: source-references answers this error status
@@ -119,6 +120,16 @@ class FakeBeta:
         if path == "/platform/sources/descriptions":
             return self._created("source", f"/platform/sources/descriptions/{self.new_id()}",
                                  body, header="X-ENTITY-ID")
+        if path == "/platform/sources/collections":
+            return self._created("collection", f"/platform/sources/collections/{self.new_id()}",
+                                 body, header="X-ENTITY-ID")
+        m = re.fullmatch(r"(/platform/sources/collections/[^/]+)/descriptions", path)
+        if m:
+            if m.group(1) not in self.live or "file" in self.fail:
+                return 404, {}, ""
+            self.filed.setdefault(m.group(1), []).extend(
+                d["id"] for d in body["sourceDescriptions"])
+            return 204, {}, ""
         m = re.fullmatch(rf"{tree}/persons/([^/]+)", path)
         if m and path in self.live:  # attach a source to a person
             if "attach" in self.fail:
@@ -220,7 +231,8 @@ def test_unknown_group_is_refused(beta):
 
 def test_groups_are_the_documented_ones():
     assert set(FIXTURE_GROUPS) == {"persons", "couple", "person_note", "couple_note",
-                                   "child_and_parents_note", "notes", "source", "memory"}
+                                   "child_and_parents_note", "notes", "source", "collection",
+                                   "memory"}
     assert set(GROUPS) == set(FIXTURE_GROUPS) | {CANARY_GROUP} and CANARY_GROUP == "canaries"
 
 
@@ -548,8 +560,8 @@ def test_every_value_is_distinct_and_no_value_contains_another(beta):
         assert a not in b, f"{a!r} is contained in {b!r}"
     assert set(world.ids) == {"dad", "mom", "child", "couple", "child_and_parents",
                               "person_note", "couple_note", "child_and_parents_note",
-                              "source_description", "source_reference", "memory",
-                              "memory_persona_seq"}
+                              "source_description", "source_reference", "collection",
+                              "memory", "memory_persona_seq"}
 
 
 def test_names_are_long_per_fixture_and_free_of_shared_constants(beta):
@@ -557,7 +569,7 @@ def test_names_are_long_per_fixture_and_free_of_shared_constants(beta):
     world.need(*FIXTURE_GROUPS)
     assert set(world.names) == {"dad_name", "mom_name", "child_name", "person_note_text",
                                 "couple_note_text", "child_and_parents_note_text",
-                                "source_title", "memory_title"}
+                                "source_title", "collection_title", "memory_title"}
     for value in world.names.values():
         assert len(value) >= 12 and value.startswith("ZZSPIKE")
         # ZZSPIKE + a tag letter + 12 digits: nothing a server could re-case.
@@ -673,3 +685,31 @@ def test_default_world_runs_a_read_recipe_and_tears_down(beta, reg_path):
     assert result["passed"], result
     assert beta.live == {}  # the runner's teardown removed every fixture
     assert len(beta.posts("/platform/tree/persons")) == 3
+
+
+def test_collection_holds_the_source_and_goes_after_it(beta):
+    world, fixtures = make_world()
+    world.need("collection")
+    udcid, sid = world.ids["collection"], world.ids["source_description"]
+    assert fixtures.tracked("collection") == [udcid]
+    assert beta.filed == {f"/platform/sources/collections/{udcid}": [sid]}
+    assert world.names["collection_title"].startswith("ZZSPIKEF")
+    world.need("collection")  # built once
+    assert len(beta.posts("/platform/sources/collections")) == 2  # create + file
+    assert fixtures.teardown() == [] and beta.live == {}
+    deletes = [beta.path(c.request.url) for c in beta.rsps.calls
+               if c.request.method == "DELETE"]
+    assert deletes.index(f"/platform/sources/descriptions/{sid}") < deletes.index(
+        f"/platform/sources/collections/{udcid}")
+
+
+def test_a_failed_filing_is_retried_without_a_second_collection(beta):
+    world, fixtures = make_world()
+    beta.fail.add("file")
+    with pytest.raises(FSHTTPError):
+        world.need("collection")
+    assert len(fixtures.tracked("collection")) == 1  # tracked before the filing failed
+    beta.fail.discard("file")
+    world.need("collection")
+    assert len(fixtures.tracked("collection")) == 1
+    assert fixtures.teardown() == [] and beta.live == {}

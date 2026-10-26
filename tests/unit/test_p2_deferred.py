@@ -41,3 +41,14 @@ def test_private_tree_reads_use_the_p7_reason():
     for cells in _deferred_rows():
         if cells[1].strip() in dr.PRIVATE_TREE_AREAS:
             assert cells[2].strip() == dr.PRIVATE_TREE_REASON
+
+
+def test_claimed_unverified_reads_await_their_live_run_and_carry_no_deferral():
+    claimed = {op for recipe in dr.RECIPES.values() for op in recipe.ops}
+    assert not claimed & set(dr.DEFERRED)  # a read with a case is not "deferred" too
+    for cells in _deferred_rows():
+        op, reason, tier = cells[0].strip(), cells[2].strip(), cells[3].strip()
+        if op in claimed:
+            assert "awaiting its live run" in reason and tier == dr.TIERS[op], op
+        elif cells[1].strip() not in dr.PRIVATE_TREE_AREAS:
+            assert reason == dr._cell(dr.DEFERRED[op]), op

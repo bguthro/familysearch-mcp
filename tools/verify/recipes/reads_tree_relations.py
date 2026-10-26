@@ -8,6 +8,10 @@ person's id or name, a note's text, a source's title, a memory's id. A relations
 sends only the relationship id, so it anchors on the persons it joins; a single-note read
 sends the note id, so it anchors on the text.
 
+The source box reads anchor on the fixture collection (``collection``: a ZZSPIKE folder
+holding the fixture source): its title, and the source's title among its members; the
+request sends only the collection id.
+
 Recipes are split by fixture group and by how sure the shape is, because one failing case
 keeps its whole recipe from being recorded: the couple and child-and-parents notes
 (envelopes not yet proven on beta) each have their own recipe, apart from the person
@@ -35,6 +39,9 @@ from .reads_tree_persons import (
 NO_SUCH_RELATIONSHIP = NO_SUCH_PERSON
 NO_SUCH_SOURCE = NO_SUCH_PERSON
 NO_SUCH_NOTE = "00000000-0000-4000-8000-000000000000"  # note ids are UUIDs (recon)
+# Recon: an unknown collection id answered 400 "Unable to read collection" (and 400
+# "Unable to load page of sources from source box" for its descriptions).
+NO_SUCH_COLLECTION = NO_SUCH_PERSON
 # Live (Task 4 run 1): right after the attach, the child's source-references answered 404,
 # so the person -> source link may lag; the reads that follow it poll (an error is never
 # retried, only an empty or anchor-less answer).
@@ -77,29 +84,26 @@ DEFERRED: dict[str, str] = {
         "recon answered 204 for the child-and-parents fixture; a populated case needs a "
         "source attached to that relationship, which no proven library call makes"),
     "getSourceDescriptionChanges": (
-        "ReadCase.body is static, not resolved against the world, so the POST body cannot "
-        "name the source description created at run time; recon never called it"),
+        "the spec says it answers only the ids of the changed descriptions, which the "
+        "request body must name, so every anchor would echo the request (and ReadCase.body "
+        "is static, so it cannot name a description created at run time); an unknown id "
+        "is a documented 204, and an empty control is allowed only for a GET; recon never "
+        "called it"),
     "readSourceFolders": (
         "takes no path or query parameter, so no not-found control can be built (every "
-        "request reads the same signed-in user's folders); it documents only a 307 and "
-        "lists folders, which the fixture world creates none of"),
+        "request reads the same signed-in user's folders, by its documented 307); the "
+        "source box write recipes use it, unclaimed, to list the folders"),
     "readUserSourceFolders": (
-        "lists the user's source folders, which carry no fixture value: the world creates "
-        "no folder (createUserDefinedCollection is an unverified write), and the uid path "
-        "parameter rules out an anchor-free case"),
+        "the uid path segment can only be 'current' (the sealed world holds no account "
+        "id, ruling I-4), and beta ignored the uid of the sibling path "
+        "/sources/{uid}/collections/descriptions (a bogus uid answered 200, P2 Task 4 "
+        "live run 2), so a not-found control on the uid is not expected to hold"),
     "readUserSourceDescriptions": (
         "beta ignores or does not validate the uid path segment: with uid=current the "
         "positive call listed the fixture source, but the control uid=cis.user.ZZZZ-ZZZZ "
         "answered 200 too (Task 4 live run 2), so a not-found control is impossible; a "
         "control that must differ in content rather than error is not supported by the "
         "framework"),
-    "readUserDefinedCollection": (
-        "needs a user-defined collection id; creating one is an unverified write, and "
-        "path args come only from the world, so the default folder's id (listed by "
-        "readUserSourceFolders) cannot be discovered and passed at run time"),
-    "readUserDefinedCollectionSourceDescriptions": (
-        "needs a user-defined collection id; creating one is an unverified write, and "
-        "path args come only from the world, so a discovered folder id cannot be passed"),
     "getPreferredParentRelationship": (
         "documents only 204 (no preference) and 303 (redirect to the preferred "
         "relationship); a fresh fixture has no preference and setting one is an "
@@ -398,5 +402,35 @@ MEMORIES_CASES = (
 )
 MEMORIES = reads_recipe("reads.tree.memories", MEMORIES_CASES)
 
+
+def _expect_collection(result, world):
+    """``collections`` holds the fixture collection (by id) under its own title."""
+    udcid, want = world.ids["collection"], world.names["collection_title"]
+    collection = _record(result.body, "collections", udcid)
+    assert collection.get("title") == want, (
+        f"collection {udcid} is titled {collection.get('title')!r}, not {want!r}")
+
+
+_COLLECTION = lambda w: {"udcid": w.ids["collection"]}  # noqa: E731
+# Membership is a collection's own list; the folder may show a moved source a little late.
+MEMBERS_EVENTUAL = REFERENCE_EVENTUAL
+# Each read is its own recipe: the source box shapes are not proven on beta yet.
+COLLECTION_CASES = (
+    ReadCase(op="readUserDefinedCollection", path_args=_COLLECTION,
+             missing={"udcid": NO_SUCH_COLLECTION}, expect=_expect_collection,
+             anchors=(lambda w: w.names["collection_title"],), needs=("collection",)),
+)
+COLLECTION = reads_recipe("reads.sources.collection", COLLECTION_CASES)
+COLLECTION_DESCRIPTIONS_CASES = (
+    # Its members: exactly the fixture source, under its title.
+    ReadCase(op="readUserDefinedCollectionSourceDescriptions", path_args=_COLLECTION,
+             missing={"udcid": NO_SUCH_COLLECTION},
+             expect=_expect_description("source_description", "source_title", exactly=True),
+             anchors=(_title(),), needs=("collection",), eventual=MEMBERS_EVENTUAL),
+)
+COLLECTION_DESCRIPTIONS = reads_recipe("reads.sources.collection_descriptions",
+                                       COLLECTION_DESCRIPTIONS_CASES)
+
 READS_TREE_RELATIONS = (RELATIONSHIPS, RELATIONSHIP_HISTORY, PEDIGREE, NOTES, COUPLE_NOTES,
-                        CHILD_AND_PARENTS_NOTES, SOURCES, SOURCE_QUERIES, MEMORIES)
+                        CHILD_AND_PARENTS_NOTES, SOURCES, SOURCE_QUERIES, MEMORIES,
+                        COLLECTION, COLLECTION_DESCRIPTIONS)

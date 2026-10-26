@@ -33,9 +33,11 @@ NOTE_TEXT = {"person_note": "ZZSPIKEP100000000004", "couple_note": "ZZSPIKER1000
              "child_and_parents_note": "ZZSPIKEA100000000006"}
 SOURCE = ("SDZZ-SRC", "ZZSPIKES100000000007")
 MEMORY = ("4017777", "ZZSPIKEM100000000008")
+COLLECTION = ("UDZZ-COL", "ZZSPIKEF100000000009")  # a folder holding the source
 # Records of the same kinds that are not the fixtures' (the ``other_record`` lie).
 OTHER_SOURCE = ("SDZZ-OTH", "ZZSPIKES199999999999")
 OTHER_MEMORY = ("4019999", "ZZSPIKEM199999999999")
+OTHER_COLLECTION = ("UDZZ-OTH", "ZZSPIKEF199999999999")
 
 
 class FakeTree:
@@ -52,7 +54,8 @@ class FakeTree:
     answers a single-note read with the owner's note whatever the id; ``ignore_sdids``
     answers readSourceDescriptions with the whole source box; ``wrong_location`` answers
     a source description's HEAD (which, as on beta, carries no validator) with another
-    description's Content-Location.
+    description's Content-Location. The fixture collection holds the source; an unknown
+    collection id answers 400, as in the recon.
     """
 
     def __init__(self, mode=None, *, relationship_lag=0, search_lie=None, reference_lag=0):
@@ -350,6 +353,22 @@ class FakeTree:
         stranger = {"id": "SDZZ-BOX", "titles": [{"value": "an older source"}]}
         return [stranger, self.description()]
 
+    def collection_route(self, request):
+        """/sources/collections/{udcid} and its /descriptions."""
+        udcid, *rest = urlsplit(request.url).path.split("/platform/sources/collections/",
+                                                        1)[1].split("/")
+        if udcid != COLLECTION[0]:
+            if self.mode == "catch_all":
+                return self._answer(request, 200, {"collections": []})
+            return self._answer(request, 400, {"errors": [
+                {"message": "Failure in upstream call: Unable to read collection."}]})
+        if rest == ["descriptions"]:
+            return self._list(request, {"sourceDescriptions": [self.description()]})
+        if rest:
+            return self._answer(request, 404, {"errors": [{"code": 404}]})
+        cid, title = OTHER_COLLECTION if self.mode == "other_record" else COLLECTION
+        return self._list(request, {"collections": [{"id": cid, "title": title, "size": 1}]})
+
     def search(self, request):
         """Beta's tree search over real data, as probed: the canary is the best hit for
         its own name and birth year; no parameter at all answers 400."""
@@ -388,6 +407,8 @@ class FakeTree:
         references = re.compile(re.escape(TREE + "/source-references") + r"(\?.*)?$")
         descriptions = re.compile(re.escape(BETA + "/platform/sources/descriptions")
                                   + r"(/[^?]*)?(\?.*)?$")
+        collection = re.compile(re.escape(BETA + "/platform/sources/collections/")
+                                + r"[^?]+(\?.*)?$")
         for method in (responses.GET, responses.HEAD):
             responses.add_callback(method, persons_list, callback=self.persons)
             responses.add_callback(method, person, callback=self.person_route)
@@ -396,6 +417,7 @@ class FakeTree:
             responses.add_callback(method, pedigree, callback=self.pedigree)
             responses.add_callback(method, references, callback=self.source_references)
             responses.add_callback(method, descriptions, callback=self.source_descriptions)
+            responses.add_callback(method, collection, callback=self.collection_route)
 
 
 # ====================================================================== WriteTree

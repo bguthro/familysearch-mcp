@@ -14,6 +14,9 @@ contained in another, so an anchor can only match its own record.
 The ``canaries`` group is not a fixture: it adds the CANARY block's real beta standards
 values to ``names`` (no request, nothing to tear down) and never shares a world with a
 fixture group. ``memory`` also reads back the persona the upload made (best effort).
+``collection`` is a ZZSPIKE user-defined collection (a source folder) holding the
+``source`` description; it has no hand-written library call, so ``FixtureSet.collection``
+and ``add_to_collection`` make it with the raw client, as the notes are posted.
 """
 from __future__ import annotations
 
@@ -44,6 +47,7 @@ GROUPS: dict[str, tuple[str, ...]] = {
     "child_and_parents_note": ("couple",),
     "notes": ("person_note", "couple_note", "child_and_parents_note"),  # alias: all three
     "source": ("persons",),
+    "collection": ("source",),
     "memory": ("persons",),
 }
 FIXTURE_GROUPS = tuple(GROUPS)
@@ -116,7 +120,8 @@ class World:
     when another fails (the first failure is raised after all were tried).
 
     ``names`` holds full per-fixture strings only (``dad_name``, ``mom_name``,
-    ``child_name``, ``*_note_text``, ``source_title``, ``memory_title``). There is no
+    ``child_name``, ``*_note_text``, ``source_title``, ``collection_title``,
+    ``memory_title``). There is no
     ``unique_surname``: the surname is shared by every person, so it is contained in
     each full name and could not tell them apart. A case that searches by surname
     (Task 3) sends it in the query as ``names["child_name"].split()[-1]`` and anchors on
@@ -142,6 +147,7 @@ class World:
         self._names: dict[str, str] = {}
         self._pending: dict[str, str] = {}  # values for objects not created yet
         self._attached = False
+        self._filed = False  # the source description is in the collection
         self._built: set[str] = set()
 
     @property
@@ -314,6 +320,16 @@ class World:
             if desc.rsplit("/", 1)[-1] == sid:
                 return str(ref["id"])
         return str(refs[0]["id"]) if len(refs) == 1 else None
+
+    def _build_collection(self) -> None:
+        if "collection" not in self._ids:
+            title = self._value("collection_title", "f")
+            self._ids["collection"] = self._fixtures.collection(title)  # tracked there
+            self._named("collection_title", title)
+        if not self._filed:
+            self._fixtures.add_to_collection(self._ids["collection"],
+                                             [self._ids["source_description"]])
+            self._filed = True
 
     def _build_canaries(self) -> None:
         """Real beta reference data (the CANARY block): constants, no request at all."""
