@@ -22,7 +22,12 @@
   },
   "createChildAndParentsRelationshipSourceReference": {
    "generated": {
-    "status": "unverified"
+    "commit": "f79a5c323440fe7ec800f1618997056164debd08",
+    "evidence": "state-change",
+    "fingerprint": "d9d1686052d8145ef58c35bdda42ce1d6534ff31e94122335a7a8fcff4561b13",
+    "recipe": "writes.tree.child_and_parents_source_references",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "createCoupleRelationshipNote": {
@@ -37,7 +42,12 @@
   },
   "createCoupleRelationshipSourceReference": {
    "generated": {
-    "status": "unverified"
+    "commit": "f79a5c323440fe7ec800f1618997056164debd08",
+    "evidence": "state-change",
+    "fingerprint": "a656614a8ef1c701217262bdeb51005635a62734c9f5fe8c30dc377690eb3354",
+    "recipe": "writes.tree.couple_source_references",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "createDiscussion": {
@@ -191,7 +201,12 @@
   },
   "deleteChildAndParentsRelationshipConclusion": {
    "generated": {
-    "status": "unverified"
+    "commit": "f79a5c323440fe7ec800f1618997056164debd08",
+    "evidence": "state-change",
+    "fingerprint": "44cdbf05a1f05573fc573d3874d5cacbec025a3701700f2c40f113bf45ceefab",
+    "recipe": "writes.tree.child_and_parents_conclusion_delete",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "deleteChildAndParentsRelationshipNote": {
@@ -216,7 +231,12 @@
   },
   "deleteChildAndParentsRelationshipSourceReference": {
    "generated": {
-    "status": "unverified"
+    "commit": "f79a5c323440fe7ec800f1618997056164debd08",
+    "evidence": "state-change",
+    "fingerprint": "e631d3620c83a183cfa4090f54d940ae0c9d761d9f3a3082f024d7cb901e9c7c",
+    "recipe": "writes.tree.child_and_parents_source_references",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "deleteComment": {
@@ -240,7 +260,12 @@
   },
   "deleteCoupleRelationshipConclusion": {
    "generated": {
-    "status": "unverified"
+    "commit": "f79a5c323440fe7ec800f1618997056164debd08",
+    "evidence": "state-change",
+    "fingerprint": "2a5e83ebbf26025a1ffeff9f7742fb2d4dd0ea4d1be47e4fb57f8825953808a8",
+    "recipe": "writes.tree.couple_conclusion_delete",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "deleteCoupleRelationshipNote": {
@@ -255,7 +280,12 @@
   },
   "deleteCoupleRelationshipSourceReference": {
    "generated": {
-    "status": "unverified"
+    "commit": "f79a5c323440fe7ec800f1618997056164debd08",
+    "evidence": "state-change",
+    "fingerprint": "4b4bf414f69b1558e971bbfea60eed69fc484cf1b904be5e2db3ad3a683504a9",
+    "recipe": "writes.tree.couple_source_references",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "deleteGenealogiesConclusion": {
