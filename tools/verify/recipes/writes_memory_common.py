@@ -267,18 +267,19 @@ def persona_link_body(memory_url: str, base_url: str, pid: str) -> dict:
 
 
 def portraits_listing(ctx: VerifyContext, pid: str) -> Listing:
-    """readPersonPortraits: description id -> its title values; 204 (none set): empty."""
+    """readPersonPortraits: portrait description id -> ``(mediaType, descriptionIds)``.
+
+    Live (P5 run 2) a portrait is a server-made description (id ``tps.portrait.N``,
+    image/png) whose ``sources`` name the person by ``descriptionId``; it carries
+    nothing of the memory. 204 (none set): empty.
+    """
     result = ctx.api.read_person_portraits(pid)
     if result.status == 204 or not (result.text or "").strip():
         return Listing({}, result)
     body = result.body if isinstance(result.body, dict) else {}
-    return Listing({str(d.get("id")): _values(d.get("titles"))
-                    for d in body.get("sourceDescriptions") or [] if isinstance(d, dict)},
-                   result)
-
-
-def portrait_titles(found: Listing) -> list:
-    return sorted(t for titles in found.items.values() for t in titles)
+    return Listing({str(d.get("id")): (d.get("mediaType"), tuple(sorted(
+        str(x.get("descriptionId")) for x in d.get("sources") or [] if isinstance(x, dict))))
+        for d in body.get("sourceDescriptions") or [] if isinstance(d, dict)}, result)
 
 
 def poll_portraits(ctx: VerifyContext, pid: str, done: Callable[[Listing], bool],

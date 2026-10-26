@@ -300,7 +300,6 @@ RELATION_CASES = {
     "reads.tree.sources": rtr.SOURCES_CASES,
     "reads.tree.source_queries": rtr.SOURCE_QUERIES_CASES,
     "reads.tree.memories": rtr.MEMORIES_CASES,
-    "reads.tree.portraits": rtr.PORTRAITS_CASES,
     "reads.sources.collection": rtr.COLLECTION_CASES,
     "reads.sources.collection_descriptions": rtr.COLLECTION_DESCRIPTIONS_CASES,
 }
@@ -316,7 +315,6 @@ RELATION_NEEDS = {
     "reads.tree.sources": {"source"},
     "reads.tree.source_queries": {"source"},
     "reads.tree.memories": {"memory"},
-    "reads.tree.portraits": {"portrait"},
     "reads.sources.collection": {"collection"},
     "reads.sources.collection_descriptions": {"collection"},
 }
@@ -449,7 +447,6 @@ RELATION_LIES = {
     "other_record": {"reads.tree.notes", "reads.tree.couple_notes",
                      "reads.tree.child_and_parents_notes", "reads.tree.sources",
                      "reads.tree.source_queries", "reads.tree.memories",
-                     "reads.tree.portraits",
                      "reads.sources.collection", "reads.sources.collection_descriptions"},
     "swap_relationships": {"reads.tree.relationships", "reads.tree.relationship_history",
                            "reads.tree.couple_notes", "reads.tree.child_and_parents_notes"},
@@ -511,8 +508,7 @@ def test_empty_variants_only_count_after_their_populated_case(reg_path, fake_wor
     # populated cases fail, and so do the empty variants that lean on them.
     for name, op in (("reads.tree.notes", "readPersonNotes"),
                      ("reads.tree.sources", "readPersonSources"),
-                     ("reads.tree.memories", "getPersonMemories"),
-                     ("reads.tree.portraits", "readPersonPortraits")):
+                     ("reads.tree.memories", "getPersonMemories")):
         result, _tree = run(name, reg_path, "empty")
         problems = "\n".join(result["problems"])
         assert f"{op}: 204 (empty) accepted only after a populated" in problems, problems
@@ -673,9 +669,9 @@ def test_relationship_source_recipe_fails_when_the_fake_lies(mode, name, reg_pat
     assert reg_path.read_bytes() == raw
 
 
-def test_portrait_reads_anchor_on_the_portrait_title_and_the_image_read_is_deferred():
-    child, dad = rtr.PORTRAITS_CASES
-    assert child.needs == dad.needs == ("portrait",) and dad.allow_empty
-    assert [a(FakeWorld(None, None, None, None)) for a in child.anchors] == [PORTRAIT[1]]
-    assert "readPersonPortraits" not in rtp.DEFERRED and "readPersonPortrait" not in rtp.DEFERRED
-    assert "readPersonPortrait" in rtr.DEFERRED and "bytes" in rtr.DEFERRED["readPersonPortrait"]
+def test_portrait_reads_are_deferred_for_want_of_an_anchor():
+    assert "reads.tree.portraits" not in RECIPES
+    for op in ("readPersonPortraits", "readPersonPortrait"):
+        assert op in rtr.DEFERRED and op not in rtp.DEFERRED
+    assert "tps.portrait" in rtr.DEFERRED["readPersonPortraits"]
+    assert "bytes" in rtr.DEFERRED["readPersonPortrait"]

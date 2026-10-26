@@ -27,7 +27,7 @@ from .writes_common import (GONE, describe_box, expect_same, person_memories, re
 from .writes_memory_common import (exactly, link_sets, own, persona_link_body,
                                    persona_name_body, persona_of, personas_listing,
                                    poll_persona, poll_personas, poll_person_memories,
-                                   poll_portraits, portrait_titles, read_memory,
+                                   poll_portraits, portraits_listing, read_memory,
                                    read_persona)
 
 DEFERRED: dict[str, str] = {
@@ -216,40 +216,49 @@ def persona_delete(ctx: VerifyContext) -> None:
             ctx.api.delete_memory_persona(mid, persona_id, reason=ctx.reason))
 
 
+def _portrait_of(found, pid: str, what: str) -> str:
+    """The one portrait description: a server-made ``tps.portrait.`` id, a PNG, naming the
+    person (live, P5 run 2: it carries nothing of the memory)."""
+    ok = {i: v for i, v in found.items.items()
+          if i.startswith("tps.portrait.") and v == ("image/png", (pid,))}
+    if len(found.items) != 1 or len(ok) != 1:
+        raise AssertionError(f"{what}: the portraits of {pid} are "
+                             f"{ {i: list(v) for i, v in found.items.items()} }, not exactly one "
+                             f"tps.portrait. image/png description naming {pid}; "
+                             f"{describe_box(found.result)}")
+    return next(iter(ok))
+
+
 @redacted
 def portraits_update(ctx: VerifyContext) -> None:
     """Select a fixture person's portrait with updatePersonPortraits.
 
-    A fixture person has two memories (titled with fresh markers) and a second fixture
-    person none; the first memory is posted as the portrait, as a SourceDescription list
-    naming the memory (the spec has no example). Negative control: the person's
-    portraits (readPersonPortraits, unclaimed and not yet verified), before (none) and
-    after (polled until the first memory's title shows). They must then be exactly that
-    one description, never the other memory's; the second person still has none; the
-    first person's memory list still holds both memories.
+    A fixture person has two memories and a second fixture person none; the first memory
+    is posted as the portrait (a person with a media reference to the memory carrying a
+    RectangleRegion). Negative control: the person's portrait descriptions
+    (readPersonPortraits, unclaimed and not yet verified), before (none) and after
+    (polled): their ids, server-made. They must then be exactly one description, id
+    ``tps.portrait.N``, image/png, naming the person; the second person still has none;
+    the first person's memory list still holds both memories.
     """
     owner = ctx.fixtures.person(given="PortraitSet")
     bystander = ctx.fixtures.person(given="PortraitSetB")
-    chosen_title, other_title = token("p"), token("q")
-    chosen = ctx.fixtures.memory(chosen_title, person=owner)
-    other = ctx.fixtures.memory(other_title, person=owner)
+    chosen = ctx.fixtures.memory(token("p"), person=owner)
+    other = ctx.fixtures.memory(token("q"), person=owner)
     own(ctx, "memory", chosen)
     poll_person_memories(ctx, owner, lambda m: {chosen, other} <= set(m.items),
                          f"getPersonMemories: {chosen} and {other}")
     before = poll_portraits(ctx, owner, lambda p: True, "")
     ctx.api.update_person_portraits(owner, reason=ctx.reason, body=portrait_body(
         ctx.fixtures.memory_url(chosen), owner))
-    after = poll_portraits(ctx, owner, lambda p: chosen_title in portrait_titles(p),
+    after = poll_portraits(ctx, owner, lambda p: bool(p.items),
                            f"readPersonPortraits: portrait of {owner}")
-    ctx.expect_changed(portrait_titles(before), portrait_titles(after),
-                       f"portraits of {owner}")
-    if portrait_titles(after) != [chosen_title]:
-        raise AssertionError(f"the portraits of {owner} are titled {portrait_titles(after)}, "
-                             f"not exactly {chosen_title!r}; {describe_box(after.result)}")
+    ctx.expect_changed(sorted(before.items), sorted(after.items), f"portraits of {owner}")
+    _portrait_of(after, owner, "after the update")
     bystander_after = poll_portraits(ctx, bystander, lambda p: True, "")
     if bystander_after.items:
         raise AssertionError(f"the portrait was set on another person too: {bystander} has "
-                             f"{portrait_titles(bystander_after)}; "
+                             f"{sorted(bystander_after.items)}; "
                              f"{describe_box(bystander_after.result)}")
     exactly(poll_person_memories(ctx, owner, lambda m: {chosen, other} <= set(m.items),
                                  f"getPersonMemories: {chosen} and {other}"), {chosen, other},
@@ -261,32 +270,32 @@ def portrait_delete(ctx: VerifyContext) -> None:
     """Clear a fixture person's portrait with deletePersonPortrait.
 
     Two fixture persons each get a memory selected as their portrait with
-    ``FixtureSet.set_portrait`` (the same body updatePersonPortraits sends; not claimed);
-    only the first person's is deleted. Negative control: the first person's portraits
-    (readPersonPortraits), before (its memory's title, polled) and after (none, polled).
-    The second person's portrait must read back as it was; the first person's memory
-    list and the memory itself are untouched (the spec: only the portrait selection is
-    removed; a default another user chose may still show, but this account has no
-    other user).
+    ``FixtureSet.set_portrait`` (the body updatePersonPortraits sends; not claimed); only
+    the first person's is deleted. Negative control: the first person's portrait
+    descriptions (readPersonPortraits), before (exactly one server-made ``tps.portrait.``
+    id, polled) and after (none, polled). The second person's portrait must read back as
+    it was; the first person's memory list and the memory itself are untouched (the spec:
+    only the portrait selection is removed; a default another user chose may still show,
+    but this account has no other user).
     """
     first = ctx.fixtures.person(given="PortraitDeleteA")
     second = ctx.fixtures.person(given="PortraitDeleteB")
-    first_title, second_title = token("p"), token("q")
-    mine = ctx.fixtures.memory(first_title, person=first)
-    theirs = ctx.fixtures.memory(second_title, person=second)
+    mine = ctx.fixtures.memory(token("p"), person=first)
+    theirs = ctx.fixtures.memory(token("q"), person=second)
     ctx.fixtures.set_portrait(first, mine)
     ctx.fixtures.set_portrait(second, theirs)
-    f0 = poll_portraits(ctx, first, lambda p: first_title in portrait_titles(p),
+    f0 = poll_portraits(ctx, first, lambda p: bool(p.items),
                         f"readPersonPortraits: portrait of {first}")
-    s0 = poll_portraits(ctx, second, lambda p: second_title in portrait_titles(p),
+    s0 = poll_portraits(ctx, second, lambda p: bool(p.items),
                         f"readPersonPortraits: portrait of {second}")
+    _portrait_of(f0, first, "before the delete")
     m0 = read_memory(ctx, mine)
     ctx.api.delete_person_portrait(first, reason=ctx.reason)
     f1 = poll_portraits(ctx, first, lambda p: not p.items,
                         f"readPersonPortraits: portrait of {first} gone")
-    ctx.expect_changed(portrait_titles(f0), portrait_titles(f1), f"portraits of {first}")
-    s1 = poll_portraits(ctx, second, lambda p: True, "")
-    expect_same(portrait_titles(s0), portrait_titles(s1), f"the portraits of {second}")
+    ctx.expect_changed(sorted(f0.items), sorted(f1.items), f"portraits of {first}")
+    s1 = portraits_listing(ctx, second)
+    expect_same(s0.items, s1.items, f"the portraits of {second}")
     exactly(poll_person_memories(ctx, first, lambda m: mine in m.items,
                                  f"getPersonMemories: {mine} for {first}"), {mine},
             f"the memories of {first} after the delete")

@@ -889,7 +889,13 @@ class WriteTree:
         mid = self.persons[pid]["portrait"]
         if mid is None or self.memories[mid]["deleted"]:
             return 204, {}, ""
-        return self._json(200, {"sourceDescriptions": [self.memory_json(mid)]})
+        # Live (P5 run 2): a server-made description, not the memory's.
+        return self._json(200, {"persons": [], "sourceDescriptions": [{
+            "id": f"tps.portrait.{mid}", "mediaType": "image/png",
+            "resourceType": "http://gedcomx.org/DigitalArtifact",
+            "links": {"artifact": {"href": f"{PERSONS}/{pid}/portrait"}},
+            "sources": [{"description": f"{PERSONS}/{pid}", "descriptionId": pid}],
+            "version": "1"}]})
 
     def set_portraits(self, request, pid):
         [person] = json.loads(request.body).get("persons") or [{}]
