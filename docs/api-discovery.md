@@ -219,3 +219,41 @@ dry-run, explicit approval and a supervised pilot) or by the MCP server when
 `FS_ALLOW_PROD_WRITES` is set. No production write has been exercised yet: run the
 first ones as a supervised pilot WITH read-back, because several endpoints that looked
 proven on beta (parent-child, memory link, couple delete) turned out to be wrong.
+
+## 8. What the P2 live runs taught (read verification on beta)
+
+Learned while proving the reads (recipes in `tools/verify/recipes/reads_*.py`; the
+unprovable reads and their reasons are in
+`docs/superpowers/recon/2026-10-25-api-surface/p2-deferred.md`).
+
+- **Beta often answers an empty 204 for an unknown id**, where the spec documents a
+  400/404/410 (for example `readPersons` for an unknown or malformed pid, and several
+  source and relationship reads). The read framework accepts it as a not-found control
+  only with a recorded reason, and only when a populated positive call in the same
+  recipe answered the anchored fixture (otherwise a server answering 204 to everything
+  would pass).
+- **HEAD often lacks validators.** `readSourceDescriptionHead` came back with no ETag,
+  Last-Modified or Content-Length, so a HEAD can only be checked for existence
+  (status, `Content-Location`, the sibling GET's anchors and a control). A HEAD also
+  needs the sibling GET's `Accept` header or it answers 406.
+- **Freshly created persons are not searchable.** Beta search did not surface fixture
+  persons within two minutes, so `searchTreePersons` is verified against a stable canary
+  person (Rosina Zopfi, GQYM-SVR), not a fixture. Matches reads answer 204 for every
+  fixture for the same reason.
+- **Standards reference data is stable** (places, place types and groups, vocabularies,
+  dates, name parts), so the standards recipes use real reference records as canaries.
+- **Relationship calculation lags**: `findRelationship` between just-created fixtures
+  first answered 204 and needed several polls (7 of 8 attempts in one run), so such
+  positive calls are polled; this one may still flake.
+- **Source references 404 right after an attach.** The child's source-references read
+  answered 404 immediately after attaching a source, so the person to source link lags
+  and the reads that follow it poll (an error status in the control is never retried).
+- **`readUserMemories`** with `uid=current` answered 400 "Unable to read artifacts
+  belonging to this user"; it needs the account's real user id, which the sealed world
+  deliberately does not hold, so it is deferred. **`readUserSourceDescriptions`** ignores
+  the `uid` segment (a bogus uid answered 200 as well), so no not-found control exists
+  and it is deferred.
+- **`createNameSegments`** (a read-only POST that composes a name from typed parts)
+  accepted the runtime's content type and returned the composed full name, so it is
+  verified like the other standards computations.
+- **History links carry a query** (`?flag=fsh`), so link comparisons use the path only.
