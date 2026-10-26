@@ -429,7 +429,12 @@
   },
   "getMemories": {
    "generated": {
-    "status": "unverified"
+    "commit": "71aca6aa3f78f6bea48c38a0aacd2543d90cb0a0",
+    "evidence": "read-content",
+    "fingerprint": "d5bde084b6680a48efdb1412617697f9341f380232a6e50ca6e841d9de79e347",
+    "recipe": "reads.memories",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "getNameScript": {
@@ -707,7 +712,12 @@
   },
   "readMemory": {
    "generated": {
-    "status": "unverified"
+    "commit": "71aca6aa3f78f6bea48c38a0aacd2543d90cb0a0",
+    "evidence": "read-content",
+    "fingerprint": "ea93b67449c586c59ad55e8a29cfaa0a8449d5f30cad3ec0a75c2db4360b3f74",
+    "recipe": "reads.memories",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readMemoryComments": {
@@ -717,12 +727,22 @@
   },
   "readMemoryPersona": {
    "generated": {
-    "status": "unverified"
+    "commit": "71aca6aa3f78f6bea48c38a0aacd2543d90cb0a0",
+    "evidence": "read-content",
+    "fingerprint": "94752fae3860953f9c84ebc7751c4c36a7dc9cb14dfff1b4f1181758f527e31a",
+    "recipe": "reads.memories",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readMemoryPersonas": {
    "generated": {
-    "status": "unverified"
+    "commit": "71aca6aa3f78f6bea48c38a0aacd2543d90cb0a0",
+    "evidence": "read-content",
+    "fingerprint": "a343ec88c07ed4cac60c5599f9f5196435b605bca830e4892d56054b1a5c8549",
+    "recipe": "reads.memories",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readPartnerEligibility": {
@@ -897,22 +917,42 @@
   },
   "readPlaceChildren": {
    "generated": {
-    "status": "unverified"
+    "commit": "71aca6aa3f78f6bea48c38a0aacd2543d90cb0a0",
+    "evidence": "read-content",
+    "fingerprint": "db3be84bc5da0b54557ed6f6591556d7af76b1d3a1e92193ee105571cc006513",
+    "recipe": "reads.standards.place_descriptions",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readPlaceDescription": {
    "generated": {
-    "status": "unverified"
+    "commit": "71aca6aa3f78f6bea48c38a0aacd2543d90cb0a0",
+    "evidence": "read-content",
+    "fingerprint": "2454a1e2883f73238bf1e8d7c71a222d0f2670a05f20cc47269ee995739b902b",
+    "recipe": "reads.standards.place_descriptions",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readPlaceDescriptionWithRelated": {
    "generated": {
-    "status": "unverified"
+    "commit": "71aca6aa3f78f6bea48c38a0aacd2543d90cb0a0",
+    "evidence": "read-content",
+    "fingerprint": "efe7d6586aa741e7ca2f3cddd5b75e7b4bb789e4f7d9f0c204f35387809c6a2d",
+    "recipe": "reads.standards.place_descriptions",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readPlaceDescriptions": {
    "generated": {
-    "status": "unverified"
+    "commit": "71aca6aa3f78f6bea48c38a0aacd2543d90cb0a0",
+    "evidence": "read-content",
+    "fingerprint": "b47ed3b0c93c380de3e130042db47082b5ad0179159191bbb6c9114353934095",
+    "recipe": "reads.standards.place_descriptions",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readPlaceDescriptionsGroup": {
