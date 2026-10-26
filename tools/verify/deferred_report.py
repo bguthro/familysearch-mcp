@@ -1,9 +1,12 @@
-"""The P2 deferred-reads report: which reads are verified and why the rest are not.
+"""The deferred reports: which reads (P2) and Family Tree writes (P3) are verified and
+why the rest are not.
 
 ``python -m tools.verify.deferred_report`` writes
-docs/superpowers/recon/2026-10-25-api-surface/p2-deferred.md; ``--check`` exits 1 when
-the committed file is stale. Reasons come verbatim from the ``DEFERRED`` tables in the
-recipe modules; the private-tree areas share one reason (they are P7's job).
+docs/superpowers/recon/2026-10-25-api-surface/p2-deferred.md and p3-deferred.md;
+``--check`` exits 1 when either committed file is stale. Reasons come verbatim from the
+``DEFERRED`` tables in the recipe modules; the private-tree areas share one reason
+(they are P7's job). A write claimed by a recipe but not yet verified is awaiting its
+live run (P3); the writes P3 did not attempt carry their later tier's reason.
 """
 from __future__ import annotations
 
@@ -14,7 +17,9 @@ from pathlib import Path
 from familysearch.api.registry import effective_status
 from tools.spec.coverage import load_inputs
 
-from .recipes import RECIPES, reads_misc, reads_standards, reads_tree_persons, reads_tree_relations
+from .recipes import (RECIPES, reads_misc, reads_standards, reads_tree_persons,
+                      reads_tree_relations, writes_tree_relationship_details,
+                      writes_tree_relationships)
 
 REPORT_PATH = (Path(__file__).resolve().parents[2] / "docs" / "superpowers" / "recon"
                / "2026-10-25-api-surface" / "p2-deferred.md")
@@ -35,7 +40,7 @@ TIERS: dict[str, str] = {
     "readPersonNotAMatches": "P6", "performPersonMatchesByExample": "P6",
     "readPersonPortrait": "P5", "readPersonPortraits": "P5",
     "readMemoryComments": "P5", "readUserMemories": "P5",
-    "getPreferredParentRelationship": "P3", "readPreferredSpouseRelationship": "P3",
+    "getPreferredParentRelationship": "P8", "readPreferredSpouseRelationship": "P8",
     "readCoupleRelationshipSources": "P4", "readCoupleRelationshipSourceReferences": "P4",
     "getChildAndParentsRelationshipSources": "P4",
     "getChildAndParentsRelationshipSourceReferences": "P4",
@@ -106,22 +111,141 @@ def build_report() -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------- P3 writes
+
+P3_REPORT_PATH = REPORT_PATH.with_name("p3-deferred.md")
+P3_AREA = "Family Tree Endpoints"
+AWAITING_TIER = "P3"
+
+# Writes a recipe tried and deferred with live evidence, and the tier that takes them up.
+WRITE_DEFERRED: dict[str, str] = {}
+for _module in (writes_tree_relationships, writes_tree_relationship_details):
+    WRITE_DEFERRED.update(_module.DEFERRED)
+WRITE_DEFERRED_TIERS: dict[str, str] = {"restoreChildAndParentsRelationship": "P6"}
+
+_SOURCES = ("source descriptions and user collections are the P4 tier (the fixture "
+            "world makes descriptions with the hand-written library, not this generated "
+            "operation)")
+_MEMORIES = "portraits and memory personas are memories: the P5 tier"
+_MATCHES = ("matches, merges and change history are the P6 tier: P3 excludes "
+            "mergePerson, match resolution and not-a-match by plan")
+_DISCUSSIONS = "discussions and their comments are the P8 tier"
+_ACCOUNT = ("changes the signed-in account's state (preferred relationships, publishing), "
+            "which P3 excludes by plan: the P8 tier")
+
+# The Family Tree writes P3 did not attempt: (tier, reason).
+NOT_ATTEMPTED: dict[str, tuple[str, str]] = {
+    "createSourceDescription": ("P4", _SOURCES),
+    "updateSourceDescription": ("P4", _SOURCES),
+    "deleteSourceDescription": ("P4", _SOURCES),
+    "createSourceFolder": ("P4", _SOURCES),
+    "updateUserDefinedCollection": ("P4", _SOURCES),
+    "deleteUserDefinedCollection": ("P4", _SOURCES),
+    "updateSourceDescriptionsToCollection": ("P4", _SOURCES),
+    "deleteSourceDescriptionsFromCollections": ("P4", _SOURCES),
+    "deletePersonMemoriesPersonaReference": ("P5", _MEMORIES),
+    "updatePersonPortraits": ("P5", _MEMORIES),
+    "deletePersonPortrait": ("P5", _MEMORIES),
+    "mergePerson": ("P6", _MATCHES),
+    "updateMatchResolution": ("P6", _MATCHES),
+    "updatePersonNotAMatches": ("P6", _MATCHES),
+    "deletePersonNotAMatch": ("P6", _MATCHES),
+    "deletePersonNotAMatches": ("P6", _MATCHES),
+    "restoreChange": ("P6", "rolls back an entry of a person's or relationship's change "
+                            "history (needs a change id from /changes): the P6 tier "
+                            "(matches, merges, change history and restores)"),
+    "deleteTreePersonReference": (
+        "P7", "a tree person reference links a person to a user-tree person, which needs "
+              "a private tree fixture (an unverified write): the P7 tier"),
+    "createDiscussion": ("P8", _DISCUSSIONS),
+    "updateDiscussion": ("P8", _DISCUSSIONS),
+    "updateComments": ("P8", _DISCUSSIONS),
+    "deleteComment": ("P8", _DISCUSSIONS),
+    "deletePersonDiscussionReference": ("P8", "needs a discussion: " + _DISCUSSIONS),
+    "updatePreferredParentRelationship": ("P8", _ACCOUNT),
+    "deletePreferredParentRelationship": ("P8", _ACCOUNT),
+    "updatePreferredSpouseRelationship": ("P8", _ACCOUNT),
+    "deletePreferredSpouseRelationship": ("P8", _ACCOUNT),
+    "updatePublished": ("P8", _ACCOUNT),
+}
+
+
+def _write_reason(op: str, recipe_of: dict[str, str]) -> tuple[str, str]:
+    if op in WRITE_DEFERRED:
+        return WRITE_DEFERRED[op], WRITE_DEFERRED_TIERS[op]
+    if op in recipe_of:
+        return (f"claimed by recipe {recipe_of[op]}; awaiting its live run on beta",
+                AWAITING_TIER)
+    if op in NOT_ATTEMPTED:
+        tier, reason = NOT_ATTEMPTED[op]
+        return reason, tier
+    raise SystemExit(f"error: {op} is an unverified Family Tree write with no recorded "
+                     "deferral reason")
+
+
+def build_p3_report() -> str:
+    ops, _excluded, _areas, registry = load_inputs()
+    writes = sorted((o for o in ops if o.kind != "read" and o.area == P3_AREA),
+                    key=lambda o: o.operation_id)
+    recipe_of: dict[str, str] = {}
+    for name in sorted(RECIPES):
+        for op in RECIPES[name].ops:
+            recipe_of.setdefault(op, name)
+    verified = [o for o in writes
+                if effective_status(o.operation_id, o.fingerprint, registry) == "verified"]
+    pending = [o for o in writes if o not in verified]
+    rows = []
+    for o in pending:
+        reason, tier = _write_reason(o.operation_id, recipe_of)
+        rows.append((tier, o.operation_id, reason))
+    by_recipe: dict[str, list[str]] = {}
+    for o in verified:
+        by_recipe.setdefault(recipe_of.get(o.operation_id, "(no recipe)"), []).append(
+            o.operation_id)
+    lines = [
+        "# P3 write verification: deferred Family Tree writes",
+        "",
+        "Generated by `python -m tools.verify.deferred_report` (`--check` fails when this "
+        "file is stale); do not edit by hand. Verified means proven on beta only: a "
+        "verified write still needs `allow_production=True` to run on production.",
+        "",
+        f"Family Tree writes: {len(writes)}. Verified: {len(verified)}. "
+        f"Not verified: {len(pending)}.",
+        "",
+        "## Unverified writes",
+        "",
+        "| Operation | Reason unverified | Unblocked by |",
+        "|---|---|---|",
+        *(f"| {op} | {_cell(reason)} | {tier} |" for tier, op, reason in sorted(rows)),
+        "",
+        "## Verified writes by recipe",
+        "",
+        "| Recipe | Writes |",
+        "|---|---|",
+        *(f"| {name} | {', '.join(sorted(ids))} |" for name, ids in sorted(by_recipe.items())),
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m tools.verify.deferred_report")
     parser.add_argument("--check", action="store_true",
-                        help="exit 1 if the committed report is stale")
-    parser.add_argument("--path", type=Path, default=REPORT_PATH)
+                        help="exit 1 if a committed report is stale")
+    parser.add_argument("--path", type=Path, default=REPORT_PATH, help="the P2 reads report")
+    parser.add_argument("--p3-path", type=Path, default=P3_REPORT_PATH,
+                        help="the P3 Family Tree writes report")
     args = parser.parse_args(argv)
-    text = build_report()
+    reports = ((args.path, build_report()), (args.p3_path, build_p3_report()))
     if args.check:
-        current = args.path.read_text() if args.path.exists() else None
-        if current != text:
-            print(f"stale: {args.path} (run python -m tools.verify.deferred_report)",
-                  file=sys.stderr)
-            return 1
-        return 0
-    args.path.parent.mkdir(parents=True, exist_ok=True)
-    args.path.write_text(text)
+        stale = [p for p, text in reports
+                 if (p.read_text() if p.exists() else None) != text]
+        for p in stale:
+            print(f"stale: {p} (run python -m tools.verify.deferred_report)", file=sys.stderr)
+        return 1 if stale else 0
+    for path, text in reports:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
     return 0
 
 
