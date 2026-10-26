@@ -46,14 +46,38 @@ CANARY_COUNT = 5
 CANARY_QUERY = {"flag": "fst", "q.givenName": "Rosina", "q.surname": "Zopfi",
                 "q.birthLikeDate": "1870", "count": CANARY_COUNT}
 
+# Match-by-example (performPersonMatchesByExample): the same canary, found by describing
+# it. The example person is wired in as beta requires (probed 2026-10-26): without
+# sourceDescriptions + description it answers 400. The body sends the name and birth, so
+# the literal anchors are what only the response supplies: the matched record's id and
+# its entry title.
+CANARY_EXAMPLE_ID = "ex1"
+CANARY_EXAMPLE_PERSON = {
+    "id": CANARY_EXAMPLE_ID,
+    "gender": {"type": "http://gedcomx.org/Female"},
+    "names": [{"nameForms": [{"parts": [
+        {"type": "http://gedcomx.org/Given", "value": CANARY_NAME.split()[0]},
+        {"type": "http://gedcomx.org/Surname", "value": CANARY_NAME.split()[-1]}]}]}],
+    "facts": [{"type": "http://gedcomx.org/Birth", "date": {"original": CANARY_BIRTH_DATE},
+               "place": {"original": "Switzerland"}}],
+}
+CANARY_MATCH_BODY = {
+    "persons": [CANARY_EXAMPLE_PERSON],
+    "sourceDescriptions": [{"id": "sd1", "about": "#" + CANARY_EXAMPLE_ID}],
+    "description": "#sd1",
+}
+CANARY_MATCH_TITLE = f"Person {CANARY_ID} ({CANARY_NAME})"
+CANARY_MATCH_MIN_CONFIDENCE = 3
+
 DEFERRED: dict[str, str] = {
     "readTreePersonMatches": (
-        "beta answers 204 for every fixture (recon: dad and child); a 204 counts only "
-        "after a populated case, which needs a possible-duplicate person the matcher has "
-        "indexed, and the fixture world has no duplicate group"),
+        "GET /tree/persons/GQYM-SVR/matches answered 204 on 2026-10-26; fixture persons "
+        "are not indexed; no person with known matches is available, so a populated case "
+        "(which a 204 needs first) cannot be built"),
     "readTreePersonMatchesHeaders": (
-        "its sibling GET readTreePersonMatches answers 204 for every fixture, and a HEAD "
-        "case needs that GET to answer content to check anchors and validators"),
+        "its sibling GET readTreePersonMatches answers 204 (GQYM-SVR on 2026-10-26; "
+        "fixture persons are not indexed; no person with known matches is available), and "
+        "a HEAD case needs that GET to answer content to check anchors and validators"),
     "readPersonNotAMatches": (
         "beta answers 204 for every fixture; a populated case needs a not-a-match "
         "declaration, which is an unverified write the read tier cannot make"),
@@ -63,10 +87,6 @@ DEFERRED: dict[str, str] = {
     "allowPersonMerge": (
         "its contrast needs one viable and one non-viable merge pair; the fixture world "
         "has no viable pair (no duplicate group), so a sound contrast cannot be built"),
-    "performPersonMatchesByExample": (
-        "ReadCase.body is static, not resolved against the world, so the example cannot "
-        "describe a fixture created at run time; an anchor-free case would need a literal "
-        "proven in every match response, and the recon never called this operation"),
     "readCurrentTreePerson": (
         "an anchor could be discovered (readCurrentUser's personId and that person's "
         "name), but the not-found control cannot be built: the operation takes no path "
@@ -271,6 +291,35 @@ SEARCH_CASES = (
 )
 SEARCH = reads_recipe("reads.tree.search", SEARCH_CASES)
 
+def _expect_canary_match(result, world):
+    """The example's match: results >= 1, the canary first (by id) with a numeric
+    confidence at the match threshold and a numeric score."""
+    results = json_path(result.body, "results")
+    assert isinstance(results, int) and not isinstance(results, bool) and results >= 1, (
+        f"results is {results!r}, not >= 1")
+    entries = json_path(result.body, "entries")
+    assert isinstance(entries, list) and entries, "no entries"
+    first = entries[0]
+    assert first.get("id") == CANARY_ID, f"first match is {first.get('id')!r}, not {CANARY_ID}"
+    confidence, score = first.get("confidence"), first.get("score")
+    assert isinstance(confidence, (int, float)) and not isinstance(confidence, bool), (
+        "the match has no confidence")
+    assert confidence >= CANARY_MATCH_MIN_CONFIDENCE, f"confidence {confidence} is too low"
+    assert isinstance(score, (int, float)) and not isinstance(score, bool), (
+        "the match has no score")
+
+
+MATCHES_CASES = (
+    ReadCase(op="performPersonMatchesByExample", path_args=lambda w: {},
+             accept="application/x-gedcomx-atom+json", body=CANARY_MATCH_BODY,
+             missing={}, missing_body={}, missing_statuses=(400,),
+             expect=_expect_canary_match,
+             anchor_free_reason=("beta fresh fixtures are not indexed by the matcher; the "
+                                 "example describes the stable real canary record"),
+             literal_anchors=(CANARY_ID, CANARY_MATCH_TITLE)),
+)
+MATCHES = reads_recipe("reads.tree.matches_by_example", MATCHES_CASES)
+
 HISTORY = reads_recipe("reads.tree.history", [
     # The pid is in the path and in every link: the name is the anchor it cannot echo.
     ReadCase(op="readPersonChangeHistory", path_args=_pid("child"), missing=MISSING_PID,
@@ -282,4 +331,4 @@ HISTORY = reads_recipe("reads.tree.history", [
              needs=("persons",)),
 ])
 
-READS_TREE_PERSONS = (PERSONS, RELATIVES, SEARCH, HISTORY)
+READS_TREE_PERSONS = (PERSONS, RELATIVES, SEARCH, MATCHES, HISTORY)

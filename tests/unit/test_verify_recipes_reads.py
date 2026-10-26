@@ -127,6 +127,35 @@ def test_search_reads_the_canary_and_its_control_is_an_empty_query(reg_path, fak
     assert control == {}  # no parameter at all: beta answers 400
 
 
+@responses.activate
+def test_matches_by_example_reads_the_canary_and_its_control_is_the_empty_body(
+        reg_path, fake_world):
+    assert "performPersonMatchesByExample" not in rtp.DEFERRED
+    case = next(c for c in rtp.MATCHES_CASES if c.op == "performPersonMatchesByExample")
+    assert case.anchor_free_reason and not case.needs and case.eventual is None
+    assert case.accept == "application/x-gedcomx-atom+json"
+    assert case.missing_body == {} and case.missing_statuses == (400,)
+    assert rtp.CANARY_ID in case.literal_anchors
+    sent = json.dumps(case.body)
+    assert not any(lit in sent for lit in case.literal_anchors)  # nothing echoed
+    for op in ("readTreePersonMatches", "readTreePersonMatchesHeaders"):
+        assert "GQYM-SVR" in rtp.DEFERRED[op] and "204" in rtp.DEFERRED[op]
+    result, tree = run("reads.tree.matches_by_example", reg_path)
+    assert result["passed"] is True, result["problems"]
+    positive, control = tree.match_bodies
+    assert positive == case.body and control == {}
+    assert positive["description"] == "#sd1"
+    assert positive["sourceDescriptions"] == [{"id": "sd1", "about": "#ex1"}]
+
+
+@responses.activate
+@pytest.mark.parametrize("lie", ["other_first", "no_results", "empty_body_ok",
+                                 "no_confidence", "low_confidence", "no_score"])
+def test_matches_by_example_fails_when_the_answer_is_wrong(lie, reg_path, fake_world):
+    result, _tree = run("reads.tree.matches_by_example", reg_path, match_lie=lie)
+    assert result["passed"] is False, lie
+
+
 def test_current_tree_person_stays_deferred_for_want_of_a_control():
     # A discovered anchor (readCurrentUser's personId) would be sound, but the operation
     # takes no parameter, so no request to it can be a not-found control.

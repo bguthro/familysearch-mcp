@@ -60,12 +60,16 @@ class FakeTree:
     collection id answers 400, as in the recon.
     """
 
-    def __init__(self, mode=None, *, relationship_lag=0, search_lie=None, reference_lag=0):
+    def __init__(self, mode=None, *, relationship_lag=0, search_lie=None, reference_lag=0,
+                 match_lie=None):
         self.relationship_lag = relationship_lag  # 204s before the relationship is computed
         # 204s each person -> source read answers before the attach shows (Task 4 run 1)
         self.reference_lag = {"sources": reference_lag, "references": reference_lag}
         self.search_lie = search_lie  # ignore_count / other_first / no_confidence
         self.search_params: list[dict] = []
+        # other_first / no_results / empty_body_ok / no_confidence / low_confidence / no_score
+        self.match_lie = match_lie
+        self.match_bodies: list = []
         self.mode = mode
         self.role = {pid: role for role, pid in IDS.items() if role in GIVEN}
 
@@ -419,7 +423,49 @@ class FakeTree:
                 hit.pop("confidence")
         return self._answer(request, 200, {"entries": hits, "results": 200}, ATOM_JSON)
 
+    def matches_by_example(self, request):
+        """POST /tree/matches as probed: the example person must be wired in through
+        sourceDescriptions and ``description`` (else 400); the canary is its one match."""
+        body = json.loads(request.body or "null")
+        self.match_bodies.append(body)
+        bad = self._answer(request, 400, {"errors": [{"message": "no example"}]}, ATOM_JSON)
+        if not body:
+            if self.mode == "catch_all" or self.match_lie == "empty_body_ok":
+                return self._answer(request, 200, {"entries": [], "results": 0}, ATOM_JSON)
+            return bad
+        persons = body.get("persons") or []
+        refs = {d.get("id"): d.get("about") for d in body.get("sourceDescriptions") or []}
+        wired = refs.get((body.get("description") or "")[1:])
+        if not persons or wired != "#" + str(persons[0].get("id")):
+            return bad
+        if self.mode == "empty" or self.match_lie == "no_results":
+            return self._answer(request, 200, {"entries": [], "results": 0}, ATOM_JSON)
+        canary = {"id": rtp.CANARY_ID, "title": rtp.CANARY_MATCH_TITLE,
+                  "confidence": 5, "score": 0.997,
+                  "content": {"gedcomx": {"persons": [{"id": rtp.CANARY_ID, "display": {
+                      "name": rtp.CANARY_NAME}}]}}}
+        other = {"id": "GQZZ-001", "title": "Person GQZZ-001 (Rosine Zopf)",
+                 "confidence": 3, "score": 0.5,
+                 "content": {"gedcomx": {"persons": [{"id": "GQZZ-001", "display": {
+                     "name": "Rosine Zopf"}}]}}}
+        if self.mode == "other_person":
+            canary = other
+        entries = [canary]
+        if self.match_lie == "other_first":
+            entries = [other, canary]
+        elif self.match_lie == "no_confidence":
+            canary.pop("confidence")
+        elif self.match_lie == "low_confidence":
+            canary["confidence"] = 2
+        elif self.match_lie == "no_score":
+            canary.pop("score")
+        return self._answer(request, 200, {"entries": entries, "results": len(entries)},
+                            ATOM_JSON)
+
     def serve(self):
+        responses.add_callback(responses.POST, re.compile(re.escape(TREE + "/matches")
+                                                          + r"(\?.*)?$"),
+                               callback=self.matches_by_example)
         persons_list = re.compile(re.escape(TREE + "/persons") + r"(\?.*)?$")
         person = re.compile(re.escape(TREE + "/persons/") + r".+")
         search = re.compile(re.escape(TREE + "/search") + r"(\?.*)?$")
