@@ -91,7 +91,7 @@
   },
   "createMemoryComments": {
    "generated": {
-    "commit": "c0af592e33736b6d8aad541f2dd031015a880f8f",
+    "commit": "05487111b0e85e83e5621d34e0f213b470be06fc",
     "evidence": "state-change",
     "fingerprint": "9fbe46ed170291be5fd14ac6f9e1b6517219f3c51f78226d55d094134cd2ee2e",
     "recipe": "writes.memories.comment_create",
@@ -364,7 +364,7 @@
   },
   "deleteMemoryComment": {
    "generated": {
-    "commit": "c0af592e33736b6d8aad541f2dd031015a880f8f",
+    "commit": "05487111b0e85e83e5621d34e0f213b470be06fc",
     "evidence": "state-change",
     "fingerprint": "753093a285a9e966a0c72fb02a78de9d222694e63227f61be9c8eaf39ada23d5",
     "recipe": "writes.memories.comment_delete",
@@ -374,7 +374,7 @@
   },
   "deleteMemoryPersona": {
    "generated": {
-    "commit": "c0af592e33736b6d8aad541f2dd031015a880f8f",
+    "commit": "05487111b0e85e83e5621d34e0f213b470be06fc",
     "evidence": "state-change",
     "fingerprint": "b7095294f6df8603145cd4c2795a74f4ec46a79587a2f1c6741a4a8f7afffb9c",
     "recipe": "writes.memories.persona_delete",
@@ -438,7 +438,7 @@
   },
   "deletePersonPortrait": {
    "generated": {
-    "commit": "afc0cf414d67f313e729bf8dabc8a57ea2aff8e5",
+    "commit": "05487111b0e85e83e5621d34e0f213b470be06fc",
     "evidence": "state-change",
     "fingerprint": "2fcc6e4eb22c8a8178955a2fb0e7836e6c096f2c4a59eb92ab0b752a02c6b115",
     "recipe": "writes.memories.portrait_delete",
@@ -897,7 +897,7 @@
   },
   "readMemoryComments": {
    "generated": {
-    "commit": "c0af592e33736b6d8aad541f2dd031015a880f8f",
+    "commit": "05487111b0e85e83e5621d34e0f213b470be06fc",
     "evidence": "read-content",
     "fingerprint": "e0337ec84f9092b331d3ab5513a639f9195054a9bbf4481ed114d0b8fa17d4b8",
     "recipe": "reads.memories.comments",
@@ -1605,7 +1605,7 @@
   },
   "updatePersonPortraits": {
    "generated": {
-    "commit": "afc0cf414d67f313e729bf8dabc8a57ea2aff8e5",
+    "commit": "05487111b0e85e83e5621d34e0f213b470be06fc",
     "evidence": "state-change",
     "fingerprint": "07cb51370894fec05fb0f0b0adf71078f4d5f741c449db906c010bdbe0d21c1a",
     "recipe": "writes.memories.portraits_update",
