@@ -524,12 +524,22 @@
   },
   "getChildAndParentsRelationshipSourceReferences": {
    "generated": {
-    "status": "unverified"
+    "commit": "8f8cbabff4805737eb03d67cdab3ec19f8580ea1",
+    "evidence": "read-content",
+    "fingerprint": "cc66a007e32ce4ed592f947f9371f6684d8f68fbd9ae47a153878ef9e519c327",
+    "recipe": "reads.tree.child_and_parents_sources",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "getChildAndParentsRelationshipSources": {
    "generated": {
-    "status": "unverified"
+    "commit": "8f8cbabff4805737eb03d67cdab3ec19f8580ea1",
+    "evidence": "read-content",
+    "fingerprint": "f3940ff0ec8f4f5d77011d959d6bf5e88cd20fe5c86c4bab9b24426c12ce0325",
+    "recipe": "reads.tree.child_and_parents_sources",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "getCoupleRelationshipNotes": {
@@ -738,12 +748,22 @@
   },
   "readCoupleRelationshipSourceReferences": {
    "generated": {
-    "status": "unverified"
+    "commit": "8f8cbabff4805737eb03d67cdab3ec19f8580ea1",
+    "evidence": "read-content",
+    "fingerprint": "b4f05cb9f86c87a20b33cac413b8cd291c6252e6a5288f8e02fc9b908359e71b",
+    "recipe": "reads.tree.couple_sources",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "readCoupleRelationshipSources": {
    "generated": {
-    "status": "unverified"
+    "commit": "8f8cbabff4805737eb03d67cdab3ec19f8580ea1",
+    "evidence": "read-content",
+    "fingerprint": "301f22cb5e9288adac1d84916d4b453cf0e13399847e0a33f12f72ee3178f176",
+    "recipe": "reads.tree.couple_sources",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "readCurrentTree": {
@@ -1216,7 +1236,12 @@
   },
   "readUserDefinedCollectionSourceDescriptions": {
    "generated": {
-    "status": "unverified"
+    "commit": "8f8cbabff4805737eb03d67cdab3ec19f8580ea1",
+    "evidence": "read-content",
+    "fingerprint": "bb9c512477c22b34c461d07e0c102f8ed50f6abf0d0f3ca575a00993084b3d92",
+    "recipe": "reads.sources.collection_descriptions",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "readUserHistory": {
