@@ -466,6 +466,39 @@ WRITE_LIES = frozenset({
     "ref_removes_all",    # ... and removes every reference of the person
     "memory_not_attached",  # a person memory upload makes a floating memory
     "no_entity_id",       # a memory upload answers without X-ENTITY-ID (Location only)
+    # memories
+    "memory_create_ignored",   # a memory create answers 201 with an id and stores nothing
+    "memory_create_attached",  # ... attaches the new memory to the first person
+    "memory_create_no_description",  # ... drops the description
+    "memory_update_ignored",   # a memory update answers 204, changes nothing
+    "memory_update_sibling",   # ... also retitles every other memory
+    "memory_update_unlinks",   # ... drops the memory's links to its persons
+    "memory_delete_noop",      # the first memory delete answers 204, changes nothing
+    "memory_delete_wrong",     # ... deletes another memory
+    "comment_create_ignored",  # a comment POST answers 204 and stores nothing
+    "comment_create_replaces",  # ... replaces the memory's comments with the new one
+    "comment_delete_noop",     # deleting a comment answers 204, changes nothing
+    "comment_delete_wrong",    # ... deletes another comment
+    "comment_delete_all",      # ... deletes every comment of the memory
+    "persona_create_ignored",  # a persona POST answers 201 with an id and stores nothing
+    "persona_wrong_person",    # ... links the memory to another person
+    "persona_create_replaces",  # ... removes the memory's other links
+    "persona_update_ignored",  # a persona update answers 204, changes nothing
+    "persona_update_creates",  # ... adds a new persona instead
+    "persona_update_sibling",  # ... renames every persona of the memory
+    "persona_update_person",   # ... renames the tree person instead
+    "persona_delete_noop",     # deleting a persona answers 204, changes nothing
+    "persona_delete_wrong",    # ... deletes another persona of the memory
+    "persona_delete_all",      # ... deletes every persona of the memory
+    "persona_delete_memory",   # ... deletes the memory
+    "reference_delete_noop",   # deleting a person's memory reference answers 204, no change
+    "reference_delete_wrong",  # ... deletes another persona of the memory
+    "reference_delete_all",    # ... deletes every persona of the memory
+    "portrait_ignored",        # a portrait POST answers 204, stores nothing
+    "portrait_wrong_person",   # ... sets it on another person
+    "portrait_delete_noop",    # deleting a portrait answers 204, changes nothing
+    "portrait_delete_wrong",   # ... clears another person's portrait
+    "portrait_delete_all",     # ... clears every person's portrait
     # notes (every owner)
     "note_ignore_create",    # a note POST answers 201 with an id and stores nothing
     "note_ignore_update",    # a note update answers 204 and changes nothing
@@ -688,7 +721,7 @@ class WriteTree:
             "living": False, "deleted": False, "names": [self._named(n) for n in names],
             "facts": [self._named(f) for f in person.get("facts") or []],
             "gender": self._named(person["gender"]) if person.get("gender") else None,
-            "sources": [], "memories": [], "notes": []}
+            "sources": [], "portrait": None, "notes": []}
         return 201, {"X-ENTITY-ID": pid, "Location": f"{PERSONS}/{pid}"}, ""
 
     def _merge(self, current, posted, part):
@@ -771,29 +804,130 @@ class WriteTree:
         self._changed("sources", pid, before)
         return 204, {}, ""
 
+    def _pmids(self, pid):
+        """The live memories with a live persona for ``pid``, in creation order."""
+        return [m for m, r in self.memories.items() if not r["deleted"]
+                and any(p["pid"] == pid and not p["deleted"] for p in r["personas"])]
+
     def person_memories(self, request, pid):
-        listed = self._visible("memories", pid, list(self.persons[pid]["memories"]))
+        listed = self._visible("memories", pid, self._pmids(pid))
         listed = [m for m in listed if not self.memories[m]["deleted"]]
         if not listed:
             return 204, {}, ""
         return self._json(200, {"persons": [], "sourceDescriptions": [
             self.memory_json(m) for m in listed], "links": {"self": {"href": request.url}}})
 
-    def upload_memory(self, request, pid):
+    def _store_memory(self, request):
         assert b'name="artifact"' in request.body and PNG_SIGNATURE in request.body
         assert b"Content-Type: image/png" in request.body
         query = {k: v[0] for k, v in parse_qs(urlsplit(request.url).query).items()}
         mid = self._id("memory")
+        description = query.get("description")
+        if self.mode == "memory_create_no_description":
+            description = None
         self.memories[mid] = {"title": query.get("title"), "filename": query.get("filename"),
-                              "deleted": False}
+                              "description": description, "deleted": False,
+                              "personas": [], "comments": [], "seq": 0}
+        return mid
+
+    def _persona(self, mid, pid):
+        memory = self.memories[mid]
+        memory["seq"] += 1
+        persona = {"id": f"{mid}-{memory['seq']}", "pid": pid, "name": None, "deleted": False}
+        memory["personas"].append(persona)
+        return persona
+
+    def create_memory(self, request):
+        """POST /memories/memories: a standalone ("floating") memory, attached to nobody."""
+        self._record(request)
+        if self.mode == "memory_create_ignored":
+            mid = self._id("memory")
+            return 201, {"X-ENTITY-ID": mid}, ""
+        mid = self._store_memory(request)
+        if self.mode == "memory_create_attached":
+            pid = next(iter(self.persons), None)
+            if pid:
+                before = self._pmids(pid)
+                self._persona(mid, pid)
+                self._changed("memories", pid, before)
+        return 201, {"X-ENTITY-ID": mid, "Location": f"{MEMORIES}/{mid}"}, ""
+
+    def upload_memory(self, request, pid):
+        mid = self._store_memory(request)
+        persona_id = f"{mid}-1"
         if self.mode != "memory_not_attached":
-            before = list(self.persons[pid]["memories"])
-            self.persons[pid]["memories"].append(mid)
+            before = self._pmids(pid)
+            self._persona(mid, pid)
             self._changed("memories", pid, before)
-        headers = {"Location": f"{PERSONS}/{pid}/memory-references/{mid}-1"}
+        headers = {"Location": f"{PERSONS}/{pid}/memory-references/{persona_id}"}
         if self.mode != "no_entity_id":
             headers["X-ENTITY-ID"] = mid
         return 201, headers, ""
+
+    # ------------------------------------------------------------ portraits and references
+
+    def person_portraits(self, request, pid):
+        mid = self.persons[pid]["portrait"]
+        if mid is None or self.memories[mid]["deleted"]:
+            return 204, {}, ""
+        return self._json(200, {"sourceDescriptions": [self.memory_json(mid)]})
+
+    def set_portraits(self, request, pid):
+        posted = json.loads(request.body)["sourceDescriptions"]
+        assert len(posted) == 1
+        mid = posted[0]["id"]
+        assert posted[0]["about"] == f"{MEMORIES}/{mid}"
+        if mid not in self.memories or self.memories[mid]["deleted"]:
+            return 404, {}, ""
+        target = pid
+        if self.mode == "portrait_wrong_person":
+            target = next((p for p in self.persons if p != pid), pid)
+        if self.mode != "portrait_ignored":
+            self.persons[target]["portrait"] = mid
+        return 204, {}, ""
+
+    def delete_portrait(self, pid):
+        if self.persons[pid]["portrait"] is None:
+            return 404, {}, ""
+        if self.mode == "portrait_delete_noop":
+            return 204, {}, ""
+        if self.mode == "portrait_delete_all":
+            for p in self.persons.values():
+                p["portrait"] = None
+        elif self.mode == "portrait_delete_wrong":
+            other = next((p for p, r in self.persons.items()
+                          if p != pid and r["portrait"] is not None), pid)
+            self.persons[other]["portrait"] = None
+        else:
+            self.persons[pid]["portrait"] = None
+        return 204, {}, ""
+
+    def delete_reference_persona(self, pid, erid):
+        """DELETE /tree/persons/{pid}/memory-references/{erid}: erid is a persona id."""
+        found = next(((m, p) for m, r in self.memories.items() if not r["deleted"]
+                      for p in r["personas"]
+                      if p["id"] == erid and p["pid"] == pid and not p["deleted"]), None)
+        if found is None:
+            return 404, {}, ""
+        return self._remove_persona(*found, "reference_delete")
+
+    def _remove_persona(self, mid, persona, lie):
+        memory = self.memories[mid]
+        if self.mode == f"{lie}_noop":
+            return 204, {}, ""
+        victims = [persona]
+        if self.mode == f"{lie}_wrong":
+            victims = [p for p in memory["personas"] if p is not persona and not p["deleted"]
+                       ][:1] or [persona]
+        elif self.mode == f"{lie}_all":
+            victims = [p for p in memory["personas"] if not p["deleted"]]
+        for victim in victims:
+            before = self._pmids(victim["pid"])
+            victim["deleted"] = True
+            self._changed("memories", victim["pid"], before)
+        if self.mode == "persona_delete_memory" and lie == "persona_delete":
+            memory["deleted"] = True
+        return 204, {}, ""
 
     def person_route(self, request):
         self._record(request)
@@ -822,6 +956,15 @@ class WriteTree:
                 return self.person_memories(request, pid)
             if method == "POST":
                 return self.upload_memory(request, pid)
+        if what == "memory-references" and len(rest) == 2 and method == "DELETE":
+            return self.delete_reference_persona(pid, rest[1])
+        if what == "portraits" and len(rest) == 1:
+            if method == "GET":
+                return self.person_portraits(request, pid)
+            if method == "POST":
+                return self.set_portraits(request, pid)
+        if what == "portrait" and len(rest) == 1 and method == "DELETE":
+            return self.delete_portrait(pid)
         if what == "notes":
             return self.notes_route(request, person, "person", pid, rest[1:])
         if what in ("spouses", "parents", "children") and len(rest) == 1 and method == "GET":
@@ -1055,8 +1198,47 @@ class WriteTree:
 
     def memory_json(self, mid):
         m = self.memories[mid]
-        return {"id": mid, "about": f"{MEMORIES}/{mid}", "mediaType": "image/png",
+        body = {"id": mid, "about": f"{MEMORIES}/{mid}", "mediaType": "image/png",
                 "titles": [{"value": m["title"]}] if m["title"] else []}
+        if m["description"]:
+            body["descriptions"] = [{"value": m["description"]}]
+        return body
+
+    def update_memory(self, request, mid):
+        memory = self.memories[mid]
+        [posted] = json.loads(request.body)["sourceDescriptions"]
+        assert posted.get("id") == mid
+        if self.mode == "memory_update_ignored":
+            return 204, {}, ""
+        targets = [m for m in self.memories.values() if not m["deleted"]] \
+            if self.mode == "memory_update_sibling" else [memory]
+        for target in targets:
+            if posted.get("titles"):
+                target["title"] = posted["titles"][0]["value"]
+            if posted.get("descriptions"):
+                target["description"] = posted["descriptions"][0]["value"]
+        if self.mode == "memory_update_unlinks":
+            for persona in memory["personas"]:
+                before = self._pmids(persona["pid"])
+                persona["deleted"] = True
+                self._changed("memories", persona["pid"], before)
+        return 204, {}, ""
+
+    def delete_memory(self, mid):
+        if self.mode == "memory_delete_noop" and not self._fooled:
+            self._fooled = True
+            return 204, {}, ""
+        if self.mode == "memory_delete_wrong" and not self._fooled:
+            self._fooled = True
+            mid = next((m for m, r in self.memories.items()
+                        if m != mid and not r["deleted"]), mid)
+        memory = self.memories[mid]
+        pids = [p["pid"] for p in memory["personas"]]
+        befores = {pid: self._pmids(pid) for pid in pids}
+        memory["deleted"] = True
+        for pid, before in befores.items():
+            self._changed("memories", pid, before)
+        return 204, {}, ""
 
     def memory_route(self, request):
         self._record(request)
@@ -1065,9 +1247,126 @@ class WriteTree:
         if memory is None or memory["deleted"]:
             return self._gone(memory)
         if request.method == "DELETE":
-            memory["deleted"] = True
-            return 204, {}, ""
+            return self.delete_memory(mid)
+        if request.method == "POST":
+            return self.update_memory(request, mid)
         return self._json(200, {"sourceDescriptions": [self.memory_json(mid)]})
+
+    def memory_sub_route(self, request):
+        """``/memories/memories/{mid}/comments[/{cmid}]`` and ``.../personas[/{pid}]``."""
+        self._record(request)
+        tail = urlsplit(request.url).path.split("/platform/memories/memories/", 1)[1]
+        mid, what, *rest = tail.split("/")
+        memory = self.memories.get(mid)
+        if memory is None or memory["deleted"]:
+            return self._gone(memory)
+        return getattr(self, f"_memory_{what}")(request, mid, memory, rest)
+
+    def _memory_comments(self, request, mid, memory, rest):
+        if request.method == "GET" and not rest:
+            comments = [{"id": c["id"], "text": c["text"],
+                         "contributor": {"resourceId": AGENT}} for c in memory["comments"]]
+            discussion = {"id": f"D{mid}"}
+            if comments:
+                discussion["comments"] = comments
+            return self._json(200, {"discussions": [discussion],
+                                    "sourceDescriptions": [self.memory_json(mid)]})
+        if request.method == "POST" and not rest:
+            [discussion] = json.loads(request.body)["discussions"]
+            [comment] = discussion["comments"]
+            assert "id" not in comment
+            if self.mode == "comment_create_ignored":
+                return 204, {}, ""
+            self._seq["reference"] += 1
+            if self.mode == "comment_create_replaces":
+                memory["comments"] = []
+            memory["comments"].append({"id": f"CM{self._seq['reference']:03d}",
+                                       "text": comment["text"]})
+            return 204, {}, ""
+        if request.method == "DELETE" and len(rest) == 1:
+            found = next((c for c in memory["comments"] if c["id"] == rest[0]), None)
+            if found is None:
+                return 404, {}, ""
+            if self.mode == "comment_delete_noop":
+                return 204, {}, ""
+            victims = [found]
+            if self.mode == "comment_delete_wrong":
+                victims = [c for c in memory["comments"] if c is not found][:1] or [found]
+            elif self.mode == "comment_delete_all":
+                victims = list(memory["comments"])
+            memory["comments"] = [c for c in memory["comments"] if c not in victims]
+            return 204, {}, ""
+        return 404, {}, ""
+
+    def persona_json(self, mid, persona):
+        person = self.persons[persona["pid"]]
+        name = persona["name"] or (
+            person["names"][0]["nameForms"][0].get("fullText") if person["names"] else "")
+        return {"id": persona["id"], "display": {"name": name},
+                "names": [{"nameForms": [{"fullText": name}]}],
+                "identifiers": {"http://familysearch.org/v1/FamilyTreePerson": [
+                    f"{BETA}/ark:/61903/4:1:{persona['pid']}"]}}
+
+    def _memory_personas(self, request, mid, memory, rest):
+        live = [p for p in memory["personas"] if not p["deleted"]]
+        if request.method == "GET" and not rest:
+            if not live:
+                return 204, {}, ""
+            assert "includeTreeIdentifier=true" in request.url
+            return self._json(200, {"persons": [self.persona_json(mid, p) for p in live],
+                                    "sourceDescriptions": [self.memory_json(mid)]})
+        if request.method == "POST" and not rest:
+            return self.create_persona(request, mid, memory)
+        persona = next((p for p in live if rest and p["id"] == rest[0]), None)
+        if persona is None:
+            return 404, {}, ""
+        if request.method == "GET":
+            return self._json(200, {"persons": [self.persona_json(mid, persona)],
+                                    "sourceDescriptions": [self.memory_json(mid)]})
+        if request.method == "POST":
+            return self.update_persona(request, mid, memory, persona)
+        return self._remove_persona(mid, persona, "persona_delete")
+
+    def create_persona(self, request, mid, memory):
+        [posted] = json.loads(request.body)["persons"]
+        assert posted["media"] == [{"description": f"{MEMORIES}/{mid}"}]
+        [ark] = posted["identifiers"]["http://familysearch.org/v1/FamilyTreePerson"]
+        pid = ark.rsplit(":1:", 1)[1]
+        if pid not in self.persons or self.persons[pid]["deleted"]:
+            return 404, {}, ""
+        if self.mode == "persona_create_ignored":
+            return 201, {"X-ENTITY-ID": f"{mid}-{memory['seq'] + 1}"}, ""
+        if self.mode == "persona_wrong_person":
+            pid = next((p for p in self.persons if p != pid), pid)
+        if self.mode == "persona_create_replaces":
+            for old in memory["personas"]:
+                if not old["deleted"]:
+                    before = self._pmids(old["pid"])
+                    old["deleted"] = True
+                    self._changed("memories", old["pid"], before)
+        before = self._pmids(pid)
+        persona = self._persona(mid, pid)
+        self._changed("memories", pid, before)
+        return 201, {"X-ENTITY-ID": persona["id"],
+                     "Location": f"{MEMORIES}/{mid}/personas/{persona['id']}"}, ""
+
+    def update_persona(self, request, mid, memory, persona):
+        [posted] = json.loads(request.body)["persons"]
+        assert posted.get("id") == persona["id"]
+        name = posted["names"][0]["nameForms"][0]["fullText"]
+        if self.mode == "persona_update_ignored":
+            return 204, {}, ""
+        if self.mode == "persona_update_person":
+            person = self.persons[persona["pid"]]
+            person["names"][0]["nameForms"][0]["fullText"] = name
+        elif self.mode == "persona_update_creates":
+            self._persona(mid, persona["pid"])["name"] = name
+        elif self.mode == "persona_update_sibling":
+            for other in memory["personas"]:
+                other["name"] = name
+        else:
+            persona["name"] = name
+        return 204, {}, ""
 
     # ------------------------------------------------------------ notes
 
@@ -1562,7 +1861,13 @@ class WriteTree:
             responses.add_callback(
                 method, re.compile(re.escape(BETA) + r"/platform/sources/[^/]+/collections/"
                                    r"descriptions(\?.*)?$"), callback=self.box_route)
+        for method in (responses.GET, responses.POST, responses.DELETE):
             responses.add_callback(
                 method, re.compile(re.escape(MEMORIES + "/") + r"[^/?]+(\?.*)?$"),
                 callback=self.memory_route)
+            responses.add_callback(
+                method, re.compile(re.escape(MEMORIES + "/") + r"[^/?]+/(comments|personas)"
+                                   r"(/[^/?]+)?(\?.*)?$"), callback=self.memory_sub_route)
+        responses.add_callback(responses.POST, re.compile(re.escape(MEMORIES) + r"(\?.*)?$"),
+                               callback=self.create_memory)
         return self

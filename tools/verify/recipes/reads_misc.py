@@ -4,8 +4,10 @@ The memory cases read the ``memory`` fixture (a PNG uploaded to the child, title
 its own ``ZZSPIKE`` value, and the persona the upload made for the child, both from
 tools/verify/world.py) and anchor on what the request does not send: the memory's
 title, or the child (its id in the persona's tree identifier, its name on the persona).
-The user's own memories, the Users and Utilities reads, and the memory comments have no
-sound case under the read rules: they are in ``DEFERRED``.
+The memory comments case reads a ZZSPIKE comment the world posted on that memory (the
+``memory_comment`` group; ``createMemoryComments`` is verified by a write recipe of its
+own) and anchors on its text. The user's own memories and the Users and Utilities reads
+have no sound case under the read rules: they are in ``DEFERRED``.
 """
 from __future__ import annotations
 
@@ -29,10 +31,6 @@ DEFERRED: dict[str, str] = {
         "in upstream call: Unable to read artifacts belonging to this user' (Task 5 live "
         "run 2), and the sealed world does not and must not hold an account id (ruling "
         "I-4), so path args cannot name the user"),
-    "readMemoryComments": (
-        "a populated case needs a comment on the fixture memory, and createMemoryComments "
-        "is an unverified write; recon's 200 for the fixture carried only the memory's "
-        "description and an empty discussion, which proves nothing about comments"),
     "readCurrentUser": (
         "takes no path or query parameter, so no not-found control can be built: every "
         "request reads the same signed-in user (already verified by the hand-written "
@@ -136,4 +134,24 @@ MEMORIES_CASES = (
 )
 MEMORIES = reads_recipe("reads.memories", MEMORIES_CASES)
 
-READS_MISC = (MEMORIES,)
+
+def _expect_comment(result, world):
+    """A comment of the memory's discussion reading exactly the world's comment text."""
+    want = world.names["memory_comment_text"]
+    discussions = json_path(result.body, "discussions")
+    comments = [c for d in discussions if isinstance(d, dict)
+                for c in (d.get("comments") or []) if isinstance(c, dict)]
+    assert any(c.get("text") == want for c in comments), (
+        f"no comment of the memory's discussions reads {want!r}")
+
+
+# The comment is posted by the world just before the read; its text is what the request
+# does not send (the path names only the memory).
+MEMORY_COMMENTS_CASES = (
+    ReadCase(op="readMemoryComments", path_args=_mid, missing=MISSING_MID,
+             expect=_expect_comment, anchors=(lambda w: w.names["memory_comment_text"],),
+             needs=("memory_comment",)),
+)
+MEMORY_COMMENTS = reads_recipe("reads.memories.comments", MEMORY_COMMENTS_CASES)
+
+READS_MISC = (MEMORIES, MEMORY_COMMENTS)

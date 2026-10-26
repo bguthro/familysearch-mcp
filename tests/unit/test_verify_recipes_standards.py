@@ -39,6 +39,8 @@ CHILD = "KWZZ-CHD"
 CHILD_NAME = "ZZSPIKEC100000000003 ZZSPIKETESTSURNAME"
 MEMORY = ("4017777", "ZZSPIKEM100000000008")
 OTHER_MEMORY_TITLE = "ZZSPIKEM199999999999"
+COMMENT = "ZZSPIKEC155555555555"
+OTHER_COMMENT = "ZZSPIKEC199999999999"
 PERSONA_SEQ = "74542947"
 PERSONA = f"{MEMORY[0]}-{PERSONA_SEQ}"  # live run 1: "<memory id>-<sequence>"
 STANDARDS = {r.name for r in rs.READS_STANDARDS}
@@ -68,7 +70,7 @@ class FakeWorld:
         self.ids.update(dad="KWZZ-DAD", mom="KWZZ-MOM", child=CHILD, memory=MEMORY[0],
                         memory_persona_seq=PERSONA_SEQ)
         self.names.update(child_name=CHILD_NAME,
-                          memory_title=MEMORY[1])
+                          memory_title=MEMORY[1], memory_comment_text=COMMENT)
 
 
 class FakeStandards:
@@ -311,6 +313,14 @@ class FakeStandards:
             extra = [{"id": "4019999", "titles": [{"value": "an older memory"}]}]
             return self._ok({"sourceDescriptions": [self.memory()] + (
                 extra if self.mode == "ignore_id" else [])})
+        c = re.fullmatch(r"/memories/([^/]+)/comments", path)
+        if c:
+            if not self._known(c.group(1), MEMORY[0]):
+                return self._unknown()
+            text = OTHER_COMMENT if self.mode == "other_record" else COMMENT
+            # Live shape unknown: the recon shows only discussions and sourceDescriptions.
+            return self._ok({"discussions": [{"id": "D1", "comments": [
+                {"id": "C1", "text": text}]}], "sourceDescriptions": [self.memory()]})
         m = re.fullmatch(r"/memories/([^/]+)(?:/personas(?:/([^/]+))?)?", path)
         if not m or not self._known(m.group(1), MEMORY[0]):
             return self._unknown()
@@ -437,6 +447,14 @@ def test_memory_persona_case_needs_the_discovered_persona():
     case = next(c for c in rm.MEMORIES_CASES if c.op == "readMemoryPersona")
     assert case.needs == ("memory",)
     assert case.path_args(FakeWorldFor("memory")) == {"mid": MEMORY[0], "pid": PERSONA}
+
+
+def test_memory_comments_case_anchors_on_the_comment_text():
+    # createMemoryComments is verified by its own write recipe; the world posts the comment.
+    case = rm.MEMORY_COMMENTS_CASES[0]
+    assert case.op == "readMemoryComments" and "readMemoryComments" not in rm.DEFERRED
+    assert case.needs == ("memory_comment",) and case.missing == rm.MISSING_MID
+    assert [a(FakeWorldFor("memory_comment")) for a in case.anchors] == [COMMENT]
 
 
 def FakeWorldFor(*groups):  # noqa: N802 - a tiny factory for one assertion

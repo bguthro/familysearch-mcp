@@ -652,7 +652,7 @@ def redacted(run: Callable[[VerifyContext], None]) -> Callable[[VerifyContext], 
 
 # What a source box read may carry about the signed-in account (its uid in links, the
 # contributor of a folder): left out of a failure's skeleton (ruling I-4).
-_ACCOUNT_KEYS = ("links", "attribution")
+_ACCOUNT_KEYS = ("links", "attribution", "contributor")
 
 
 def _without_account(value: Any) -> Any:

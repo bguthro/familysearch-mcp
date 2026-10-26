@@ -14,6 +14,10 @@ contained in another, so an anchor can only match its own record.
 The ``canaries`` group is not a fixture: it adds the CANARY block's real beta standards
 values to ``names`` (no request, nothing to tear down) and never shares a world with a
 fixture group. ``memory`` also reads back the persona the upload made (best effort).
+``memory_comment`` adds one ZZSPIKE comment to the ``memory`` (``memory_comment_text``),
+and ``portrait`` uploads a second memory to the child (``portrait_memory``, titled
+``portrait_title``) and selects it as the child's portrait; both go through
+``FixtureSet`` (raw client, bodies P5 sends too) and go with the memory / the child.
 ``relationship_source`` attaches the ``source`` description to the ``couple`` and to the
 ``child_and_parents`` relationship, by the reference-create shape P3 verified on beta
 (POST ``{relationship}/source-references``, raw client as the notes are posted); the
@@ -24,7 +28,6 @@ and ``add_to_collection`` make it with the raw client, as the notes are posted.
 """
 from __future__ import annotations
 
-import base64
 import itertools
 import uuid
 from collections.abc import Mapping
@@ -40,7 +43,7 @@ from familysearch.sources import Sources
 from familysearch.tree import CHILD_AND_PARENTS_PATH, COUPLE_PATH, TreeWriter
 
 from .core import _require_beta
-from .fixtures import FixtureSet
+from .fixtures import PNG, FixtureSet
 
 # group -> the groups it implies (built first)
 GROUPS: dict[str, tuple[str, ...]] = {
@@ -53,6 +56,8 @@ GROUPS: dict[str, tuple[str, ...]] = {
     "source": ("persons",),
     "collection": ("source",),
     "memory": ("persons",),
+    "memory_comment": ("memory",),
+    "portrait": ("persons",),
     "relationship_source": ("couple", "source"),
 }
 FIXTURE_GROUPS = tuple(GROUPS)
@@ -102,9 +107,6 @@ CANARY_NAMES: Mapping[str, str] = MappingProxyType({
 # person note's is proven on beta) must not keep the other notes from being built.
 INDEPENDENT = frozenset({"notes"})
 PERSONS = (("dad", "Male", "1850"), ("mom", "Female", "1852"), ("child", "Male", "1875"))
-PNG = base64.b64decode(  # a 1x1 PNG, as deep.py uploads
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5E"
-    "rkJggg==")
 PERSONS_PATH = "/platform/tree/persons"
 
 
@@ -153,6 +155,8 @@ class World:
         self._pending: dict[str, str] = {}  # values for objects not created yet
         self._attached = False
         self._filed = False  # the source description is in the collection
+        self._commented = False  # the memory carries its comment
+        self._portrayed = False  # the child's portrait is selected
         self._rel_attached: set[str] = set()  # relationships the source is attached to
         self._built: set[str] = set()
 
@@ -389,6 +393,23 @@ class World:
         seq = persona[len(mid) + 1:] if persona.startswith(mid + "-") else ""
         if seq:
             self._ids["memory_persona_seq"] = seq
+
+    def _build_memory_comment(self) -> None:
+        text = self._value("memory_comment_text", "c")
+        if not self._commented:
+            self._fixtures.memory_comment(self._ids["memory"], text)
+            self._commented = True
+        self._named("memory_comment_text", text)
+
+    def _build_portrait(self) -> None:
+        if "portrait_memory" not in self._ids:
+            title = self._value("portrait_title", "p")
+            self._ids["portrait_memory"] = self._fixtures.memory(  # tracked there
+                title, person=self._ids["child"])
+            self._named("portrait_title", title)
+        if not self._portrayed:
+            self._fixtures.set_portrait(self._ids["child"], self._ids["portrait_memory"])
+            self._portrayed = True
 
     # ---------------------------------------------------------------- anchors safety
 

@@ -68,8 +68,11 @@ def test_claimed_writes_await_their_live_run_and_the_rest_name_a_later_tier():
             assert tier != "P3" and op in dr.NOT_ATTEMPTED, op
 
 
-def test_deferral_tables_name_only_family_tree_writes():
+def test_deferral_tables_name_only_family_tree_or_memories_writes():
     writes = _writes()
+    ops, _ex, _areas, registry = load_inputs()
+    writes.update({o.operation_id: "x" for o in ops
+                   if o.kind != "read" and o.area == dr.P5_AREA})
     for op in (*dr.NOT_ATTEMPTED, *dr.WRITE_DEFERRED):
         assert op in writes, op
     assert set(dr.WRITE_DEFERRED) <= set(dr.WRITE_DEFERRED_TIERS)

@@ -11,6 +11,7 @@ send too. Its "gone" check has two signals, since beta answers an unknown collec
 id 400 ("Unable to read collection", API recon), not 404: the read errors and the
 user's folder list (``/sources/collections``) no longer names it.
 """
+import base64
 import uuid
 
 from familysearch._urls import join_path
@@ -31,6 +32,10 @@ COLLECTIONS_PATH = "/platform/sources/collections"
 # An unknown collection id: beta answered 400 (API recon), so 400 joins 404/410 here,
 # but only together with the folder list not naming the collection.
 COLLECTION_GONE = (400, 404, 410)
+PNG = base64.b64decode(  # a 1x1 PNG, as deep.py uploads
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5E"
+    "rkJggg==")
+PNG_NAME = "zzspike.png"
 
 
 def collection_body(title: str, *, udcid: str | None = None) -> dict:
@@ -44,6 +49,18 @@ def collection_body(title: str, *, udcid: str | None = None) -> dict:
 def descriptions_body(sids) -> dict:
     """Source descriptions by id, as added (or moved) to a collection."""
     return {"sourceDescriptions": [{"id": sid} for sid in sids]}
+
+
+def comments_body(text: str) -> dict:
+    """A comment to add to a memory: the discussion shape readMemoryComments answers
+    (``discussions`` holding ``comments``). Not proven on beta before P5."""
+    return {"discussions": [{"comments": [{"text": text}]}]}
+
+
+def portrait_body(memory_url: str, mid: str) -> dict:
+    """A portrait list naming one memory's description (a SourceDescription list, the
+    spec's schema for updatePersonPortraits). Not proven on beta before P5."""
+    return {"sourceDescriptions": [{"id": mid, "about": memory_url}]}
 
 
 def created_header_id(headers) -> str | None:
@@ -124,6 +141,57 @@ class FixtureSet:
             reason=self._reason)
         self.track("source", sid)
         return sid
+
+    def memory(self, title: str, *, person: str | None = None) -> str:
+        """Upload a tiny ZZSPIKE PNG memory (the proven ``Memories`` calls) and track it.
+
+        Standalone it is floating, attached to nobody; with ``person`` (a tracked
+        fixture) it is uploaded to that person, who gets a persona of it.
+        """
+        if not (isinstance(title, str) and title.startswith("ZZSPIKE")):
+            raise ValueError("a fixture memory's title must start with ZZSPIKE")
+        if person is None:
+            mid = self._memories.upload(PNG, filename=PNG_NAME, content_type="image/png",
+                                        title=title, reason=self._reason)
+        else:
+            self._own_persons(person)
+            mid = self._memories.upload_to_person(
+                person, PNG, filename=PNG_NAME, content_type="image/png", title=title,
+                reason=self._reason)
+        self.track("memory", mid)
+        return mid
+
+    def _own_memory(self, mid: str) -> None:
+        if mid not in self._tracked["memory"]:
+            raise ValueError("memory fixtures touch only this run's tracked memories")
+
+    def memory_url(self, mid: str) -> str:
+        """The memory resource URL (no query), as a persona or portrait names it."""
+        self._own_memory(mid)
+        return self._memories.memory_url(mid).split("?")[0]
+
+    def link_memory(self, mid: str, pid: str) -> None:
+        """Link a tracked memory to a tracked person (``Memories.link_to_person``: a
+        persona with the person's ark; read-back proven on beta). The persona goes with
+        the memory."""
+        self._own_memory(mid)
+        self._own_persons(pid)
+        self._memories.link_to_person(pid, mid, reason=self._reason)
+
+    def memory_comment(self, mid: str, text: str) -> None:
+        """Add a comment to a tracked memory (raw client; it goes with the memory)."""
+        if not (isinstance(text, str) and text.startswith("ZZSPIKE")):
+            raise ValueError("a fixture comment must start with ZZSPIKE")
+        self._client.post(join_path(self.memory_url(mid), "comments"),
+                          json=comments_body(text), reason=self._reason)
+
+    def set_portrait(self, pid: str, mid: str) -> None:
+        """Select a tracked memory as a tracked person's portrait (raw client; the
+        selection goes with the person)."""
+        self._own_persons(pid)
+        url = join_path(join_path(self._collection("persons"), pid), "portraits")
+        self._client.post(url, json=portrait_body(self.memory_url(mid), mid),
+                          reason=self._reason)
 
     def collection(self, title: str) -> str:
         """Create a ZZSPIKE user-defined collection with the raw client and track it."""
