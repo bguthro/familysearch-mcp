@@ -86,7 +86,12 @@
   },
   "createMemoryComments": {
    "generated": {
-    "status": "unverified"
+    "commit": "c0af592e33736b6d8aad541f2dd031015a880f8f",
+    "evidence": "state-change",
+    "fingerprint": "9fbe46ed170291be5fd14ac6f9e1b6517219f3c51f78226d55d094134cd2ee2e",
+    "recipe": "writes.memories.comment_create",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "createMemoryPersona": {
@@ -344,12 +349,22 @@
   },
   "deleteMemoryComment": {
    "generated": {
-    "status": "unverified"
+    "commit": "c0af592e33736b6d8aad541f2dd031015a880f8f",
+    "evidence": "state-change",
+    "fingerprint": "753093a285a9e966a0c72fb02a78de9d222694e63227f61be9c8eaf39ada23d5",
+    "recipe": "writes.memories.comment_delete",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "deleteMemoryPersona": {
    "generated": {
-    "status": "unverified"
+    "commit": "c0af592e33736b6d8aad541f2dd031015a880f8f",
+    "evidence": "state-change",
+    "fingerprint": "b7095294f6df8603145cd4c2795a74f4ec46a79587a2f1c6741a4a8f7afffb9c",
+    "recipe": "writes.memories.persona_delete",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "deletePerson": {
@@ -862,7 +877,12 @@
   },
   "readMemoryComments": {
    "generated": {
-    "status": "unverified"
+    "commit": "c0af592e33736b6d8aad541f2dd031015a880f8f",
+    "evidence": "read-content",
+    "fingerprint": "e0337ec84f9092b331d3ab5513a639f9195054a9bbf4481ed114d0b8fa17d4b8",
+    "recipe": "reads.memories.comments",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "readMemoryPersona": {
