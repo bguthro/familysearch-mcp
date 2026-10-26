@@ -135,11 +135,19 @@ def relationship_create(ctx: VerifyContext) -> None:
     try:
         _check_child_and_parents(ctx, caprid, crid, husband, wife, child, parents0)
     except Exception:
-        try:  # a couple beta derived must not outlive a failed check
-            _sweep(ctx, family)
-        except Exception as e:  # noqa: BLE001 - the check's failure is the one to report
-            ctx.notes.append(f"sweeping up after the failure failed: {e}")
+        _sweep_quietly(ctx, family)  # a couple beta derived must not outlive a failure
         raise
+
+
+def _sweep_quietly(ctx: VerifyContext, pids: list[str]) -> None:
+    """``_sweep`` for teardown's sake only: what it tracks (or fails at) is a note."""
+    try:
+        swept = _sweep(ctx, pids)
+    except Exception as e:  # noqa: BLE001 - the recipe's own outcome is the one to report
+        ctx.notes.append(f"sweeping up untracked relationships failed: {e}")
+        return
+    if swept:
+        ctx.notes.append(f"tracked relationships nobody asked for, for teardown: {swept}")
 
 
 def _check_child_and_parents(ctx: VerifyContext, caprid: str, crid: str, husband: str,
@@ -236,7 +244,14 @@ def child_and_parents_update(ctx: VerifyContext) -> None:
     child = ctx.fixtures.person(given="CapUpdChild", birth_year="1880")
     ctx.fixtures.couple(husband, wife)
     caprid = ctx.fixtures.child_and_parents(child, [husband, wife])
-    roles = {"parent1": husband, "parent2": wife, "child": child}
+    try:
+        _update_parent_facts(ctx, caprid, {"parent1": husband, "parent2": wife,
+                                           "child": child})
+    finally:  # should beta derive a couple anyway, teardown deletes it too
+        _sweep_quietly(ctx, [husband, wife, child])
+
+
+def _update_parent_facts(ctx: VerifyContext, caprid: str, roles: dict[str, str]) -> None:
     before = read_child_and_parents(ctx, caprid)
     _expect_kind(before, "child_and_parents", roles)
     for key, other in (("parent1Facts", "parent2Facts"), ("parent2Facts", "parent1Facts")):
@@ -350,6 +365,14 @@ def relationship_parent_delete(ctx: VerifyContext) -> None:
     child = ctx.fixtures.person(given="ParChild", birth_year="1880")
     crid = ctx.fixtures.couple(father, mother)
     caprid = ctx.fixtures.child_and_parents(child, [father, mother])
+    try:
+        _delete_parent(ctx, caprid, crid, father, mother, child)
+    finally:  # should beta derive a couple anyway, teardown deletes it too
+        _sweep_quietly(ctx, [father, mother, child])
+
+
+def _delete_parent(ctx: VerifyContext, caprid: str, crid: str, father: str, mother: str,
+                   child: str) -> None:
     v0 = read_child_and_parents(ctx, caprid)
     _expect_kind(v0, "child_and_parents",
                  {"parent1": father, "parent2": mother, "child": child})

@@ -166,6 +166,18 @@ def test_relationship_create_tracks_and_reports_a_derived_couple(reg_path, slept
 
 
 @responses.activate
+@pytest.mark.parametrize("name", ["writes.tree.child_and_parents_update",
+                                  "writes.tree.relationship_parent_delete"])
+def test_two_parent_fixture_recipes_sweep_up_a_derived_couple(name, reg_path, slept):
+    # Not the op under test, so it does not fail the recipe; it must not be left behind.
+    result, tree, _ctx = run(name, reg_path, "duplicate_couple")
+    assert result["passed"], result["problems"]
+    assert any("nobody asked for" in n for n in result["notes"]), result
+    assert len([r for r in tree.relationships.values() if r["kind"] == "couple"]) == 2
+    assert tree.live() == []
+
+
+@responses.activate
 def test_parent_delete_removes_parent2_of_a_two_parent_relationship(reg_path, slept):
     result, tree, _ctx = run("writes.tree.relationship_parent_delete", reg_path)
     assert result["passed"], result["problems"]

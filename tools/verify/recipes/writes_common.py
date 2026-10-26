@@ -431,11 +431,14 @@ class Relationship:
                            "facts": facts}, ensure_ascii=False)
 
 
-def _relationship(record: dict, envelope: str, result: ApiResult) -> Relationship:
+def _relationship(record: dict, envelope: str, result: ApiResult, *,
+                  untyped_couple: bool = False) -> Relationship:
     if envelope == "childAndParentsRelationships":
         kind = "child_and_parents"
+    elif record.get("type") == COUPLE or (untyped_couple and record.get("type") is None):
+        kind = "couple"
     else:
-        kind = "couple" if record.get("type") == COUPLE else str(record.get("type"))
+        kind = str(record.get("type"))
     roles = {role: ref_id(record[role]) for role in ROLES.get(kind, ("person1", "person2"))
              if record.get(role)}
     facts = {}
@@ -449,13 +452,15 @@ def _relationship(record: dict, envelope: str, result: ApiResult) -> Relationshi
     return Relationship(str(record.get("id")), kind, roles, facts, result)
 
 
-def _relationships(result: ApiResult) -> dict[str, Relationship]:
+def _relationships(result: ApiResult, *, untyped_couple: bool = False
+                   ) -> dict[str, Relationship]:
     body = result.body if isinstance(result.body, dict) else {}
     found = {}
     for envelope in ("relationships", "childAndParentsRelationships"):
         for record in body.get(envelope) or []:
             if isinstance(record, dict) and record.get("id"):
-                found[str(record["id"])] = _relationship(record, envelope, result)
+                found[str(record["id"])] = _relationship(record, envelope, result,
+                                                         untyped_couple=untyped_couple)
     return found
 
 
@@ -499,7 +504,10 @@ def relatives(ctx: VerifyContext, which: str, pid: str) -> Relatives:
     body = result.body if isinstance(result.body, dict) else {}
     persons = frozenset(str(p["id"]) for p in body.get("persons") or []
                         if isinstance(p, dict) and p.get("id"))
-    return Relatives(persons, _relationships(result), result)
+    # The live relatives reads were proven by ids only: an untyped entry in a
+    # person's ``relationships`` is taken as a couple there (never on a relationship
+    # resource, whose type a create recipe checks).
+    return Relatives(persons, _relationships(result, untyped_couple=True), result)
 
 
 def other_gender(gender_type: str | None) -> str:

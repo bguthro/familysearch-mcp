@@ -259,6 +259,19 @@ def test_relationship_views_tell_couples_from_child_and_parents_and_other_types(
             {"id": "C1", "type": wc.COUPLE, "facts": [{"type": "x"}]}]}), "C1")
 
 
+def test_relatives_take_an_untyped_entry_as_a_couple_but_a_resource_read_does_not():
+    body = {"persons": [{"id": "A"}, {"id": "B"}], "relationships": [
+        {"id": "C1", "person1": {"resourceId": "A"}, "person2": {"resourceId": "B"}}]}
+
+    class Api:
+        def read_person_spouses(self, pid):
+            return result(body)
+
+    listed = wc.relatives(type("C", (), {"api": Api()})(), "spouses", "A")
+    assert listed.persons == {"A", "B"} and set(listed.of_kind("couple")) == {"C1"}
+    assert wc.relationship_view(result(body), "C1").kind == "None"  # type checked strictly
+
+
 def test_restore_is_bare_and_retries_with_an_empty_body_only_on_415():
     sent = []
 
