@@ -233,22 +233,28 @@ def _portrait_of(found, pid: str, what: str) -> str:
 def portraits_update(ctx: VerifyContext) -> None:
     """Select a fixture person's portrait with updatePersonPortraits.
 
-    A fixture person has two memories and a second fixture person none; the first memory
+    A fixture person has two memories and a second fixture person one; the first memory
     is posted as the portrait (a person with a media reference to the memory carrying a
     RectangleRegion). Negative control: the person's portrait descriptions
-    (readPersonPortraits, unclaimed and not yet verified), before (none) and after
+    (readPersonPortraits, unclaimed), before (none at all, else the recipe fails) and after
     (polled): their ids, server-made. They must then be exactly one description, id
     ``tps.portrait.N``, image/png, naming the person; the second person still has none;
-    the first person's memory list still holds both memories.
+    the first person's memory list still holds both memories. The second person has a
+    memory of her own, so a default portrait derived from memories would show on her too.
     """
     owner = ctx.fixtures.person(given="PortraitSet")
     bystander = ctx.fixtures.person(given="PortraitSetB")
     chosen = ctx.fixtures.memory(token("p"), person=owner)
     other = ctx.fixtures.memory(token("q"), person=owner)
+    ctx.fixtures.memory(token("r"), person=bystander)
     own(ctx, "memory", chosen)
     poll_person_memories(ctx, owner, lambda m: {chosen, other} <= set(m.items),
                          f"getPersonMemories: {chosen} and {other}")
     before = poll_portraits(ctx, owner, lambda p: True, "")
+    if before.items:
+        raise AssertionError(f"{owner} already has a portrait before the update "
+                             f"({sorted(before.items)}), which would mask the write; "
+                             f"{describe_box(before.result)}")
     ctx.api.update_person_portraits(owner, reason=ctx.reason, body=portrait_body(
         ctx.fixtures.memory_url(chosen), owner))
     after = poll_portraits(ctx, owner, lambda p: bool(p.items),

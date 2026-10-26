@@ -14,10 +14,8 @@ contained in another, so an anchor can only match its own record.
 The ``canaries`` group is not a fixture: it adds the CANARY block's real beta standards
 values to ``names`` (no request, nothing to tear down) and never shares a world with a
 fixture group. ``memory`` also reads back the persona the upload made (best effort).
-``memory_comment`` adds one ZZSPIKE comment to the ``memory`` (``memory_comment_text``),
-and ``portrait`` uploads a second memory to the child (``portrait_memory``, titled
-``portrait_title``) and selects it as the child's portrait; both go through
-``FixtureSet`` (raw client, bodies P5 sends too) and go with the memory / the child.
+``memory_comment`` adds one ZZSPIKE comment to the ``memory`` (``memory_comment_text``);
+it goes through ``FixtureSet`` (raw client, body P5 sends too) and goes with the memory.
 ``relationship_source`` attaches the ``source`` description to the ``couple`` and to the
 ``child_and_parents`` relationship, by the reference-create shape P3 verified on beta
 (POST ``{relationship}/source-references``, raw client as the notes are posted); the
@@ -57,7 +55,6 @@ GROUPS: dict[str, tuple[str, ...]] = {
     "collection": ("source",),
     "memory": ("persons",),
     "memory_comment": ("memory",),
-    "portrait": ("persons",),
     "relationship_source": ("couple", "source"),
 }
 FIXTURE_GROUPS = tuple(GROUPS)
@@ -156,7 +153,6 @@ class World:
         self._attached = False
         self._filed = False  # the source description is in the collection
         self._commented = False  # the memory carries its comment
-        self._portrayed = False  # the child's portrait is selected
         self._rel_attached: set[str] = set()  # relationships the source is attached to
         self._built: set[str] = set()
 
@@ -400,16 +396,6 @@ class World:
             self._fixtures.memory_comment(self._ids["memory"], text)
             self._commented = True
         self._named("memory_comment_text", text)
-
-    def _build_portrait(self) -> None:
-        if "portrait_memory" not in self._ids:
-            title = self._value("portrait_title", "p")
-            self._ids["portrait_memory"] = self._fixtures.memory(  # tracked there
-                title, person=self._ids["child"])
-            self._named("portrait_title", title)
-        if not self._portrayed:
-            self._fixtures.set_portrait(self._ids["child"], self._ids["portrait_memory"])
-            self._portrayed = True
 
     # ---------------------------------------------------------------- anchors safety
 

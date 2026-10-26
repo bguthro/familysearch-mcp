@@ -124,7 +124,10 @@ Rules:
   (`createSourceDescription`, `updateSourceDescription`, `deleteSourceDescription`,
   `createSourceFolder`, `updateUserDefinedCollection`,
   `updateSourceDescriptionsToCollection`, `deleteSourceDescriptionsFromCollections`,
-  `deleteUserDefinedCollection`); see Verification status) runs on beta as is; any other write needs `allow_unverified`.
+  `deleteUserDefinedCollection`), the P5 portrait writes (`updatePersonPortraits`,
+  `deletePersonPortrait`) and the P5 Memories writes (`createMemories`, `updateMemory`,
+  `deleteMemory`, `createMemoryComments`, `deleteMemoryComment`, `createMemoryPersona`,
+  `updateMemoryPersona`, `deleteMemoryPersona`); see Verification status) runs on beta as is; any other write needs `allow_unverified`.
 - `allow_unverified` and `confirm_destructive` (deletes and other destructive operations)
   are Ben's explicit decisions; the assistant never sets them on its own.
 - The 4 unverifiable operations (and the 2 excluded OAuth ones) can never run, even with
@@ -250,7 +253,7 @@ completion gate.
 
 ### Verification status
 
-As of the P4 source verification (2026-10-26), `python -m tools.spec.coverage`
+As of the P5 memories verification (2026-10-26), `python -m tools.spec.coverage`
 reports 205 operations: 113 `verified` (all on **beta only**), 86 `unverified`, 4
 `unverifiable` and 2 `excluded`. Of the 107 reads, 64 are verified and 43 are deferred;
 of the 60 Family Tree writes, 41 are verified and 8 of the 10 Memories writes. Those numbers change as recipes are run:
@@ -268,10 +271,13 @@ conclusion delete, the two ordering operations (`updateCoupleRelationshipSpouses
 (`createSourceDescription`, `updateSourceDescription`, `deleteSourceDescription`,
 `createSourceFolder`, `updateUserDefinedCollection`,
 `updateSourceDescriptionsToCollection`, `deleteSourceDescriptionsFromCollections`,
-`deleteUserDefinedCollection`), the P5 portrait writes (`updatePersonPortraits`,
-`deletePersonPortrait`) and the Memories writes (`createMemories`, `updateMemory`,
-`deleteMemory`, `createMemoryComments`, `deleteMemoryComment`, `createMemoryPersona`,
-`updateMemoryPersona`, `deleteMemoryPersona`). Because they are verified they can run on production, but only with
+`deleteUserDefinedCollection`), and the P5 portrait writes (`updatePersonPortraits`,
+`deletePersonPortrait`).
+
+The 8 verified Memories writes (of the 10; counted apart from the 41) are `createMemories`,
+`updateMemory`, `deleteMemory`, `createMemoryComments`, `deleteMemoryComment`,
+`createMemoryPersona`, `updateMemoryPersona` and `deleteMemoryPersona`. Because all of these
+are verified they can run on production, but only with
 `allow_production=True` (plus `confirm_destructive=True` for the destructive ones),
 even though they were proven on beta only. Every other generated write is still
 unverified and locked: it needs `allow_unverified=True` and runs on beta only. The

@@ -50,7 +50,6 @@ class FakeBeta:
         self.personas: dict[str, str] = {}  # memory path -> its persona id
         self.persona_form = "{mid}-{n}"  # how beta forms a persona id
         self.comments: dict[str, list] = {}  # memory path -> comment bodies posted
-        self.portraits: dict[str, dict] = {}  # person id -> portrait body posted
         self.rel_attached: dict[str, list] = {}  # relationship path -> (envelope, url)
         self.fail_person_at = 0  # the n-th person POST answers 500
         self.person_posts = 0
@@ -125,12 +124,6 @@ class FakeBeta:
             if m.group(1) not in self.live or "comment" in self.fail:
                 return 404, {}, ""
             self.comments.setdefault(m.group(1), []).append(body)
-            return 204, {}, ""
-        m = re.fullmatch(rf"{tree}/persons/([^/]+)/portraits", path)
-        if m:  # select a portrait
-            if path.rsplit("/portraits", 1)[0] not in self.live or "portrait" in self.fail:
-                return 404, {}, ""
-            self.portraits[m.group(1)] = body
             return 204, {}, ""
         if path == "/platform/sources/descriptions":
             return self._created("source", f"/platform/sources/descriptions/{self.new_id()}",
@@ -260,8 +253,7 @@ def test_unknown_group_is_refused(beta):
 def test_groups_are_the_documented_ones():
     assert set(FIXTURE_GROUPS) == {"persons", "couple", "person_note", "couple_note",
                                    "child_and_parents_note", "notes", "source", "collection",
-                                   "memory", "relationship_source", "memory_comment",
-                                   "portrait"}
+                                   "memory", "relationship_source", "memory_comment"}
     assert set(GROUPS) == set(FIXTURE_GROUPS) | {CANARY_GROUP} and CANARY_GROUP == "canaries"
 
 
@@ -590,7 +582,7 @@ def test_every_value_is_distinct_and_no_value_contains_another(beta):
     assert set(world.ids) == {"dad", "mom", "child", "couple", "child_and_parents",
                               "person_note", "couple_note", "child_and_parents_note",
                               "source_description", "source_reference", "collection",
-                              "memory", "memory_persona_seq", "portrait_memory"}
+                              "memory", "memory_persona_seq"}
 
 
 def test_names_are_long_per_fixture_and_free_of_shared_constants(beta):
@@ -599,7 +591,7 @@ def test_names_are_long_per_fixture_and_free_of_shared_constants(beta):
     assert set(world.names) == {"dad_name", "mom_name", "child_name", "person_note_text",
                                 "couple_note_text", "child_and_parents_note_text",
                                 "source_title", "collection_title", "memory_title",
-                                "memory_comment_text", "portrait_title"}
+                                "memory_comment_text"}
     for value in world.names.values():
         assert len(value) >= 12 and value.startswith("ZZSPIKE")
         # ZZSPIKE + a tag letter + 12 digits: nothing a server could re-case.
@@ -779,7 +771,7 @@ def test_a_failed_relationship_attach_is_retried_without_duplicates(beta):
     assert fixtures.teardown() == [] and beta.live == {}
 
 
-# ------------------------------------------------------------------ comment and portrait
+# ------------------------------------------------------------------ comment
 
 
 def test_memory_comment_posts_a_marked_comment_on_the_memory(beta):
@@ -804,34 +796,4 @@ def test_a_failed_comment_is_retried_with_the_same_text(beta):
     world.need("memory_comment")
     [body] = beta.comments["/platform/memories/memories/" + world.ids["memory"]]
     assert body["discussions"][0]["comments"][0]["text"] == world.names["memory_comment_text"]
-    assert fixtures.teardown() == [] and beta.live == {}
-
-
-def test_portrait_uploads_a_titled_memory_to_the_child_and_selects_it(beta):
-    world, fixtures = make_world()
-    world.need("portrait")
-    mid = world.ids["portrait_memory"]
-    stored = beta.live["/platform/memories/memories/" + mid]
-    assert stored["person"] == world.ids["child"]
-    assert world.names["portrait_title"] in unquote(stored["query"]).replace("+", " ")
-    [(child, body)] = beta.portraits.items()
-    assert child == world.ids["child"]
-    [person] = body["persons"]
-    [media] = person["media"]
-    assert person["id"] == child and media["description"].endswith(
-        "/platform/memories/memories/" + mid)
-    assert media["qualifiers"][0]["name"] == "http://gedcomx.org/RectangleRegion"
-    assert "memory" not in world.ids  # the portrait group does not build the memory group
-    assert fixtures.tracked("memory") == [mid]
-    assert fixtures.teardown() == [] and beta.live == {}
-
-
-def test_a_failed_portrait_selection_does_not_upload_the_memory_again(beta):
-    world, fixtures = make_world()
-    beta.fail.add("portrait")
-    with pytest.raises(FSHTTPError):
-        world.need("portrait")
-    beta.fail.clear()
-    world.need("portrait")
-    assert len(fixtures.tracked("memory")) == 1 and len(beta.portraits) == 1
     assert fixtures.teardown() == [] and beta.live == {}

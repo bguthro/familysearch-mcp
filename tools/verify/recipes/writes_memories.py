@@ -2,8 +2,7 @@
 
 Each recipe claims only the write(s) it calls through ``ctx.api`` and proves it by
 reading the memory (readMemory, verified), a person's memory list (getPersonMemories,
-verified) or its comments (readMemoryComments, unclaimed until its own read recipe runs
-live) back, before and after. Memories are shared artifacts: only ZZSPIKE memories this
+verified) or its comments (readMemoryComments, verified) back, before and after. Memories are shared artifacts: only ZZSPIKE memories this
 run created and tracked are written (``FixtureSet.memory``: a tiny generated PNG through
 the proven ``Memories`` upload; the claimed create makes one the same way and tracks it
 the moment its id is known), and strict teardown deletes every one with the proven

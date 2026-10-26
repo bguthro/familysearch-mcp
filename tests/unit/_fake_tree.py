@@ -505,6 +505,8 @@ WRITE_LIES = frozenset({
     "reference_delete_all",    # ... deletes every persona of the memory
     "portrait_ignored",        # a portrait POST answers 204, stores nothing
     "portrait_wrong_person",   # ... sets it on another person
+    "portrait_auto",           # a person with memories already shows a default portrait
+    "portrait_both",           # a portrait POST also sets it on every other person
     "portrait_delete_noop",    # deleting a portrait answers 204, changes nothing
     "portrait_delete_wrong",   # ... clears another person's portrait
     "portrait_delete_all",     # ... clears every person's portrait
@@ -887,6 +889,8 @@ class WriteTree:
 
     def person_portraits(self, request, pid):
         mid = self.persons[pid]["portrait"]
+        if mid is None and self.mode == "portrait_auto" and self._pmids(pid):
+            mid = self._pmids(pid)[0]
         if mid is None or self.memories[mid]["deleted"]:
             return 204, {}, ""
         # Live (P5 run 2): a server-made description, not the memory's.
@@ -914,6 +918,9 @@ class WriteTree:
             target = next((p for p in self.persons if p != pid), pid)
         if self.mode != "portrait_ignored":
             self.persons[target]["portrait"] = mid
+            if self.mode == "portrait_both":
+                for other in self.persons.values():
+                    other["portrait"] = mid
         return 204, {}, ""
 
     def delete_portrait(self, pid):

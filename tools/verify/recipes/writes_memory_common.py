@@ -2,8 +2,8 @@
 
 Memories, their comments and personas, and a person's portraits are read back with
 reads that are verified (``readMemory``, ``readMemoryPersonas``, ``readMemoryPersona``,
-``getPersonMemories``) or, for ``readMemoryComments`` and ``readPersonPortraits``, not
-yet verified until their own read recipes run live; the write recipes use all of them
+``getPersonMemories``, ``readMemoryComments``) or, for ``readPersonPortraits`` (DEFERRED:
+portrait descriptions are server-made), unverified; the write recipes use all of them
 unclaimed, as the P4 recipes used the source box reads. Failure text drops links,
 attribution and contributors and redacts account ids (``describe_box``): a comment or
 persona may name the signed-in user.

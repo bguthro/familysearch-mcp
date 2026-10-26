@@ -200,6 +200,8 @@ LIES = {
     ("writes.memories.persona_delete", "persona_delete_memory"): "410",
     ("writes.memories.portraits_update", "portrait_ignored"): "not seen after",
     ("writes.memories.portraits_update", "portrait_wrong_person"): "not seen after",
+    ("writes.memories.portraits_update", "portrait_auto"): "already",
+    ("writes.memories.portraits_update", "portrait_both"): "another person too",
     ("writes.memories.portrait_delete", "portrait_delete_noop"): "not seen after",
     ("writes.memories.portrait_delete", "portrait_delete_wrong"): "not seen after",
     ("writes.memories.portrait_delete", "portrait_delete_all"): "should not touch it",
