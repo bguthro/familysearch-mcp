@@ -440,6 +440,9 @@ WRITE_LIES = frozenset({
     "rel_update_replaces",   # posted relationship facts replace all its facts
     "rel_delete_noop",       # the first relationship delete answers 204, changes nothing
     "restore_noop",          # restoring a relationship answers 204, changes nothing
+    "restore_new_id",        # a restore makes a copy under a new id (201, X-ENTITY-ID,
+                             # Location); the old id stays deleted
+    "restore_new_id_silent",  # ... and answers 204 with no id: only the lists show it
     "parent_delete_noop",    # deleting a parent answers 204, changes nothing
     "parent_delete_wrong",   # deleting a parent removes the other parent
 })
@@ -474,7 +477,7 @@ class WriteTree:
     ``(method, path)`` for every request.
     """
 
-    def __init__(self, mode=None, *, source_lag=0, memory_lag=0):
+    def __init__(self, mode=None, *, source_lag=0, memory_lag=0, restore_lag=0):
         if mode is not None and mode not in WRITE_LIES:
             raise ValueError(f"unknown lie {mode!r}")
         self.mode = mode
@@ -483,6 +486,10 @@ class WriteTree:
         self.memories: dict[str, dict] = {}
         self.relationships: dict[str, dict] = {}
         self._fooled = False  # a one-shot lie was told
+        # A restored relationship still reads 410 (and is unlisted) for this many
+        # resource reads after its restore.
+        self.restore_lag = restore_lag
+        self._restoring: dict[str, int] = {}
         self.calls: list[tuple[str, str]] = []
         self.lag = {"sources": source_lag, "memories": memory_lag}
         self._pending: dict[tuple[str, str], int] = {}  # (what, pid) -> stale reads left
@@ -837,7 +844,7 @@ class WriteTree:
 
     def _live(self, kind):
         return {rid: r for rid, r in self.relationships.items()
-                if r["kind"] == kind and not r["deleted"]}
+                if r["kind"] == kind and not r["deleted"] and not self._restoring.get(rid)}
 
     def _new_couple(self, p1, p2):
         rid = self._id("couple")
@@ -946,9 +953,23 @@ class WriteTree:
         if r is None or r["kind"] != kind:
             return 404, {}, ""
         if rest == ["restore"] and method == "POST":
-            if self.mode != "restore_noop":
-                r["deleted"] = False
+            if self.mode == "restore_noop":
+                return 204, {}, ""
+            if self.mode in ("restore_new_id", "restore_new_id_silent") and r["deleted"]:
+                new = self._id(r["kind"])
+                self.relationships[new] = {**json.loads(json.dumps(r)), "deleted": False,
+                                           "notes": []}
+                if self.mode == "restore_new_id_silent":
+                    return 204, {}, ""
+                base = COUPLES if kind == "couple" else CAPS
+                return 201, {"X-ENTITY-ID": new, "Location": f"{base}/{new}"}, ""
+            r["deleted"] = False
+            if self.restore_lag:
+                self._restoring[rid] = self.restore_lag
             return 204, {}, ""
+        if self._restoring.get(rid):
+            self._restoring[rid] -= 1
+            return 410, {}, ""
         if r["deleted"]:
             return 410, {}, ""
         if not rest:

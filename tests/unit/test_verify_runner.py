@@ -395,18 +395,18 @@ def test_runner_main_list(fake_recipes, no_cookies, capsys):
 def test_classify_requires_reason(reg_path, no_cookies, capsys):
     raw = reg_path.read_bytes()
     with pytest.raises(SystemExit):
-        runner.main(["classify", "createPersonNote", "--status", "unverifiable",
+        runner.main(["classify", "createDiscussion", "--status", "unverifiable",
                      "--registry", str(reg_path)])
-    assert runner.main(["classify", "createPersonNote", "--status", "unverifiable",
+    assert runner.main(["classify", "createDiscussion", "--status", "unverifiable",
                         "--reason", "   ", "--registry", str(reg_path)]) == 2
     with pytest.raises(SystemExit):
-        runner.main(["classify", "createPersonNote", "--status", "verified",
+        runner.main(["classify", "createDiscussion", "--status", "verified",
                      "--reason", "x", "--registry", str(reg_path)])
     assert reg_path.read_bytes() == raw
-    assert runner.main(["classify", "createPersonNote", "--status", "unverifiable",
+    assert runner.main(["classify", "createDiscussion", "--status", "unverifiable",
                         "--reason", "needs a partner account", "--registry",
                         str(reg_path)]) == 0
-    entry = json.loads(reg_path.read_text())["operations"]["createPersonNote"]
+    entry = json.loads(reg_path.read_text())["operations"]["createDiscussion"]
     assert entry == {"generated": {"status": "unverifiable",
                                    "reason": "needs a partner account"}}
     assert runner.main(["classify", "noSuchOp", "--status", "unverifiable",

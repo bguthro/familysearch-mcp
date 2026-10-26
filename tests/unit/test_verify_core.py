@@ -405,7 +405,7 @@ def test_record_unverifiable_refuses_verified_without_force(tmp_path):
 
 def test_record_never_leaves_flat_or_extra_keys(reg_path):
     _record(reg_path)
-    record.record_unverifiable("createPersonNote", "x", path=reg_path)
+    record.record_unverifiable("createDiscussion", "x", path=reg_path)
     ops = json.loads(reg_path.read_text())["operations"]
     assert all(set(e) <= {"generated", "handwritten"} and "generated" in e
                for e in ops.values())

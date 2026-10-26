@@ -25,8 +25,8 @@ from familysearch.api._runtime import ApiResult
 from familysearch.models import FACT_MARRIAGE, GEDCOMX, build_fact
 
 from ..core import Recipe, VerifyContext
-from .writes_common import (COUPLE, GONE, Relationship, describe, expect_same, poll,
-                            read_child_and_parents, read_couple, relationship_view,
+from .writes_common import (COUPLE, GONE, Relationship, Relatives, describe, expect_same,
+                            poll, read_child_and_parents, read_couple, relationship_view,
                             relatives, restore, status_of, token)
 
 FACT_DIVORCE = GEDCOMX + "Divorce"
@@ -275,57 +275,101 @@ def _update_parent_facts(ctx: VerifyContext, caprid: str, roles: dict[str, str])
 # ------------------------------------------------------------------ delete, restore
 
 
-def _delete_restore(ctx: VerifyContext, rid: str, what: str, read, delete, do_restore,
+def _restored_id(result: ApiResult, kind: str) -> str | None:
+    """The id a restore names for the relationship, if any (X-ENTITY-ID, or a Location
+    at the relationship's own kind of resource)."""
+    lowered = {k.lower(): v for k, v in result.headers.items()}
+    if lowered.get("x-entity-id"):
+        return lowered["x-entity-id"]
+    location = urlsplit(lowered.get("location") or "").path
+    if PATHS[kind] in location:
+        return location.rstrip("/").rsplit("/", 1)[-1] or None
+    return None
+
+
+def _delete_restore(ctx: VerifyContext, rid: str, kind: str, read, delete, do_restore,
                     listed, persons: frozenset[str]) -> None:
     """Delete ``rid``, read it gone, restore it, read it back with the same persons.
 
-    ``read(rid)`` is the relationship resource read; ``listed()`` answers whether a
-    person's relatives list it (polled both ways).
+    ``read(rid)`` is the relationship resource read; ``listed()`` answers the ids of
+    the ``kind`` relationships joining exactly ``persons`` in a person's relatives.
+    Both are polled (beta's relationship reads lag). The restore may bring the
+    relationship back under a new id (named by its X-ENTITY-ID / Location, or seen
+    only in the list): that id is tracked at once and checked instead, and the old
+    one, read gone, is left out of teardown.
     """
+    what = KIND_NAMES[kind].split(" ", 1)[1]
     s0 = status_of(lambda: read(rid))
     if s0 != 200:
         raise AssertionError(f"the fixture {what} {rid} read back {s0} before the delete")
-    poll(ctx, lambda: listed(), bool, f"the {what} {rid} listed before the delete",
+    poll(ctx, listed, lambda ids: rid in ids, f"the {what} {rid} listed before the delete",
          result_of=lambda v: None)
     delete(rid)
     s1 = status_of(lambda: read(rid))
     ctx.expect_changed(s0, s1, f"the {what}'s readability after delete")
     if s1 not in GONE:
         raise AssertionError(f"deleted {what} {rid} read back {s1}, not 404/410")
-    poll(ctx, lambda: not listed(), bool, f"the {what} {rid} unlisted after the delete",
-         result_of=lambda v: None)
-    restore(lambda body: do_restore(rid, body))
-    s2 = status_of(lambda: read(rid))
-    ctx.expect_changed(s1, s2, f"the {what}'s readability after restore")
-    if s2 != 200:
-        raise AssertionError(f"restored {what} {rid} read back {s2}, not 200")
-    back = relationship_view(read(rid), rid)
-    if back.persons != persons:
-        raise AssertionError(f"restored {what} {rid} joins {sorted(back.persons)}, was "
-                             f"{sorted(persons)}; {describe(back.result)}")
-    poll(ctx, lambda: listed(), bool, f"the {what} {rid} listed again after the restore",
-         result_of=lambda v: None)
+    poll(ctx, listed, lambda ids: rid not in ids,
+         f"the {what} {rid} unlisted after the delete", result_of=lambda v: None)
+    restored = restore(lambda body: do_restore(rid, body))
+    shown = {k: v for k, v in restored.headers.items()
+             if k.lower() in ("location", "x-entity-id", "content-location")}
+    ctx.notes.append(f"restore answered {restored.status} {shown}")
+    named = _restored_id(restored, kind)
+    if named and named != rid:
+        ctx.fixtures.track(kind, named)
+
+    def readable() -> dict[str, int]:
+        """Each candidate id's status: the old one, the one the restore named, and
+        any the list shows joining the same persons."""
+        ids = {rid, *([named] if named else []), *listed()}
+        return {i: status_of(lambda i=i: read(i)) for i in ids}
+
+    statuses = poll(ctx, readable, lambda s: 200 in s.values(),
+                    f"the {what} readable again after the restore",
+                    result_of=lambda v: None)
+    back_id = rid if statuses.get(rid) == 200 else sorted(
+        i for i, s in statuses.items() if s == 200)[0]
+    if back_id != rid:
+        if back_id not in ctx.fixtures.tracked(kind):
+            ctx.fixtures.track(kind, back_id)
+        ctx.fixtures.mark_deleted(kind, rid)  # read gone above; never restored
+        ctx.notes.append(f"the {what} {rid} was restored under a new id {back_id}")
+    ctx.expect_changed(s1 == 200, statuses[back_id] == 200,
+                       f"the {what}'s readability after restore")
+    back = relationship_view(read(back_id), back_id)
+    if back.kind != kind or back.persons != persons:
+        raise AssertionError(f"restored {what} {back_id} reads back {back.summary()}, was "
+                             f"{KIND_NAMES[kind]} of {sorted(persons)}; "
+                             f"{describe(back.result)}")
+    poll(ctx, listed, lambda ids: back_id in ids,
+         f"the {what} {back_id} listed again after the restore", result_of=lambda v: None)
+
+
+def _joining(rels: Relatives, kind: str, persons: frozenset[str]) -> set[str]:
+    return {i for i, r in rels.of_kind(kind).items() if r.persons == persons}
 
 
 def couple_delete_restore(ctx: VerifyContext) -> None:
     """Delete a fixture couple, read it gone, restore it, read it back.
 
     Negative controls, on the couple resource's status: readable -> 404/410 after the
-    delete, gone -> 200 after the restore (a no-op leaves it unchanged and fails). The
-    husband's spouses list it before, not after the delete (polled), and again after
-    the restore, which must join the same two persons. The couple stays tracked:
-    teardown deletes it again and checks it is gone.
+    delete, gone -> 200 after the restore (polled; a no-op never reads 200 and fails).
+    The husband's spouses list it before, not after the delete (polled), and again
+    after the restore, which must join the same two persons. Should beta restore it
+    under a new id, that id is tracked and checked instead. The restored couple stays
+    tracked: teardown deletes it again and checks it is gone.
     """
     husband = ctx.fixtures.person(given="DelHusband")
     wife = ctx.fixtures.person(given="DelWife", gender="Female")
     crid = ctx.fixtures.couple(husband, wife)
     api, reason = ctx.api, ctx.reason
+    persons = frozenset({husband, wife})
     _delete_restore(
         ctx, crid, "couple", api.read_couple_relationship,
         lambda rid: api.delete_couple_relationship(rid, reason=reason),
         lambda rid, body: api.restore_couple_relationship(rid, reason=reason, body=body),
-        lambda: crid in relatives(ctx, "spouses", husband).relationships,
-        frozenset({husband, wife}))
+        lambda: _joining(relatives(ctx, "spouses", husband), "couple", persons), persons)
 
 
 def child_and_parents_delete_restore(ctx: VerifyContext) -> None:
@@ -333,22 +377,23 @@ def child_and_parents_delete_restore(ctx: VerifyContext) -> None:
 
     One parent, so beta derives no couple. Negative controls, on the relationship
     resource's status: readable -> 404/410 after the delete, gone -> 200 after the
-    restore. The child's parents list it before, not after the delete (polled), and
-    again after the restore, which must name the same parent and child. It stays
-    tracked: teardown deletes it again and checks it is gone.
+    restore (polled). The child's parents list it before, not after the delete
+    (polled), and again after the restore, which must name the same parent and
+    child. Should beta restore it under a new id, that id is tracked and checked
+    instead. The restored relationship stays tracked: teardown deletes it again.
     """
     parent = ctx.fixtures.person(given="DelParent")
     child = ctx.fixtures.person(given="DelChild", birth_year="1880")
     caprid = ctx.fixtures.child_and_parents(child, [parent])
     api, reason = ctx.api, ctx.reason
+    persons = frozenset({parent, child})
     _delete_restore(
-        ctx, caprid, "child-and-parents relationship",
-        api.get_child_and_parents_relationship,
+        ctx, caprid, "child_and_parents", api.get_child_and_parents_relationship,
         lambda rid: api.delete_child_and_parents_relationship(rid, reason=reason),
         lambda rid, body: api.restore_child_and_parents_relationship(rid, reason=reason,
                                                                      body=body),
-        lambda: caprid in relatives(ctx, "parents", child).relationships,
-        frozenset({parent, child}))
+        lambda: _joining(relatives(ctx, "parents", child), "child_and_parents", persons),
+        persons)
 
 
 def relationship_parent_delete(ctx: VerifyContext) -> None:

@@ -198,6 +198,38 @@ def test_delete_restore_restores_with_a_bare_post_and_deletes_again(name, reg_pa
     assert len(deletes) == 2 and deletes[0] == deletes[1]  # the recipe's, then teardown's
 
 
+DELETE_RESTORE = ["writes.tree.couple_delete_restore",
+                  "writes.tree.child_and_parents_delete_restore"]
+
+
+@responses.activate
+@pytest.mark.parametrize("name", DELETE_RESTORE)
+def test_delete_restore_polls_a_lagging_restore_but_not_forever(name, reg_path, slept):
+    attempts, pause = wc.EVENTUAL
+    result, tree, _ctx = run(name, reg_path, restore_lag=attempts - 1)
+    assert result["passed"], result["problems"]
+    assert slept == [pause] * (attempts - 1)
+    assert tree.live() == []
+    slept.clear()
+    result, tree, _ctx = run(name, reg_path, restore_lag=attempts)
+    assert not result["passed"]
+    assert any("readable again after the restore: not seen after" in p
+               for p in result["problems"]), result["problems"]
+    assert any(n.startswith("restore answered 204") for n in result["notes"])
+
+
+@responses.activate
+@pytest.mark.parametrize("name", DELETE_RESTORE)
+@pytest.mark.parametrize("mode", ["restore_new_id", "restore_new_id_silent"])
+def test_delete_restore_follows_a_restore_under_a_new_id(name, mode, reg_path, slept):
+    # Found from the restore's X-ENTITY-ID, or else from the relatives list; tracked at
+    # once (teardown deletes it), the old id is left as deleted.
+    result, tree, _ctx = run(name, reg_path, mode)
+    assert result["passed"], result["problems"]
+    assert any("restored under a new id" in n for n in result["notes"]), result
+    assert len(tree.relationships) == 2 and tree.live() == []
+
+
 # ---------------------------------------------------------------- the fake lies
 
 
@@ -220,11 +252,11 @@ LIES = {
     ("writes.tree.child_and_parents_update", "ignore_rel_update"): "negative control failed",
     ("writes.tree.child_and_parents_update", "rel_update_replaces"): "parent1Facts",
     ("writes.tree.couple_delete_restore", "rel_delete_noop"): "negative control failed",
-    ("writes.tree.couple_delete_restore", "restore_noop"): "negative control failed",
+    ("writes.tree.couple_delete_restore", "restore_noop"): "readable again after the restore",
     ("writes.tree.child_and_parents_delete_restore", "rel_delete_noop"):
         "negative control failed",
     ("writes.tree.child_and_parents_delete_restore", "restore_noop"):
-        "negative control failed",
+        "readable again after the restore",
     ("writes.tree.relationship_parent_delete", "parent_delete_noop"):
         "negative control failed",
     ("writes.tree.relationship_parent_delete", "parent_delete_wrong"):
