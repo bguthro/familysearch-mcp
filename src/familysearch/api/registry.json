@@ -168,7 +168,12 @@
   },
   "createSourceDescription": {
    "generated": {
-    "status": "unverified"
+    "commit": "0e5f920f14d985c8aa58d0e77b88d6ee532ff81a",
+    "evidence": "state-change",
+    "fingerprint": "1bcf94d76b373b0259a1d3128a9fcab2146c7ea6cd331c06ff60ad78073abfcf",
+    "recipe": "writes.sources.description_create",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    },
    "handwritten": {
     "recipe": "tests/integration/test_beta_roundtrip.py::test_source_create_and_attach",
@@ -177,7 +182,12 @@
   },
   "createSourceFolder": {
    "generated": {
-    "status": "unverified"
+    "commit": "0e5f920f14d985c8aa58d0e77b88d6ee532ff81a",
+    "evidence": "state-change",
+    "fingerprint": "e1b9d79743b1c114ae1823743364385188c4f5a2ce01cd7d55adc13454fd36f2",
+    "recipe": "writes.sources.collection_create",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "createTree": {
@@ -423,7 +433,12 @@
   },
   "deleteSourceDescription": {
    "generated": {
-    "status": "unverified"
+    "commit": "0e5f920f14d985c8aa58d0e77b88d6ee532ff81a",
+    "evidence": "state-change",
+    "fingerprint": "42d0158a91514f7c69e776e22849388502e0a200e76526f103426362da4cfc7a",
+    "recipe": "writes.sources.description_delete",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    },
    "handwritten": {
     "recipe": "tests/integration/test_beta_roundtrip.py::test_source_create_and_attach",
@@ -432,7 +447,12 @@
   },
   "deleteSourceDescriptionsFromCollections": {
    "generated": {
-    "status": "unverified"
+    "commit": "0e5f920f14d985c8aa58d0e77b88d6ee532ff81a",
+    "evidence": "state-change",
+    "fingerprint": "790b6c3e8e9d7449d9bfbe563cc85dfe04f4c098820f72783e6394ffeac69647",
+    "recipe": "writes.sources.collection_remove",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "deleteTree": {
@@ -447,7 +467,12 @@
   },
   "deleteUserDefinedCollection": {
    "generated": {
-    "status": "unverified"
+    "commit": "0e5f920f14d985c8aa58d0e77b88d6ee532ff81a",
+    "evidence": "state-change",
+    "fingerprint": "a56cd26af8018dc2085ef590035838620f41f803c1c71d95b48ef74063e426fa",
+    "recipe": "writes.sources.collection_delete",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "deleteUserHistoryEntry": {
@@ -1181,7 +1206,12 @@
   },
   "readUserDefinedCollection": {
    "generated": {
-    "status": "unverified"
+    "commit": "0e5f920f14d985c8aa58d0e77b88d6ee532ff81a",
+    "evidence": "read-content",
+    "fingerprint": "d2b701d26f94638f026470b84e80b14c23a2230ca9576d312bd5b2e6dbd88d3a",
+    "recipe": "reads.sources.collection",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "readUserDefinedCollectionSourceDescriptions": {
@@ -1520,12 +1550,22 @@
   },
   "updateSourceDescription": {
    "generated": {
-    "status": "unverified"
+    "commit": "0e5f920f14d985c8aa58d0e77b88d6ee532ff81a",
+    "evidence": "state-change",
+    "fingerprint": "c620bf8c815b4dcd031c035e7cc7b6f45204261a24ec9ad680f99d5c7f7fb7e7",
+    "recipe": "writes.sources.description_update",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "updateSourceDescriptionsToCollection": {
    "generated": {
-    "status": "unverified"
+    "commit": "0e5f920f14d985c8aa58d0e77b88d6ee532ff81a",
+    "evidence": "state-change",
+    "fingerprint": "5aac6e5641ceae747f750f0114e6052803f0cc111332922f22fcb7f7350cd653",
+    "recipe": "writes.sources.collection_add",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "updateTree": {
@@ -1535,7 +1575,12 @@
   },
   "updateUserDefinedCollection": {
    "generated": {
-    "status": "unverified"
+    "commit": "0e5f920f14d985c8aa58d0e77b88d6ee532ff81a",
+    "evidence": "state-change",
+    "fingerprint": "58e03757dd119b11efc9dc98ee1dc9de4778f2b306f18d8a6776e2ef4ea4ff13",
+    "recipe": "writes.sources.collection_update",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "updateUserHistory": {
