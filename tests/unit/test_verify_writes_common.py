@@ -334,3 +334,92 @@ def test_fake_derives_a_couple_for_two_parents_without_one():
     assert derived in tree.live()  # untracked: left behind unless a recipe tracks it
     ctx.fixtures.track("couple", derived)
     assert ctx.fixtures.teardown() == [] and tree.live() == []
+
+
+# ---------------------------------------------------------------- sources, source box
+
+
+def test_redact_account_hides_the_users_ids():
+    from tools.verify.core import redact_account
+    text = ("GET /platform/sources/cis.user.MZZZ-USR1/collections/descriptions owner "
+            "cis.user.MZZZ-USR1 by /platform/users/agents/AZZZ-AGT1; "
+            "/platform/sources/collections/UDWZ-001 /platform/sources/descriptions/SD-1")
+    out = redact_account(text)
+    assert "MZZZ-USR1" not in out and "AZZZ-AGT1" not in out
+    assert "/platform/sources/{uid}/collections/descriptions" in out
+    # Collection and description paths are not account ids.
+    assert "/platform/sources/collections/UDWZ-001" in out
+    assert "/platform/sources/descriptions/SD-1" in out
+
+
+def test_describe_box_drops_links_and_attribution():
+    body = {"collections": [{"id": "UD-1", "title": "ZZSPIKEF000000000001",
+                             "attribution": {"contributor": {"resourceId": "AZZZ-AGT1"}},
+                             "links": {"owner": {"href": "/sources/cis.user.X-1/collections"}}}],
+            "note": "cis.user.MZZZ-USR1"}
+    shown = wc.describe_box(result(body))
+    assert "ZZSPIKEF000000000001" in shown and "UD-1" in shown
+    assert "AZZZ-AGT1" not in shown and "X-1" not in shown and "MZZZ-USR1" not in shown
+    assert "attribution" not in shown and "links" not in shown
+    assert wc.describe_box(None) == "response: (no response)"
+
+
+def test_description_view_is_exactly_the_description_read():
+    body = {"sourceDescriptions": [{"id": "SD-1", "about": "https://example.org/a",
+                                    "titles": [{"value": "T"}], "citations": [{"value": "C"}]}]}
+    d = wc.description_view(result(body), "SD-1")
+    assert (d.id, d.about, d.title, d.citation) == ("SD-1", "https://example.org/a", "T", "C")
+    with pytest.raises(AssertionError, match="does not hold it once"):
+        wc.description_view(result(body), "SD-2")
+    assert wc.description_body("a", "t", "c", sid="SD-1") == {"sourceDescriptions": [
+        {"id": "SD-1", "about": "a", "titles": [{"value": "t"}], "citations": [{"value": "c"}]}]}
+    with pytest.raises(AssertionError, match="no X-ENTITY-ID or Location"):
+        wc.created_id(ApiResult(201, {}, "", None, ""), "source description")
+    located = ApiResult(201, {"Location": f"{DESCRIPTIONS}/SD-9"}, "", None, "")
+    assert wc.created_id(located, "source description") == "SD-9"
+
+
+@responses.activate
+@pytest.mark.parametrize("gone_folder", [400, 404])
+def test_fixture_collections_are_tracked_filled_and_torn_down(gone_folder):
+    tree = WriteTree(gone_folder=gone_folder).serve()
+    ctx = ctx_for()
+    udcid = ctx.fixtures.collection("ZZSPIKEF000000000001")
+    a = ctx.fixtures.source("ZZSPIKES000000000001")
+    b = ctx.fixtures.source("ZZSPIKES000000000002")
+    ctx.fixtures.add_to_collection(udcid, [a, b])
+    assert ctx.fixtures.tracked("collection") == [udcid]
+    assert set(wc.members(ctx, udcid).items) == {a, b}
+    assert wc.read_folder(ctx, udcid).title == "ZZSPIKEF000000000001"
+    listed = wc.folders(ctx)
+    assert listed.items[udcid] == "ZZSPIKEF000000000001" and listed.items["UDZZ-DEF"] is None
+    for bad in (lambda: ctx.fixtures.collection("not a fixture"),
+                lambda: ctx.fixtures.add_to_collection(udcid, ["SD-NOT-OURS"]),
+                lambda: ctx.fixtures.add_to_collection("UD-NOT-OURS", [a])):
+        with pytest.raises(ValueError):
+            bad()
+    # Sources go first, so the collection is empty when its turn comes.
+    assert ctx.fixtures.teardown() == [] and tree.live() == []
+
+
+@responses.activate
+def test_a_400_counts_as_gone_only_when_the_folder_list_agrees(monkeypatch):
+    WriteTree().serve()  # a deleted collection answers 400, as beta's unknown ids
+    ctx = ctx_for()
+    udcid = ctx.fixtures.collection("ZZSPIKEF000000000002")
+    monkeypatch.setattr(ctx.fixtures, "folder_listed", lambda _udcid: True)
+    problems = ctx.fixtures.teardown()
+    assert len(problems) == 1 and f"collection {udcid}" in problems[0], problems
+    assert "400" in problems[0]
+
+
+@responses.activate
+def test_a_non_empty_collection_fails_teardown_loudly():
+    tree = WriteTree().serve()
+    ctx = ctx_for()
+    udcid = ctx.fixtures.collection("ZZSPIKEF000000000003")
+    _status, headers, _body = tree._new_description({
+        "about": "a", "titles": [{"value": "ZZSPIKES3"}], "citations": [{"value": "c"}]})
+    tree._set_folder(headers["X-ENTITY-ID"], udcid)  # a member this run does not track
+    problems = ctx.fixtures.teardown()
+    assert len(problems) == 1 and "400" in problems[0], problems

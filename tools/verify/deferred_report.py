@@ -6,7 +6,8 @@ docs/superpowers/recon/2026-10-25-api-surface/p2-deferred.md and p3-deferred.md;
 ``--check`` exits 1 when either committed file is stale. Reasons come verbatim from the
 ``DEFERRED`` tables in the recipe modules; the private-tree areas share one reason
 (they are P7's job). A write claimed by a recipe but not yet verified is awaiting its
-live run (P3); the writes P3 did not attempt carry their later tier's reason.
+live run (P3, or the later tier in ``AWAITING_TIERS``, such as the P4 source writes);
+the writes not attempted yet carry their later tier's reason.
 """
 from __future__ import annotations
 
@@ -116,6 +117,15 @@ def build_report() -> str:
 P3_REPORT_PATH = REPORT_PATH.with_name("p3-deferred.md")
 P3_AREA = "Family Tree Endpoints"
 AWAITING_TIER = "P3"
+# Claimed writes of a later tier, awaiting their live run in that tier.
+AWAITING_TIERS: dict[str, str] = {op: "P4" for op in (
+    "createSourceDescription", "updateSourceDescription", "deleteSourceDescription",
+    "createSourceFolder", "updateUserDefinedCollection", "deleteUserDefinedCollection",
+    "updateSourceDescriptionsToCollection", "deleteSourceDescriptionsFromCollections")}
+
+
+def awaiting_tier(op: str) -> str:
+    return AWAITING_TIERS.get(op, AWAITING_TIER)
 
 # Writes a recipe tried and deferred with live evidence, and the tier that takes them up.
 WRITE_DEFERRED: dict[str, str] = {}
@@ -135,9 +145,6 @@ _ACCOUNT = ("changes the signed-in account's state (preferred relationships, pub
 
 # The Family Tree writes P3 did not attempt: (tier, reason).
 NOT_ATTEMPTED: dict[str, tuple[str, str]] = {
-    "createSourceDescription": ("P4", _SOURCES),
-    "updateSourceDescription": ("P4", _SOURCES),
-    "deleteSourceDescription": ("P4", _SOURCES),
     "createSourceFolder": ("P4", _SOURCES),
     "updateUserDefinedCollection": ("P4", _SOURCES),
     "deleteUserDefinedCollection": ("P4", _SOURCES),
@@ -178,7 +185,7 @@ def _write_reason(op: str, recipe_of: dict[str, str]) -> tuple[str, str]:
         return WRITE_DEFERRED[op], WRITE_DEFERRED_TIERS[op]
     if op in recipe_of:
         return (f"claimed by recipe {recipe_of[op]}; awaiting its live run on beta",
-                AWAITING_TIER)
+                awaiting_tier(op))
     if op in NOT_ATTEMPTED:
         tier, reason = NOT_ATTEMPTED[op]
         return reason, tier

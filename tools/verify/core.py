@@ -1,6 +1,7 @@
 """Recipes, the beta-only verifying API and the negative-control helper."""
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -98,6 +99,22 @@ class VerifyApi(FamilySearchApi):
         result = super()._call(spec, path_args, **kwargs)
         self.called.add(spec.operation_id)
         return result
+
+
+# The signed-in account's identifiers never reach a report (ruling I-4): a user id
+# (``cis.user.…``), the uid segment of a ``/sources/{uid}/…`` path, an agent id.
+_ACCOUNT = (
+    (re.compile(r"cis\.user\.[\w.-]+", re.I), "cis.user.<redacted>"),
+    (re.compile(r"/sources/(?!collections\b|descriptions\b)[^/?#\s\"']+/"), "/sources/{uid}/"),
+    (re.compile(r"/agents/[^/?#\s\"']+"), "/agents/<redacted>"),
+)
+
+
+def redact_account(text: str) -> str:
+    """``text`` with the signed-in account's identifiers replaced (see ``_ACCOUNT``)."""
+    for pattern, replacement in _ACCOUNT:
+        text = pattern.sub(replacement, text)
+    return text
 
 
 def expect_changed(before: Any, after: Any, what: str) -> None:

@@ -8,12 +8,12 @@ Family Tree writes: 60. Verified: 31. Not verified: 29.
 
 | Operation | Reason unverified | Unblocked by |
 |---|---|---|
-| createSourceDescription | source descriptions and user collections are the P4 tier (the fixture world makes descriptions with the hand-written library, not this generated operation) | P4 |
+| createSourceDescription | claimed by recipe writes.sources.description_create; awaiting its live run on beta | P4 |
 | createSourceFolder | source descriptions and user collections are the P4 tier (the fixture world makes descriptions with the hand-written library, not this generated operation) | P4 |
-| deleteSourceDescription | source descriptions and user collections are the P4 tier (the fixture world makes descriptions with the hand-written library, not this generated operation) | P4 |
+| deleteSourceDescription | claimed by recipe writes.sources.description_delete; awaiting its live run on beta | P4 |
 | deleteSourceDescriptionsFromCollections | source descriptions and user collections are the P4 tier (the fixture world makes descriptions with the hand-written library, not this generated operation) | P4 |
 | deleteUserDefinedCollection | source descriptions and user collections are the P4 tier (the fixture world makes descriptions with the hand-written library, not this generated operation) | P4 |
-| updateSourceDescription | source descriptions and user collections are the P4 tier (the fixture world makes descriptions with the hand-written library, not this generated operation) | P4 |
+| updateSourceDescription | claimed by recipe writes.sources.description_update; awaiting its live run on beta | P4 |
 | updateSourceDescriptionsToCollection | source descriptions and user collections are the P4 tier (the fixture world makes descriptions with the hand-written library, not this generated operation) | P4 |
 | updateUserDefinedCollection | source descriptions and user collections are the P4 tier (the fixture world makes descriptions with the hand-written library, not this generated operation) | P4 |
 | deletePersonMemoriesPersonaReference | portraits and memory personas are memories: the P5 tier | P5 |

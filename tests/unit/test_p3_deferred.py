@@ -63,7 +63,7 @@ def test_claimed_writes_await_their_live_run_and_the_rest_name_a_later_tier():
         if op in dr.WRITE_DEFERRED:
             assert tier != "P3" and reason == dr._cell(dr.WRITE_DEFERRED[op])
         elif op in claimed:
-            assert tier == "P3" and "awaiting its live run" in reason, op
+            assert tier == dr.awaiting_tier(op) and "awaiting its live run" in reason, op
         else:
             assert tier != "P3" and op in dr.NOT_ATTEMPTED, op
 

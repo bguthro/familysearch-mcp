@@ -22,14 +22,15 @@ import json
 import time
 import uuid
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, TypeVar
 
 from familysearch import FSHTTPError
 from familysearch.api._runtime import ApiResult
 from familysearch.models import GEDCOMX, GENDER_URI, build_name
 
-from ..core import VerifyContext
+from ..core import VerifyContext, redact_account
+from ..fixtures import folder_titles
 from ..reads import skeleton
 
 GONE = (404, 410)
@@ -556,3 +557,127 @@ def relatives(ctx: VerifyContext, which: str, pid: str) -> Relatives:
 def other_gender(gender_type: str | None) -> str:
     """The binary gender a person of ``gender_type`` is changed to."""
     return "Male" if gender_type == GENDER_URI["Female"] else "Female"
+
+
+# ------------------------------------------------------------------ source descriptions
+
+
+def description_body(about: str, title: str, citation: str, *, sid: str | None = None
+                     ) -> dict:
+    """A source description, as ``Sources.create_description`` posts it (proven on beta);
+    with ``sid`` it names the description it updates."""
+    description: dict = {"about": about, "titles": [{"value": title}],
+                         "citations": [{"value": citation}]}
+    if sid:
+        description = {"id": sid, **description}
+    return {"sourceDescriptions": [description]}
+
+
+def _first_value(items: Any) -> str | None:
+    first = items[0] if isinstance(items, list) and items else None
+    return first.get("value") if isinstance(first, dict) else None
+
+
+@dataclass(frozen=True)
+class Description:
+    """A source description as readSourceDescription answers it."""
+
+    id: str
+    about: str | None
+    title: str | None
+    citation: str | None
+    result: ApiResult = field(compare=False, repr=False)
+
+
+def description_view(result: ApiResult, sid: str) -> Description:
+    """readSourceDescription's answer: exactly the description ``sid``."""
+    body = result.body if isinstance(result.body, dict) else {}
+    found = [d for d in body.get("sourceDescriptions") or []
+             if isinstance(d, dict) and d.get("id") == sid]
+    if len(found) != 1:
+        raise AssertionError(f"the read of source description {sid} does not hold it once; "
+                             f"{describe_box(result)}")
+    d = found[0]
+    return Description(sid, d.get("about"), _first_value(d.get("titles")),
+                       _first_value(d.get("citations")), result)
+
+
+def read_description(ctx: VerifyContext, sid: str) -> Description:
+    return description_view(ctx.api.read_source_description(sid), sid)
+
+
+def created_id(result: ApiResult, what: str) -> str:
+    """A created resource's id: X-ENTITY-ID, else the Location's last segment (as the
+    library's proven ``_new_id``)."""
+    sid = result.entity_id
+    if not sid:
+        raise AssertionError(f"the {what} create answered no X-ENTITY-ID or Location; "
+                             f"{describe_box(result)}")
+    return sid
+
+
+# ------------------------------------------------------------------ source box read-back
+
+# What a source box read may carry about the signed-in account (its uid in links, the
+# contributor of a folder): left out of a failure's skeleton (ruling I-4).
+_ACCOUNT_KEYS = ("links", "attribution")
+
+
+def _without_account(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {k: _without_account(v) for k, v in value.items() if k not in _ACCOUNT_KEYS}
+    if isinstance(value, list):
+        return [_without_account(v) for v in value]
+    return value
+
+
+def describe_box(result: ApiResult | None) -> str:
+    """``describe`` for the source box: links and attribution dropped, account ids redacted."""
+    if result is None:
+        return describe(None)
+    body = _without_account(result.body) if result.body is not None else None
+    text = json.dumps(body) if body is not None else result.text
+    return redact_account(describe(replace(result, body=body, text=text, headers={})))
+
+
+@dataclass(frozen=True)
+class Folder:
+    """A user-defined collection as readUserDefinedCollection answers it."""
+
+    id: str
+    title: str | None
+    result: ApiResult = field(compare=False, repr=False)
+
+
+def read_folder(ctx: VerifyContext, udcid: str) -> Folder:
+    result = ctx.api.read_user_defined_collection(udcid)
+    titles = folder_titles(result.body)
+    if udcid not in titles:
+        raise AssertionError(f"the read of collection {udcid} does not hold it; "
+                             f"{describe_box(result)}")
+    return Folder(udcid, titles[udcid], result)
+
+
+def folders(ctx: VerifyContext) -> Listing:
+    """readSourceFolders (the signed-in user's folders, via beta's redirect): id -> title.
+
+    204 (no body) means none.
+    """
+    result = ctx.api.read_source_folders()
+    if result.status == 204 or not (result.text or "").strip():
+        return Listing({}, result)
+    return Listing(folder_titles(result.body), result)
+
+
+def members(ctx: VerifyContext, udcid: str) -> Listing:
+    """readUserDefinedCollectionSourceDescriptions: description id -> its title.
+
+    204 (no body) means the collection holds none (documented).
+    """
+    result = ctx.api.read_user_defined_collection_source_descriptions(udcid)
+    if result.status == 204 or not (result.text or "").strip():
+        return Listing({}, result)
+    body = result.body if isinstance(result.body, dict) else {}
+    return Listing({str(d["id"]): _first_value(d.get("titles"))
+                    for d in body.get("sourceDescriptions") or []
+                    if isinstance(d, dict) and d.get("id")}, result)

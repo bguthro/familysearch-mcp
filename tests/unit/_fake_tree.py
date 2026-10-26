@@ -405,7 +405,12 @@ RELATIONSHIPS = TREE + "/relationships"
 COUPLES = TREE + "/couple-relationships"
 CAPS = TREE + "/child-and-parents-relationships"
 DESCRIPTIONS = BETA + "/platform/sources/descriptions"
+COLLECTIONS = BETA + "/platform/sources/collections"
 MEMORIES = BETA + "/platform/memories/memories"
+# The signed-in user (never to reach a report) and their untitled default folder.
+UID = "cis.user.MZZZ-USR1"
+AGENT = "AZZZ-AGT1"
+DEFAULT_FOLDER = "UDZZ-DEF"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 # The envelope each note owner's notes are posted and answered in (the read world's).
 NOTE_ENVELOPES = {"person": "persons", "couple": "relationships",
@@ -457,6 +462,22 @@ WRITE_LIES = frozenset({
     "rel_conclusion_all",    # ... deletes every fact of the relationship
     "order_noop",            # setting the order answers 204, changes nothing
     "order_drops",           # ... puts the posted first person in both roles
+    # source descriptions
+    "desc_update_ignored",   # a description update answers 204, changes nothing
+    "desc_update_creates",   # ... makes a new description (201, X-ENTITY-ID) instead
+    "desc_update_sibling",   # ... also retitles the user's other descriptions
+    "desc_delete_noop",      # the first description delete answers 204, changes nothing
+    # source box (user-defined collections)
+    "folder_create_ignored",  # a collection create answers 201 with an id, stores nothing
+    "folder_rename_ignored",  # a collection update answers 204, changes nothing
+    "folder_update_creates",  # ... makes a new collection with the new title instead
+    "folder_delete_noop",     # the first collection delete answers 204, changes nothing
+    "members_add_ignored",    # adding descriptions to a collection answers 204, no change
+    "members_add_one",        # ... adds only the first one posted
+    "members_remove_noop",    # removing descriptions from collections answers 204, no change
+    "members_remove_all",     # ... empties every collection they were in
+    "members_remove_wrong",   # ... removes another member instead
+    "members_remove_deletes",  # ... deletes the description itself
 })
 
 
@@ -502,12 +523,26 @@ class WriteTree:
     ``resource_sources=False`` leaves ``sources`` out of a relationship's resource;
     ``owner_entity_id`` answers a reference create with the relationship's id in
     ``X-ENTITY-ID`` (the Location still names the reference).
+
+    Source descriptions are updated by a POST to their resource (the posted ``about``,
+    title and citation replace the old ones). The signed-in user's source box holds
+    every live description in exactly one folder, an untitled default folder at
+    first: ``/sources/collections`` (POST create, GET 307 to the user's
+    ``/sources/{uid}/collections`` list, whose links carry the uid),
+    ``/collections/{udcid}`` (GET, POST rename, DELETE: 400 while it holds
+    descriptions), its ``/descriptions`` (GET, 204 when empty; POST moves the posted
+    ids into it) and ``/sources/{uid}/collections/descriptions`` (GET: the whole box,
+    whatever the uid, as on beta; DELETE ``?id=``: back to the default folder). An
+    unknown or deleted collection id answers ``gone_folder`` (beta: 400 "Unable to read
+    collection"). ``member_lag``: how many membership reads of a collection still
+    answer the state before its last change.
     ``calls`` lists
     ``(method, path)`` for every request.
     """
 
     def __init__(self, mode=None, *, source_lag=0, memory_lag=0, restore_lag=0,
-                 reference_lag=0, resource_sources=True, owner_entity_id=False):
+                 reference_lag=0, resource_sources=True, owner_entity_id=False,
+                 member_lag=0, gone_folder=400):
         if mode is not None and mode not in WRITE_LIES:
             raise ValueError(f"unknown lie {mode!r}")
         self.mode = mode
@@ -524,11 +559,14 @@ class WriteTree:
         self.resource_sources = resource_sources  # a relationship's resource lists them
         self.owner_entity_id = owner_entity_id
         self.lag = {"sources": source_lag, "memories": memory_lag,
-                    "references": reference_lag}
+                    "references": reference_lag, "members": member_lag}
+        self.gone_folder = gone_folder
+        self.collections: dict[str, dict] = {
+            DEFAULT_FOLDER: {"title": None, "deleted": False, "default": True}}
         self._pending: dict[tuple[str, str], int] = {}  # (what, pid) -> stale reads left
         self._shown: dict[tuple[str, str], object] = {}  # (what, pid) -> the stale state
         self._seq = {"person": 0, "conclusion": 0, "source": 0, "reference": 0,
-                     "memory": 0, "couple": 0, "cap": 0, "note": 0}
+                     "memory": 0, "couple": 0, "cap": 0, "note": 0, "collection": 0}
 
     # ------------------------------------------------------------ ids
 
@@ -538,7 +576,7 @@ class WriteTree:
         return {"person": f"WZ{n:02d}-ZZZ", "conclusion": f"C.{n:04d}-ZZ",
                 "source": f"SDWZ-{n:03d}", "reference": f"SRWZ-{n:03d}",
                 "memory": str(4100000 + n), "couple": f"CR{n:02d}-ZZZ",
-                "cap": f"CP{n:02d}-ZZZ",
+                "cap": f"CP{n:02d}-ZZZ", "collection": f"UDWZ-{n:03d}",
                 "note": f"0e0e{n:04d}-aaaa-4bbb-8ccc-{n:012d}"}[kind]
 
     # ------------------------------------------------------------ helpers
@@ -758,9 +796,14 @@ class WriteTree:
     def create_description(self, request):
         self._record(request)
         desc = json.loads(request.body)["sourceDescriptions"][0]
+        return self._new_description(desc)
+
+    def _new_description(self, desc):
+        assert desc["titles"][0]["value"].startswith("ZZSPIKE")
         sid = self._id("source")
         self.descriptions[sid] = {"about": desc["about"], "title": desc["titles"][0]["value"],
-                                  "citation": desc["citations"][0]["value"], "deleted": False}
+                                  "citation": desc["citations"][0]["value"], "deleted": False,
+                                  "folder": DEFAULT_FOLDER}
         return 201, {"X-ENTITY-ID": sid, "Location": f"{DESCRIPTIONS}/{sid}"}, ""
 
     def description_route(self, request):
@@ -770,9 +813,185 @@ class WriteTree:
         if desc is None or desc["deleted"]:
             return self._gone(desc)
         if request.method == "DELETE":
+            if self.mode == "desc_delete_noop" and not self._fooled:
+                self._fooled = True
+                return 204, {}, ""
+            self._set_folder(sid, None)
             desc["deleted"] = True
             return 204, {}, ""
+        if request.method == "POST":
+            return self.update_description(request, sid)
         return self._json(200, {"sourceDescriptions": [self.description_json(sid)]})
+
+    def update_description(self, request, sid):
+        posted = json.loads(request.body).get("sourceDescriptions")
+        if not (isinstance(posted, list) and len(posted) == 1):
+            return 400, {}, "one source description is expected"
+        posted = posted[0]
+        if posted.get("id") not in (None, sid):
+            return 400, {}, "another description's id"
+        if self.mode == "desc_update_ignored":
+            return 204, {}, ""
+        if self.mode == "desc_update_creates":
+            return self._new_description(posted)
+        fields = {"about": posted["about"], "title": posted["titles"][0]["value"],
+                  "citation": posted["citations"][0]["value"]}
+        self.descriptions[sid].update(fields)
+        if self.mode == "desc_update_sibling":
+            for other in self.descriptions.values():
+                other["title"] = fields["title"]
+        return 204, {}, ""
+
+    # ------------------------------------------------------------ source box
+
+    def _box(self):
+        return [s for s, d in self.descriptions.items() if not d["deleted"]]
+
+    def _members_now(self, udcid):
+        return [s for s in self._box() if self.descriptions[s]["folder"] == udcid]
+
+    def _set_folder(self, sid, udcid):
+        """Move ``sid`` to ``udcid`` (None: out of the box), lagging the reads."""
+        old = self.descriptions[sid]["folder"]
+        if old == udcid:
+            return
+        for folder in {old, udcid} - {None}:
+            self._changed("members", folder, self._members_now(folder))
+        self.descriptions[sid]["folder"] = udcid
+
+    def _folder(self, udcid):
+        folder = self.collections.get(udcid)
+        return folder if folder and not folder["deleted"] else None
+
+    def collection_json(self, udcid):
+        c = self.collections[udcid]
+        body = {"id": udcid, "size": len(self._members_now(udcid)),
+                "attribution": {"contributor": {"resourceId": AGENT}},
+                "links": {"self": {"href": f"{COLLECTIONS}/{udcid}"},
+                          "owner": {"href": f"{BETA}/platform/sources/{UID}/collections"}}}
+        if c["title"] is not None:
+            body["title"] = c["title"]
+        return body
+
+    @staticmethod
+    def _posted_collection(request):
+        posted = json.loads(request.body).get("collections")
+        if not (isinstance(posted, list) and len(posted) == 1):
+            return None
+        title = posted[0].get("title")
+        return posted[0] if isinstance(title, str) and title.startswith("ZZSPIKE") else None
+
+    def _titled(self, title):
+        return any(c["title"] == title and not c["deleted"] for c in self.collections.values())
+
+    def _new_collection(self, title):
+        udcid = self._id("collection")
+        self.collections[udcid] = {"title": title, "deleted": False, "default": False}
+        return udcid
+
+    def create_collection(self, request):
+        self._record(request)
+        posted = self._posted_collection(request)
+        if posted is None:
+            return 400, {}, "invalid collection name"
+        if self._titled(posted["title"]):
+            return 400, {}, "the collection already exists"
+        if self.mode == "folder_create_ignored":
+            udcid = self._id("collection")
+        else:
+            udcid = self._new_collection(posted["title"])
+        return 201, {"X-ENTITY-ID": udcid, "Location": f"{COLLECTIONS}/{udcid}"}, ""
+
+    def user_collections(self, request):
+        self._record(request)
+        live = [u for u, c in self.collections.items() if not c["deleted"]]
+        return self._json(200, {
+            "collections": [self.collection_json(u) for u in live],
+            "links": {"self": {"href": f"{BETA}/platform/sources/{UID}/collections"}}})
+
+    def collections_root(self, request):
+        """GET /sources/collections: 307 to the signed-in user's folders (spec)."""
+        self._record(request)
+        return 307, {"Location": f"{BETA}/platform/sources/{UID}/collections"}, ""
+
+    def collection_route(self, request):
+        self._record(request)
+        udcid, *rest = urlsplit(request.url).path.split("/platform/sources/collections/",
+                                                        1)[1].split("/")
+        folder, method = self._folder(udcid), request.method
+        if folder is None:
+            return self.gone_folder, {}, json.dumps({"errors": [
+                {"message": "Failure in upstream call: Unable to read collection."}]})
+        if rest == ["descriptions"]:
+            if method == "GET":
+                listed = self._visible("members", udcid, self._members_now(udcid))
+                listed = [s for s in listed if not self.descriptions[s]["deleted"]]
+                if not listed:
+                    return 204, {}, ""
+                return self._json(200, {"sourceDescriptions": [
+                    self.description_json(s) for s in listed]})
+            return self.add_members(request, udcid)
+        if rest:
+            return 404, {}, ""
+        if method == "GET":
+            return self._json(200, {"collections": [self.collection_json(udcid)]})
+        if method == "POST":
+            posted = self._posted_collection(request)
+            if posted is None or posted.get("id") not in (None, udcid):
+                return 400, {}, "the requested collection id is invalid"
+            if self.mode == "folder_rename_ignored":
+                return 204, {}, ""
+            if self.mode == "folder_update_creates":
+                self._new_collection(posted["title"])
+                return 204, {}, ""
+            folder["title"] = posted["title"]
+            return 204, {}, ""
+        if self._members_now(udcid):  # DELETE
+            return 400, {}, "The requested collection is not empty."
+        if self.mode == "folder_delete_noop" and not self._fooled:
+            self._fooled = True
+            return 204, {}, ""
+        folder["deleted"] = True
+        return 204, {}, ""
+
+    def add_members(self, request, udcid):
+        posted = json.loads(request.body).get("sourceDescriptions")
+        sids = [d.get("id") for d in posted or [] if isinstance(d, dict)]
+        if not sids or any(s not in self._box() for s in sids):
+            return 404, {}, "One or more of the descriptions referenced was invalid."
+        if self.mode == "members_add_ignored":
+            return 204, {}, ""
+        for sid in sids[:1] if self.mode == "members_add_one" else sids:
+            self._set_folder(sid, udcid)
+        return 204, {}, ""
+
+    def box_route(self, request):
+        """/sources/{uid}/collections/descriptions: the box (GET) or removal (DELETE)."""
+        self._record(request)
+        if request.method == "GET":
+            return self._json(200, {"sourceDescriptions": [
+                self.description_json(s) for s in self._box()],
+                "links": {"self": {"href": request.url}}})
+        query = parse_qs(urlsplit(request.url).query)
+        sids = [s for value in query.get("id", []) for s in value.split(",") if s]
+        if not sids or any(s not in self._box() for s in sids):
+            return 400, {}, "One or more of the descriptions referenced was invalid."
+        if self.mode == "members_remove_noop":
+            return 204, {}, ""
+        for sid in sids:
+            folder = self.descriptions[sid]["folder"]
+            if self.mode == "members_remove_deletes":
+                self._set_folder(sid, None)
+                self.descriptions[sid]["deleted"] = True
+            elif self.mode == "members_remove_all":
+                for other in self._members_now(folder):
+                    self._set_folder(other, DEFAULT_FOLDER)
+            elif self.mode == "members_remove_wrong":
+                others = [o for o in self._members_now(folder) if o != sid]
+                self._set_folder(others[0] if others else sid, DEFAULT_FOLDER)
+            else:
+                self._set_folder(sid, DEFAULT_FOLDER)
+        return 204, {}, ""
 
     def memory_json(self, mid):
         m = self.memories[mid]
@@ -1235,7 +1454,9 @@ class WriteTree:
         return ([p for p, r in self.persons.items() if not r["deleted"]]
                 + [s for s, r in self.descriptions.items() if not r["deleted"]]
                 + [m for m, r in self.memories.items() if not r["deleted"]]
-                + [x for x, r in self.relationships.items() if not r["deleted"]])
+                + [x for x, r in self.relationships.items() if not r["deleted"]]
+                + [u for u, c in self.collections.items()
+                   if not c["deleted"] and not c["default"]])
 
     def serve(self):
         responses.add(responses.GET, BETA + "/platform/collections/tree", json={
@@ -1245,7 +1466,7 @@ class WriteTree:
                 "artifacts": {"href": MEMORIES},
                 "source-descriptions": {"href": DESCRIPTIONS}}}]})
         responses.add(responses.GET, BETA + "/platform/users/current",
-                      json={"users": [{"id": "U"}]})
+                      json={"users": [{"id": UID}]})
         responses.add_callback(responses.POST, re.compile(re.escape(PERSONS) + r"(\?.*)?$"),
                                callback=self.create_person)
         one = re.compile(re.escape(PERSONS + "/") + r"[^?]+(\?.*)?$")
@@ -1264,10 +1485,23 @@ class WriteTree:
         responses.add_callback(responses.POST,
                                re.compile(re.escape(DESCRIPTIONS) + r"(\?.*)?$"),
                                callback=self.create_description)
-        for method in (responses.GET, responses.DELETE):
+        for method in (responses.GET, responses.POST, responses.DELETE):
             responses.add_callback(
                 method, re.compile(re.escape(DESCRIPTIONS + "/") + r"[^/?]+(\?.*)?$"),
                 callback=self.description_route)
+            responses.add_callback(
+                method, re.compile(re.escape(COLLECTIONS + "/") + r"[^?]+(\?.*)?$"),
+                callback=self.collection_route)
+        root = re.compile(re.escape(COLLECTIONS) + r"(\?.*)?$")
+        responses.add_callback(responses.POST, root, callback=self.create_collection)
+        responses.add_callback(responses.GET, root, callback=self.collections_root)
+        responses.add_callback(
+            responses.GET, re.compile(re.escape(BETA) + r"/platform/sources/[^/]+/collections"
+                                      r"(\?.*)?$"), callback=self.user_collections)
+        for method in (responses.GET, responses.DELETE):
+            responses.add_callback(
+                method, re.compile(re.escape(BETA) + r"/platform/sources/[^/]+/collections/"
+                                   r"descriptions(\?.*)?$"), callback=self.box_route)
             responses.add_callback(
                 method, re.compile(re.escape(MEMORIES + "/") + r"[^/?]+(\?.*)?$"),
                 callback=self.memory_route)

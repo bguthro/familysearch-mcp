@@ -1,23 +1,56 @@
 """Throwaway ZZSPIKE fixtures on beta, tracked the moment they exist and torn down strictly.
 
-Teardown deletes relationships (child-and-parents, then couples), sources, memories
+Teardown deletes relationships (child-and-parents, then couples), sources, user-defined
+collections (source folders: after their member descriptions, so each is empty), memories
 and persons, each in reverse creation order, with the same resource URLs and library
 delete methods as the live integration suites (tests/integration/_tracker.py).
+
+A collection has no hand-written library call: it is made with the raw client (as the
+read world posts notes), with the bodies below, which the claimed source box writes
+send too. Its "gone" check has two signals, since beta answers an unknown collection
+id 400 ("Unable to read collection", API recon), not 404: the read errors and the
+user's folder list (``/sources/collections``) no longer names it.
 """
 import uuid
 
 from familysearch._urls import join_path
 from familysearch.client import FSClient
 from familysearch.discovery import Discovery
+from familysearch.errors import FSHTTPError
 from familysearch.memories import Memories
 from familysearch.models import FACT_BIRTH, build_fact, build_person
 from familysearch.sources import Sources
-from familysearch.tree import TreeWriter, child_and_parents_url, couple_url
+from familysearch.tree import TreeWriter, _new_id, child_and_parents_url, couple_url
 
-from .core import _require_beta
+from .core import _require_beta, redact_account
 from .teardown import verified_delete
 
-KINDS = ("child_and_parents", "couple", "source", "memory", "person")  # teardown order
+# teardown order: a collection after its member descriptions, so it is empty
+KINDS = ("child_and_parents", "couple", "source", "collection", "memory", "person")
+COLLECTIONS_PATH = "/platform/sources/collections"
+# An unknown collection id: beta answered 400 (API recon), so 400 joins 404/410 here,
+# but only together with the folder list not naming the collection.
+COLLECTION_GONE = (400, 404, 410)
+
+
+def collection_body(title: str, *, udcid: str | None = None) -> dict:
+    """A user-defined collection (a source folder); with ``udcid`` it updates that one."""
+    collection: dict = {"title": title}
+    if udcid:
+        collection = {"id": udcid, **collection}
+    return {"collections": [collection]}
+
+
+def descriptions_body(sids) -> dict:
+    """Source descriptions by id, as added (or moved) to a collection."""
+    return {"sourceDescriptions": [{"id": sid} for sid in sids]}
+
+
+def folder_titles(body) -> dict[str, str | None]:
+    """The user's folders in a ``collections`` answer: id -> title (None: untitled)."""
+    collections = body.get("collections") if isinstance(body, dict) else None
+    return {str(c["id"]): c.get("title") for c in collections or []
+            if isinstance(c, dict) and c.get("id")}
 
 
 class FixtureSet:
@@ -81,6 +114,48 @@ class FixtureSet:
         self.track("source", sid)
         return sid
 
+    def collection(self, title: str) -> str:
+        """Create a ZZSPIKE user-defined collection with the raw client and track it."""
+        if not (isinstance(title, str) and title.startswith("ZZSPIKE")):
+            raise ValueError("a fixture collection's title must start with ZZSPIKE")
+        resp = self._client.post(self.collection_url(), json=collection_body(title),
+                                 reason=self._reason)
+        udcid = _new_id(resp)
+        self.track("collection", udcid)
+        return udcid
+
+    def collection_url(self, udcid: str | None = None) -> str:
+        base = self._client.base_url + COLLECTIONS_PATH
+        return join_path(base, udcid) if udcid else base
+
+    def add_to_collection(self, udcid: str, sids: list[str]) -> None:
+        """Move tracked sources into a tracked collection (raw client; only this run's)."""
+        if (udcid not in self._tracked["collection"] or not sids
+                or any(s not in self._tracked["source"] for s in sids)):
+            raise ValueError("add_to_collection moves only this run's tracked fixtures")
+        self._client.post(join_path(self.collection_url(udcid), "descriptions"),
+                          json=descriptions_body(sids), reason=self._reason)
+
+    def folder_listed(self, udcid: str) -> bool:
+        """Does the user's folder list (``/sources/collections``, which redirects to the
+        signed-in user's) name the collection? 204 means no folders."""
+        resp = self._client.get(self.collection_url())
+        if resp.status_code == 204 or not resp.text.strip():
+            return False
+        return udcid in folder_titles(resp.json())
+
+    def _collection_get(self, udcid: str, url: str):
+        """GET the collection; a 400 counts as gone only when the folder list agrees."""
+        def get():
+            try:
+                return self._client.get(url)
+            except FSHTTPError as e:
+                if e.status in COLLECTION_GONE and not self.folder_listed(udcid):
+                    raise FSHTTPError(404, "", f"collection {udcid} answers {e.status} and "
+                                      "is not in the folder list") from None
+                raise
+        return get
+
     def source_url(self, sid: str) -> str:
         """The description's resource URL, as a person's source reference names it."""
         return join_path(self._collection("source-descriptions"), sid)
@@ -137,6 +212,9 @@ class FixtureSet:
         if kind == "source":
             url = join_path(self._collection("source-descriptions"), oid)
             return url, lambda: self._client.delete(url, reason=reason)
+        if kind == "collection":
+            url = self.collection_url(oid)
+            return url, lambda: self._client.delete(url, reason=reason)
         if kind == "memory":
             return (self._memories.memory_url(oid),
                     lambda: self._memories.delete(oid, reason=reason))
@@ -156,7 +234,8 @@ class FixtureSet:
                 except Exception as e:  # noqa: BLE001 - record, keep cleaning up
                     problems.append(f"{label}: cannot build url: {e}")
                     continue
-                verified_delete(
-                    label, url, lambda u=url: self._client.get(u), delete, problems)
+                get = (self._collection_get(oid, url) if kind == "collection"
+                       else (lambda u=url: self._client.get(u)))
+                verified_delete(label, url, get, delete, problems)
             self._tracked[kind] = []
-        return problems
+        return [redact_account(p) for p in problems]
