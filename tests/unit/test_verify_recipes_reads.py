@@ -27,6 +27,7 @@ from familysearch.client import FSClient
 from tools.spec.resolve import SNAPSHOT_PATH, load_overrides, resolve
 from tools.verify import reads, runner, world
 from tools.verify.recipes import RECIPES, validate_recipes
+from tools.verify.recipes import reads_relationship_sources as rrs
 from tools.verify.recipes import reads_tree_persons as rtp
 from tools.verify.recipes import reads_tree_relations as rtr
 
@@ -387,7 +388,8 @@ def test_only_the_person_to_source_and_membership_reads_poll():
                       "readUserDefinedCollectionSourceDescriptions"}
     empty_controls = {c.op for cases in RELATION_CASES.values() for c in cases
                       if c.control_may_be_empty}
-    assert empty_controls == {"readSourceDescriptions", "readSourceReferences"}
+    assert empty_controls == {"readSourceDescriptions", "readSourceReferences",
+                              "readUserDefinedCollectionSourceDescriptions"}
     for case in rtr.SOURCE_QUERIES_CASES:
         assert "204" in case.control_may_be_empty and case.anchors
     # The one HEAD without validators on beta, and only it, proves existence only.
@@ -519,8 +521,9 @@ def _family_tree_reads() -> set[str]:
 def test_relation_recipes_cover_exactly_the_rest_of_the_family_tree_reads():
     every = _family_tree_reads()
     scope = every - _scope() - {"readPerson"}
-    covered = {op for r in rtr.READS_TREE_RELATIONS for op in r.ops}
-    deferred = set(rtr.DEFERRED)
+    covered = {op for r in (*rtr.READS_TREE_RELATIONS, *rrs.READS_RELATIONSHIP_SOURCES)
+               for op in r.ops}
+    deferred = set(rtr.DEFERRED) | set(rrs.DEFERRED)
     assert not covered & deferred, covered & deferred
     assert covered | deferred == scope, (
         f"uncovered: {sorted(scope - covered - deferred)}; "
@@ -570,14 +573,95 @@ def test_collection_reads_send_only_the_collection_id_and_anchor_on_titles(reg_p
     urls = [c.request.url for c in responses.calls]
     base = f"{BETA}/platform/sources/collections"
     assert f"{base}/{COLLECTION[0]}" in urls and f"{base}/{COLLECTION[0]}/descriptions" in urls
-    # The controls: an unknown collection, which beta answers 400 (recon).
+    # The controls: an unknown collection, which beta answers 400 (recon) for the
+    # folder itself and an empty 204 for its descriptions (live).
     assert f"{base}/{rtr.NO_SUCH_COLLECTION}" in urls
     assert f"{base}/{rtr.NO_SUCH_COLLECTION}/descriptions" in urls
-    for case in (*rtr.COLLECTION_CASES, *rtr.COLLECTION_DESCRIPTIONS_CASES):
+    for case in rtr.COLLECTION_CASES:
         assert case.anchors and case.control_may_be_empty is None
+    [case] = rtr.COLLECTION_DESCRIPTIONS_CASES
+    assert case.anchors and case.control_may_be_empty and "204" in case.control_may_be_empty
+    [control] = [c for c in responses.calls
+                 if c.request.url.endswith(f"{rtr.NO_SUCH_COLLECTION}/descriptions")]
+    assert control.response.status_code == 204 and not control.response.text
     # The uid-bearing and parameterless source box reads stay deferred.
     for op in ("readUserSourceFolders", "readSourceFolders", "readUserSourceDescriptions",
                "getSourceDescriptionChanges"):
         assert op in rtr.DEFERRED
     assert not any("/sources/current" in u or "/collections/descriptions" in u
                    for u in urls if "/platform/sources/collections/" not in u)
+
+
+# ------------------------------------------------------------------ relationship sources
+
+REL_SOURCE_CASES = {
+    "reads.tree.couple_sources": rrs.COUPLE_SOURCES_CASES,
+    "reads.tree.child_and_parents_sources": rrs.CHILD_AND_PARENTS_SOURCES_CASES,
+}
+REL_SOURCE_OPS = {
+    "readCoupleRelationshipSources", "readCoupleRelationshipSourceReferences",
+    "getChildAndParentsRelationshipSources", "getChildAndParentsRelationshipSourceReferences"}
+
+
+def test_relationship_source_recipes_cover_the_four_reads_and_are_registered():
+    assert {r.name for r in rrs.READS_RELATIONSHIP_SOURCES} == set(REL_SOURCE_CASES)
+    assert {op for r in rrs.READS_RELATIONSHIP_SOURCES for op in r.ops} == REL_SOURCE_OPS
+    assert not REL_SOURCE_OPS & set(rtr.DEFERRED) and not rrs.DEFERRED
+    assert validate_recipes(RECIPES) == []
+    for recipe in rrs.READS_RELATIONSHIP_SOURCES:
+        assert RECIPES[recipe.name] is recipe
+    for cases in REL_SOURCE_CASES.values():
+        for case in cases:
+            assert case.needs == ("relationship_source",) and case.needs[0] in world.GROUPS
+            assert case.anchors and case.control_may_be_empty is None
+            assert case.eventual == rtr.REFERENCE_EVENTUAL
+
+
+@responses.activate
+@pytest.mark.parametrize("name", sorted(REL_SOURCE_CASES))
+def test_relationship_source_recipe_passes_against_the_honest_fake(name, reg_path,
+                                                                  fake_world):
+    result, _tree = run(name, reg_path)
+    assert result.pop("notes", [])  # polled: attempts reported
+    assert result == {"recipe": name, "passed": True, "problems": []}
+    registry = json.loads(reg_path.read_text())["operations"]
+    for op in RECIPES[name].ops:
+        entry = registry[op]["generated"]
+        assert entry["status"] == "verified" and entry["evidence"] == "read-content"
+    # Only the relationship id is sent; the control is an unknown relationship id.
+    urls = [c.request.url for c in responses.calls]
+    assert not any(SOURCE[0] in u for u in urls)
+    assert any(rtr.NO_SUCH_RELATIONSHIP in u for u in urls)
+
+
+@responses.activate
+@pytest.mark.parametrize("name", sorted(REL_SOURCE_CASES))
+def test_relationship_sources_wait_for_the_link_but_not_forever(name, reg_path, fake_world):
+    attempts, pause = rtr.REFERENCE_EVENTUAL
+    result, _tree = run(name, reg_path, reference_lag=attempts - 1)
+    assert result["passed"] is True, result["problems"]
+    result, _tree = run(name, reg_path, reference_lag=attempts)
+    assert result["passed"] is False
+
+
+REL_SOURCE_LIES = {  # lie -> what catches it
+    "other_record": ("anchor",),            # another source's reference and description
+    # the other relationship's sources
+    "swap_relationships": ("anchor", "holds no record", "no relationships in the response",
+                           "no childAndParentsRelationships"),
+    "catch_all": ("not-found control answered 200",),     # the id is ignored
+    "empty": ("positive call answered 204",),             # 204 on a populated relationship
+}
+
+
+@responses.activate
+@pytest.mark.parametrize("mode, name", sorted(
+    (mode, name) for mode in REL_SOURCE_LIES for name in REL_SOURCE_CASES))
+def test_relationship_source_recipe_fails_when_the_fake_lies(mode, name, reg_path,
+                                                            fake_world):
+    raw = reg_path.read_bytes()
+    result, _tree = run(name, reg_path, mode)
+    assert result["passed"] is False, f"{name} passed against a fake in mode {mode}"
+    problems = "\n".join(result["problems"])
+    assert any(s in problems for s in REL_SOURCE_LIES[mode]), result["problems"]
+    assert reg_path.read_bytes() == raw

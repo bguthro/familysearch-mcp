@@ -49,6 +49,7 @@ class FakeBeta:
         self.personas_status = None  # set: the personas read answers this error status
         self.personas: dict[str, str] = {}  # memory path -> its persona id
         self.persona_form = "{mid}-{n}"  # how beta forms a persona id
+        self.rel_attached: dict[str, list] = {}  # relationship path -> (envelope, url)
         self.fail_person_at = 0  # the n-th person POST answers 500
         self.person_posts = 0
         rsps.add(responses.GET, P + "/collections/tree", json={"collections": [{
@@ -130,6 +131,15 @@ class FakeBeta:
             self.filed.setdefault(m.group(1), []).extend(
                 d["id"] for d in body["sourceDescriptions"])
             return 204, {}, ""
+        m = re.fullmatch(rf"({tree}/(?:couple|child-and-parents)-relationships/[^/]+)"
+                         r"/source-references", path)
+        if m:  # attach a source to a relationship
+            if m.group(1) not in self.live or "rel_attach" in self.fail:
+                return 404 if m.group(1) not in self.live else 500, {}, ""
+            envelope = next(iter(body))
+            for s in body[envelope][0]["sources"]:
+                self.rel_attached.setdefault(m.group(1), []).append((envelope, s["description"]))
+            return 201, {}, ""
         m = re.fullmatch(rf"{tree}/persons/([^/]+)", path)
         if m and path in self.live:  # attach a source to a person
             if "attach" in self.fail:
@@ -236,7 +246,7 @@ def test_unknown_group_is_refused(beta):
 def test_groups_are_the_documented_ones():
     assert set(FIXTURE_GROUPS) == {"persons", "couple", "person_note", "couple_note",
                                    "child_and_parents_note", "notes", "source", "collection",
-                                   "memory"}
+                                   "memory", "relationship_source"}
     assert set(GROUPS) == set(FIXTURE_GROUPS) | {CANARY_GROUP} and CANARY_GROUP == "canaries"
 
 
@@ -716,4 +726,38 @@ def test_a_failed_filing_is_retried_without_a_second_collection(beta):
     beta.fail.discard("file")
     world.need("collection")
     assert len(fixtures.tracked("collection")) == 1
+    assert fixtures.teardown() == [] and beta.live == {}
+
+
+# ------------------------------------------------------------------ relationship_source
+
+
+def test_relationship_source_implies_couple_and_source_and_attaches_to_both(beta):
+    world, fixtures = make_world()
+    world.need("relationship_source")
+    ids = world.ids
+    assert {"dad", "mom", "child", "couple", "child_and_parents",
+            "source_description"} <= set(ids)
+    sd_url = P + "/sources/descriptions/" + ids["source_description"]
+    couple = f"/platform/tree/couple-relationships/{ids['couple']}"
+    cap = f"/platform/tree/child-and-parents-relationships/{ids['child_and_parents']}"
+    assert beta.rel_attached == {
+        couple: [("relationships", sd_url)],
+        cap: [("childAndParentsRelationships", sd_url)]}
+    assert fixtures.tracked("source") == [ids["source_description"]]
+    world.need("relationship_source")  # built once
+    assert len(beta.posts(couple + "/source-references")) == 1
+    assert fixtures.teardown() == [] and beta.live == {}
+
+
+def test_a_failed_relationship_attach_is_retried_without_duplicates(beta):
+    world, fixtures = make_world()
+    beta.fail.add("rel_attach")
+    with pytest.raises(FSHTTPError):
+        world.need("relationship_source")
+    assert fixtures.tracked("couple")  # tracked before the attach ran
+    beta.fail.discard("rel_attach")
+    world.need("relationship_source")
+    assert sum(len(v) for v in beta.rel_attached.values()) == 2
+    assert len(fixtures.tracked("source")) == 1
     assert fixtures.teardown() == [] and beta.live == {}

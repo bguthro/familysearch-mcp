@@ -294,6 +294,16 @@ class FakeTree:
                               ATOM_JSON)
         if rest[0] == "notes":
             return self._notes(request, envelope, rid, note, rest[1:])
+        if rest in (["sources"], ["source-references"]):
+            # The source attached to the relationship (the world attaches the fixture
+            # source to the couple and the child-and-parents): its reference and, for
+            # /sources, the description. Both are polled reads, as the person's are.
+            if self._lagging("sources" if rest == ["sources"] else "references"):
+                return self._answer(request, 204)
+            body = {envelope: [self.cited_by(role)]}
+            if rest == ["sources"]:
+                body["sourceDescriptions"] = [self.description()]
+            return self._list(request, body)
         return self._answer(request, 404, {"errors": [{"code": 404}]})
 
     # ------------------------------------------------------------ pedigrees, sources
@@ -360,6 +370,8 @@ class FakeTree:
         if udcid != COLLECTION[0]:
             if self.mode == "catch_all":
                 return self._answer(request, 200, {"collections": []})
+            if rest == ["descriptions"]:  # live: an empty 204 for an unknown collection
+                return self._answer(request, 204)
             return self._answer(request, 400, {"errors": [
                 {"message": "Failure in upstream call: Unable to read collection."}]})
         if rest == ["descriptions"]:

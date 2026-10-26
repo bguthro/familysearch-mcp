@@ -14,6 +14,10 @@ contained in another, so an anchor can only match its own record.
 The ``canaries`` group is not a fixture: it adds the CANARY block's real beta standards
 values to ``names`` (no request, nothing to tear down) and never shares a world with a
 fixture group. ``memory`` also reads back the persona the upload made (best effort).
+``relationship_source`` attaches the ``source`` description to the ``couple`` and to the
+``child_and_parents`` relationship, by the reference-create shape P3 verified on beta
+(POST ``{relationship}/source-references``, raw client as the notes are posted); the
+references go with their relationships at teardown.
 ``collection`` is a ZZSPIKE user-defined collection (a source folder) holding the
 ``source`` description; it has no hand-written library call, so ``FixtureSet.collection``
 and ``add_to_collection`` make it with the raw client, as the notes are posted.
@@ -49,6 +53,7 @@ GROUPS: dict[str, tuple[str, ...]] = {
     "source": ("persons",),
     "collection": ("source",),
     "memory": ("persons",),
+    "relationship_source": ("couple", "source"),
 }
 FIXTURE_GROUPS = tuple(GROUPS)
 CANARY_GROUP = "canaries"
@@ -148,6 +153,7 @@ class World:
         self._pending: dict[str, str] = {}  # values for objects not created yet
         self._attached = False
         self._filed = False  # the source description is in the collection
+        self._rel_attached: set[str] = set()  # relationships the source is attached to
         self._built: set[str] = set()
 
     @property
@@ -320,6 +326,19 @@ class World:
             if desc.rsplit("/", 1)[-1] == sid:
                 return str(ref["id"])
         return str(refs[0]["id"]) if len(refs) == 1 else None
+
+    def _build_relationship_source(self) -> None:
+        sd_url = join_path(self._source_collection(), self._ids["source_description"])
+        for key, path, envelope in (
+                ("couple", COUPLE_PATH, "relationships"),
+                ("child_and_parents", CHILD_AND_PARENTS_PATH, "childAndParentsRelationships")):
+            if key in self._rel_attached:
+                continue
+            url = join_path(join_path(self._client.base_url + path, self._ids[key]),
+                            "source-references")
+            self._client.post(url, json={envelope: [{"sources": [{"description": sd_url}]}]},
+                              reason=self._reason)
+            self._rel_attached.add(key)
 
     def _build_collection(self) -> None:
         if "collection" not in self._ids:

@@ -50,6 +50,11 @@ UNKNOWN_DESCRIPTION_EMPTY = (
     "beta answers readSourceReferences for an unknown description (ZZZZ-ZZZ) with an "
     "empty 204 (Task 4 live run 2), not the spec's 404; it counts only because the "
     "positive call in the same recipe named the child, which the request did not send")
+UNKNOWN_COLLECTION_EMPTY = (
+    "beta answers readUserDefinedCollectionSourceDescriptions for an unknown collection "
+    "(ZZZZ-ZZZ) with an empty 204 (P4 live run), not the 400 the recon saw for the "
+    "collection itself; it counts only because the positive call in the same recipe "
+    "returned the fixture description under its title, which the request did not send")
 SOURCE_HEAD_NO_VALIDATORS = (
     "beta answers readSourceDescriptionHead with no ETag, Last-Modified or Content-Length "
     "(Task 4 live run 2: Cache-Control, Content-Location, Date, Vary, Via, X-* only), and "
@@ -70,19 +75,6 @@ DEFERRED: dict[str, str] = {
     "readComments": (
         "needs a discussion with a comment; createDiscussion and createComment are "
         "unverified writes, and recon got 404 for the spec's example id"),
-    "readCoupleRelationshipSources": (
-        "recon answered 204 for the couple fixture; the world attaches its source only to "
-        "the child, attaching one to a relationship is not in the hand-written library "
-        "(an unverified write), and a 204 counts only after a populated case"),
-    "readCoupleRelationshipSourceReferences": (
-        "recon answered 204 for the couple fixture; a populated case needs a source "
-        "attached to the couple, which no proven library call makes (unverified write)"),
-    "getChildAndParentsRelationshipSources": (
-        "recon answered 204 for the child-and-parents fixture; the world attaches its "
-        "source only to the child, attaching one to a relationship is an unverified write"),
-    "getChildAndParentsRelationshipSourceReferences": (
-        "recon answered 204 for the child-and-parents fixture; a populated case needs a "
-        "source attached to that relationship, which no proven library call makes"),
     "getSourceDescriptionChanges": (
         "ReadCase.body is static, not resolved against the world, so the POST body cannot "
         "name the source description created at run time; its control would be an "
@@ -427,7 +419,8 @@ COLLECTION_DESCRIPTIONS_CASES = (
     ReadCase(op="readUserDefinedCollectionSourceDescriptions", path_args=_COLLECTION,
              missing={"udcid": NO_SUCH_COLLECTION},
              expect=_expect_description("source_description", "source_title", exactly=True),
-             anchors=(_title(),), needs=("collection",), eventual=MEMBERS_EVENTUAL),
+             anchors=(_title(),), needs=("collection",), eventual=MEMBERS_EVENTUAL,
+             control_may_be_empty=UNKNOWN_COLLECTION_EMPTY),
 )
 COLLECTION_DESCRIPTIONS = reads_recipe("reads.sources.collection_descriptions",
                                        COLLECTION_DESCRIPTIONS_CASES)
