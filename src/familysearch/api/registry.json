@@ -77,7 +77,12 @@
   },
   "createMemories": {
    "generated": {
-    "status": "unverified"
+    "commit": "c645bcdfda417b8716aea2ecaf1cb3da4ca259f4",
+    "evidence": "state-change",
+    "fingerprint": "f327772416902fb8ef7af84f1f0540a0c04cd8141000eb54164bd3da49337e37",
+    "recipe": "writes.memories.memory_create",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    },
    "handwritten": {
     "recipe": "tests/integration/test_beta_roundtrip.py::test_standalone_upload_is_floating_until_linked",
@@ -96,7 +101,12 @@
   },
   "createMemoryPersona": {
    "generated": {
-    "status": "unverified"
+    "commit": "c645bcdfda417b8716aea2ecaf1cb3da4ca259f4",
+    "evidence": "state-change",
+    "fingerprint": "42c082657fbd67e766518ea54a8d6c0c2069b9e7fac67f5fb79110057531fedf",
+    "recipe": "writes.memories.persona_create",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    },
    "handwritten": {
     "recipe": "tests/integration/test_beta_roundtrip.py::test_upload_to_person_then_link_to_second_person",
@@ -335,7 +345,12 @@
   },
   "deleteMemory": {
    "generated": {
-    "status": "unverified"
+    "commit": "c645bcdfda417b8716aea2ecaf1cb3da4ca259f4",
+    "evidence": "state-change",
+    "fingerprint": "84370c620b7f147f4362a2c1da9c8db7b6ebce0fb251196512497a09b8290c1b",
+    "recipe": "writes.memories.memory_delete",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    },
    "handwritten": {
     "recipe": "tests/integration/test_beta_roundtrip.py::test_upload_to_person_then_link_to_second_person",
@@ -1525,7 +1540,12 @@
   },
   "updateMemory": {
    "generated": {
-    "status": "unverified"
+    "commit": "c645bcdfda417b8716aea2ecaf1cb3da4ca259f4",
+    "evidence": "state-change",
+    "fingerprint": "ac3c9ba208d1569b96378beca161ff42b0c8ec0f9a257ada8e530ee5c7c388c8",
+    "recipe": "writes.memories.memory_update",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "updateMemoryArtifact": {
@@ -1535,7 +1555,12 @@
   },
   "updateMemoryPersona": {
    "generated": {
-    "status": "unverified"
+    "commit": "c645bcdfda417b8716aea2ecaf1cb3da4ca259f4",
+    "evidence": "state-change",
+    "fingerprint": "06df11b7773824b27bdd26ff23a123d1abfef5a5b8a725aca252f71400029ba0",
+    "recipe": "writes.memories.persona_update",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "updatePartnerAccount": {
