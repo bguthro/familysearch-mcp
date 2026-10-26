@@ -10,12 +10,14 @@ from .reads_tree_persons import READS_TREE_PERSONS
 from .reads_tree_relations import READS_TREE_RELATIONS
 from .writes_tree_notes import WRITES_TREE_NOTES
 from .writes_tree_persons import WRITES_TREE_PERSONS
+from .writes_tree_relationship_details import WRITES_TREE_RELATIONSHIP_DETAILS
 from .writes_tree_relationships import WRITES_TREE_RELATIONSHIPS
 
 RECIPES: dict[str, Recipe] = {
     r.name: r for r in (*PILOT, *READS_TREE_PERSONS, *READS_TREE_RELATIONS,
                         *READS_STANDARDS, *READS_MISC, *WRITES_TREE_PERSONS,
-                        *WRITES_TREE_NOTES, *WRITES_TREE_RELATIONSHIPS)}
+                        *WRITES_TREE_NOTES, *WRITES_TREE_RELATIONSHIPS,
+                        *WRITES_TREE_RELATIONSHIP_DETAILS)}
 
 
 def validate_recipes(recipes: dict[str, Recipe]) -> list[str]:

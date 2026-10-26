@@ -3,7 +3,8 @@
 A write recipe proves its operation by reading the state back from the server
 (``read_person_view``, ``person_sources``, ``person_memories``; for notes
 ``note_listing`` / ``single_note``; for relationships ``read_couple``,
-``read_child_and_parents`` and a person's ``relatives``) before and after the
+``read_child_and_parents`` and a person's ``relatives``; for a source description,
+the records citing it, ``citations``) before and after the
 write, never by the write's status. Each read-back keeps the ``ApiResult`` it was
 parsed from, so a failure can carry the response skeleton (``describe``) the
 controller needs to fix a recipe from a live run. Markers (``token``) are fresh
@@ -187,6 +188,44 @@ class Listing:
 def _sdid(description: Any) -> str:
     """The source description id at the end of a reference's ``description`` URL."""
     return str(description or "").split("?")[0].split("#")[0].rstrip("/").rsplit("/", 1)[-1]
+
+
+def _reference_sdid(ref: Mapping[str, Any]) -> str:
+    """The description id a source reference names (``descriptionId``, else its URL)."""
+    return str(ref.get("descriptionId") or _sdid(ref.get("description")))
+
+
+# The envelopes readSourceReferences answers citing records in, and their kinds.
+CITING = {"persons": "person", "relationships": "couple",
+          "childAndParentsRelationships": "child_and_parents"}
+
+
+@dataclass(frozen=True)
+class Citations:
+    """readSourceReferences?description={sdid}: the records citing one description.
+
+    ``refs`` maps ``(kind, id)`` to the ids of that record's references to the
+    description (empty when the entry names none). 204 (no body) means nobody.
+    """
+
+    refs: Mapping[tuple[str, str], frozenset[str]]
+    result: ApiResult = field(compare=False, repr=False)
+
+
+def citations(ctx: VerifyContext, sdid: str) -> Citations:
+    result = ctx.api.read_source_references(query={"description": sdid})
+    if result.status == 204 or not (result.text or "").strip():
+        return Citations({}, result)
+    body = result.body if isinstance(result.body, dict) else {}
+    refs = {}
+    for envelope, kind in CITING.items():
+        for entry in body.get(envelope) or []:
+            if not (isinstance(entry, dict) and entry.get("id")):
+                continue
+            refs[(kind, str(entry["id"]))] = frozenset(
+                str(s["id"]) for s in entry.get("sources") or []
+                if isinstance(s, dict) and s.get("id") and _reference_sdid(s) in (sdid, ""))
+    return Citations(refs, result)
 
 
 def person_sources(ctx: VerifyContext, pid: str) -> Listing:
@@ -416,6 +455,8 @@ class Relationship:
     roles: Mapping[str, str]
     facts: Mapping[str, Mapping[str, Fact]]
     result: ApiResult = field(compare=False, repr=False)
+    # Its source references, srid -> description id, where the read answers them.
+    sources: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def persons(self) -> frozenset[str]:
@@ -449,7 +490,9 @@ def _relationship(record: dict, envelope: str, result: ApiResult, *,
             raise AssertionError(f"{key} of relationship {record.get('id')} are not facts "
                                  f"with ids; {describe(result)}")
         facts[key] = {str(f["id"]): _fact(f) for f in items}
-    return Relationship(str(record.get("id")), kind, roles, facts, result)
+    sources = {str(s["id"]): _reference_sdid(s) for s in record.get("sources") or []
+               if isinstance(s, dict) and s.get("id")}
+    return Relationship(str(record.get("id")), kind, roles, facts, result, sources)
 
 
 def _relationships(result: ApiResult, *, untyped_couple: bool = False

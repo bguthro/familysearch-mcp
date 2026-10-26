@@ -446,6 +446,17 @@ WRITE_LIES = frozenset({
     "restore_new_id_silent",  # ... and answers 204 with no id: only the lists show it
     "parent_delete_noop",    # deleting a parent answers 204, changes nothing
     "parent_delete_wrong",   # deleting a parent removes the other parent
+    # relationship details (source references, conclusions, order)
+    "rel_ref_ignored",       # a relationship source reference POST answers 201, stores nothing
+    "rel_ref_to_person",     # ... attaches the source to the relationship's first person
+    "rel_ref_delete_noop",   # deleting a relationship reference answers 204, changes nothing
+    "rel_ref_delete_wrong",  # ... deletes the relationship's other reference
+    "rel_ref_delete_all",    # ... deletes every reference of the relationship
+    "rel_conclusion_noop",   # deleting a relationship conclusion answers 204, changes nothing
+    "rel_conclusion_wrong",  # ... deletes another fact of the relationship
+    "rel_conclusion_all",    # ... deletes every fact of the relationship
+    "order_noop",            # setting the order answers 204, changes nothing
+    "order_drops",           # ... puts the posted first person in both roles
 })
 
 
@@ -472,13 +483,29 @@ class WriteTree:
     child-and-parents relationship derives a couple for its parents when they have none.
     The persons' spouses / parents / children lists follow the live relationships.
 
+    A relationship's source references are created by a POST to its
+    ``/source-references`` (``{envelope: [{"sources": [{"description": url}]}]}``; 201
+    with the reference's ``Location`` and ``X-ENTITY-ID``) and deleted at
+    ``/source-references/{srid}``; its resource answers them in ``sources``, and
+    ``/tree/source-references?description={sdid}`` answers every live person and
+    relationship citing the description (204 when none). A conclusion (fact) is deleted
+    at ``couple-relationships/{id}/conclusions/{cid}`` or
+    ``child-and-parents-relationships/{id}/{parent1|parent2}/conclusions/{cid}`` (404
+    unless it is in that list). ``spouses/order`` / ``parents/order`` take the
+    relationship's own persons in the roles wanted and swap them; as the spec's 400
+    for "traditional order", a couple (or two parents) of a male and a female is refused.
+
     ``mode`` is None or one of ``WRITE_LIES``. ``source_lag`` / ``memory_lag``: how
     many reads of a person's sources / memories still answer the state before the
-    last change of them (beta's person -> source lag). ``calls`` lists
+    last change of them (beta's person -> source lag); ``reference_lag`` the same for
+    ``/tree/source-references`` after a relationship reference changed;
+    ``resource_sources=False`` leaves ``sources`` out of a relationship's resource.
+    ``calls`` lists
     ``(method, path)`` for every request.
     """
 
-    def __init__(self, mode=None, *, source_lag=0, memory_lag=0, restore_lag=0):
+    def __init__(self, mode=None, *, source_lag=0, memory_lag=0, restore_lag=0,
+                 reference_lag=0, resource_sources=True):
         if mode is not None and mode not in WRITE_LIES:
             raise ValueError(f"unknown lie {mode!r}")
         self.mode = mode
@@ -492,7 +519,9 @@ class WriteTree:
         self.restore_lag = restore_lag
         self._restoring: dict[str, int] = {}
         self.calls: list[tuple[str, str]] = []
-        self.lag = {"sources": source_lag, "memories": memory_lag}
+        self.resource_sources = resource_sources  # a relationship's resource lists them
+        self.lag = {"sources": source_lag, "memories": memory_lag,
+                    "references": reference_lag}
         self._pending: dict[tuple[str, str], int] = {}  # (what, pid) -> stale reads left
         self._shown: dict[tuple[str, str], object] = {}  # (what, pid) -> the stale state
         self._seq = {"person": 0, "conclusion": 0, "source": 0, "reference": 0,
@@ -850,7 +879,7 @@ class WriteTree:
     def _new_couple(self, p1, p2):
         rid = self._id("couple")
         self.relationships[rid] = {"kind": "couple", "deleted": False, "person1": p1,
-                                   "person2": p2, "facts": [], "notes": []}
+                                   "person2": p2, "facts": [], "notes": [], "sources": []}
         return rid
 
     def couples_between(self, a, b):
@@ -881,7 +910,7 @@ class WriteTree:
             self.relationships[cid] = {
                 "kind": "cap", "deleted": False, "child": child,
                 "parent1": parents[0], "parent2": parents[1] if len(parents) == 2 else None,
-                "parent1Facts": [], "parent2Facts": [], "notes": []}
+                "parent1Facts": [], "parent2Facts": [], "notes": [], "sources": []}
             if len(parents) == 2 and (self.mode == "duplicate_couple"
                                       or not self.couples_between(*parents)):
                 self._new_couple(*parents)  # derived by the server, as beta does
@@ -894,6 +923,8 @@ class WriteTree:
                 "person2": self._pref(r["person2"])}
         if r["facts"]:
             body["facts"] = [dict(f) for f in r["facts"]]
+        if r["sources"] and self.resource_sources:
+            body["sources"] = [dict(ref) for ref in r["sources"]]
         return body
 
     def cap_json(self, rid):
@@ -905,6 +936,8 @@ class WriteTree:
         for key in PARENT_FACTS:
             if r[key]:
                 body[key] = [dict(f) for f in r[key]]
+        if r["sources"] and self.resource_sources:
+            body["sources"] = [dict(ref) for ref in r["sources"]]
         return body
 
     def _relation_json(self, rid):
@@ -991,6 +1024,21 @@ class WriteTree:
             return 204, {}, ""
         if rest[0] == "notes":
             return self.notes_route(request, r, kind, rid, rest[1:])
+        if rest[0] == "source-references":
+            if len(rest) == 1 and method == "POST":
+                return self.create_rel_reference(request, kind, rid)
+            if len(rest) == 2 and method == "DELETE":
+                return self.delete_rel_reference(rid, rest[1])
+            return 405, {}, ""
+        if method == "DELETE" and (
+                (kind == "couple" and len(rest) == 2 and rest[0] == "conclusions")
+                or (kind == "cap" and len(rest) == 3 and rest[1] == "conclusions"
+                    and rest[0] in ("parent1", "parent2"))):
+            return self.delete_rel_conclusion(rid, "facts" if kind == "couple"
+                                              else f"{rest[0]}Facts", rest[-1])
+        if method == "POST" and rest == (["spouses", "order"] if kind == "couple"
+                                         else ["parents", "order"]):
+            return self.set_order(request, rid)
         if kind == "cap" and rest in (["parent1"], ["parent2"]) and method == "DELETE":
             role = rest[0]
             if not r[role]:
@@ -1003,6 +1051,133 @@ class WriteTree:
             r[f"{role}Facts"] = []
             return 204, {}, ""
         return 404, {}, ""
+
+    # ------------------------------------------------------------ relationship details
+
+    @staticmethod
+    def _envelope(r):
+        return "relationships" if r["kind"] == "couple" else "childAndParentsRelationships"
+
+    @staticmethod
+    def _sdid(url):
+        return str(url or "").split("?")[0].rstrip("/").rsplit("/", 1)[-1]
+
+    def _citing_snapshot(self, sdid):
+        """What /tree/source-references?description={sdid} answers now."""
+        persons = [{"id": pid, "sources": [dict(ref) for ref in p["sources"]
+                                           if self._sdid(ref["description"]) == sdid]}
+                   for pid, p in self.persons.items() if not p["deleted"]]
+        body = {"persons": [p for p in persons if p["sources"]]}
+        for kind, envelope in (("couple", "relationships"),
+                               ("cap", "childAndParentsRelationships")):
+            entries = [{"id": rid, "sources": [dict(ref) for ref in r["sources"]
+                                               if self._sdid(ref["description"]) == sdid]}
+                       for rid, r in self._live(kind).items()]
+            entries = [e for e in entries if e["sources"]]
+            if entries:
+                body[envelope] = entries
+        return body if any(body.values()) else None
+
+    def _references_changed(self, sdids):
+        for sdid in sdids:
+            self._changed("references", sdid, self._citing_snapshot(sdid))
+
+    def create_rel_reference(self, request, kind, rid):
+        r = self.relationships[rid]
+        posted = json.loads(request.body).get(self._envelope(r))
+        if not (isinstance(posted, list) and len(posted) == 1):
+            return 400, {}, f"expected one {self._envelope(r)} entry"
+        refs = posted[0].get("sources") or []
+        if len(refs) != 1 or not str(refs[0].get("description", "")).startswith(DESCRIPTIONS):
+            return 400, {}, "one source reference to a source description is expected"
+        url = refs[0]["description"]
+        sdid = self._sdid(url)
+        if sdid not in self.descriptions or self.descriptions[sdid]["deleted"]:
+            return 400, {}, "no such source description"
+        srid = self._id("reference")
+        before = self._citing_snapshot(sdid)
+        if self.mode == "rel_ref_to_person":
+            owner = r["person1"] if r["kind"] == "couple" else r["child"]
+            self.persons[owner]["sources"].append({"id": srid, "description": url})
+        elif self.mode != "rel_ref_ignored":
+            r["sources"].append({"id": srid, "description": url})
+        self._changed("references", sdid, before)
+        base = COUPLES if kind == "couple" else CAPS
+        return 201, {"Location": f"{base}/{rid}/source-references/{srid}",
+                     "X-ENTITY-ID": srid}, ""
+
+    def delete_rel_reference(self, rid, srid):
+        r = self.relationships[rid]
+        if not any(ref["id"] == srid for ref in r["sources"]):
+            return 404, {}, ""
+        if self.mode == "rel_ref_delete_noop":
+            return 204, {}, ""
+        sdids = {self._sdid(ref["description"]) for ref in r["sources"]}
+        before = {s: self._citing_snapshot(s) for s in sdids}
+        if self.mode == "rel_ref_delete_all":
+            r["sources"] = []
+        else:
+            target = srid
+            if self.mode == "rel_ref_delete_wrong":
+                target = next((ref["id"] for ref in r["sources"] if ref["id"] != srid), srid)
+            r["sources"] = [ref for ref in r["sources"] if ref["id"] != target]
+        for sdid, shown in before.items():
+            self._changed("references", sdid, shown)
+        return 204, {}, ""
+
+    def source_references(self, request):
+        """GET /tree/source-references?description={sdid}: who cites the description."""
+        self._record(request)
+        query = {k: v[0] for k, v in parse_qs(urlsplit(request.url).query).items()}
+        if "description" not in query:
+            return 404, {}, ""  # recon: 404 without a parameter
+        sdid = query["description"]
+        body = self._visible("references", sdid, self._citing_snapshot(sdid))
+        return (204, {}, "") if body is None else self._json(200, body)
+
+    def delete_rel_conclusion(self, rid, key, cid):
+        r = self.relationships[rid]
+        if not any(f["id"] == cid for f in r[key]):
+            return 404, {}, ""
+        if self.mode == "rel_conclusion_noop":
+            return 204, {}, ""
+        keys = ("facts",) if r["kind"] == "couple" else PARENT_FACTS
+        if self.mode == "rel_conclusion_all":
+            for k in keys:
+                r[k] = []
+            return 204, {}, ""
+        if self.mode == "rel_conclusion_wrong":
+            other = next(((k, f["id"]) for k in keys for f in r[k] if f["id"] != cid), None)
+            if other:
+                key, cid = other
+        r[key] = [f for f in r[key] if f["id"] != cid]
+        return 204, {}, ""
+
+    def _gender(self, pid):
+        gender = self.persons[pid]["gender"] or {}
+        return gender.get("type")
+
+    def set_order(self, request, rid):
+        r = self.relationships[rid]
+        roles = ("person1", "person2") if r["kind"] == "couple" else ("parent1", "parent2")
+        posted = json.loads(request.body).get(self._envelope(r))
+        if not (isinstance(posted, list) and len(posted) == 1):
+            return 400, {}, f"expected one {self._envelope(r)} entry"
+        wanted = [self._posted_pid(posted[0].get(role)) for role in roles]
+        current = [r[role] for role in roles]
+        if None in wanted or sorted(wanted) != sorted(current) or wanted[0] == wanted[1]:
+            return 400, {}, "the given persons are not the relationship's"
+        if {self._gender(p) for p in current} == {GX + "Male", GX + "Female"}:
+            return 400, {}, "the persons are currently in traditional order"
+        if self.mode == "order_noop":
+            return 204, {}, ""
+        if self.mode == "order_drops":
+            wanted = [wanted[0], wanted[0]]
+        if r["kind"] == "cap" and wanted != current:
+            r["parent1Facts"], r["parent2Facts"] = r["parent2Facts"], r["parent1Facts"]
+        for role, pid in zip(roles, wanted):
+            r[role] = pid
+        return 204, {}, ""
 
     # ------------------------------------------------------------ relatives
 
@@ -1070,6 +1245,9 @@ class WriteTree:
             re.escape(TREE) + r"/(couple|child-and-parents)-relationships/[^?]+(\?.*)?$")
         for method in (responses.GET, responses.POST, responses.DELETE):
             responses.add_callback(method, relationship, callback=self.relationship_route)
+        responses.add_callback(
+            responses.GET, re.compile(re.escape(TREE + "/source-references") + r"(\?.*)?$"),
+            callback=self.source_references)
         responses.add_callback(responses.POST,
                                re.compile(re.escape(DESCRIPTIONS) + r"(\?.*)?$"),
                                callback=self.create_description)
