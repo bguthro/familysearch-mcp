@@ -203,3 +203,121 @@ def test_write_lies_are_named():
     with pytest.raises(ValueError):
         WriteTree("no_such_lie")
     assert "ignore_update" in WRITE_LIES and PERSONS.endswith("/platform/tree/persons")
+
+
+# ---------------------------------------------------------------- notes, relationships
+
+
+def headers_result(headers):
+    return ApiResult(201, headers, "", None, "")
+
+
+def test_new_note_id_takes_the_location_first_then_the_entity_header():
+    loc = f"{PERSONS}/P1/notes/N-LOC?flag=fsh"
+    assert wc.new_note_id(headers_result({"Location": loc, "X-ENTITY-ID": "N-ENT"})) == "N-LOC"
+    assert wc.new_note_id(headers_result({"x-entity-id": "N-ENT"})) == "N-ENT"
+    with pytest.raises(AssertionError, match="no Location or X-ENTITY-ID"):
+        wc.new_note_id(headers_result({}))
+
+
+def test_note_reads_parse_lists_and_single_notes():
+    listed = wc.note_listing(result({"relationships": [{"id": "R", "notes": [
+        {"id": "N1", "subject": "s1"}, {"id": "N2", "subject": "s2"}]}]}), "relationships")
+    assert listed.items == {"N1": "s1", "N2": "s2"}
+    assert wc.note_listing(result(None, 204), "relationships").items == {}
+    with pytest.raises(AssertionError, match="not in relationships"):
+        wc.note_listing(result({"persons": [{"notes": []}]}), "relationships")
+    one = wc.single_note(result({"persons": [{"notes": [
+        {"id": "N1", "subject": "ZZSPIKEA1 subject", "text": "ZZSPIKEA1"}]}]}), "persons", "N1")
+    assert (one.subject, one.text) == ("ZZSPIKEA1 subject", "ZZSPIKEA1") and one.has("A1")
+    with pytest.raises(AssertionError, match="answered notes"):
+        wc.single_note(result({"persons": [{"notes": [{"id": "N2"}]}]}), "persons", "N1")
+
+
+def test_relationship_views_tell_couples_from_child_and_parents_and_other_types():
+    body = {"relationships": [
+        {"id": "C1", "type": wc.COUPLE, "person1": {"resourceId": "A"},
+         "person2": {"resource": f"{PERSONS}/B?flag=fsh"},
+         "facts": [{"id": "F1", "type": "http://gedcomx.org/Marriage",
+                    "place": {"original": "ZZSPIKEW1"}}]},
+        {"id": "PC", "type": "http://gedcomx.org/ParentChild",
+         "person1": {"resourceId": "A"}, "person2": {"resourceId": "K"}}],
+        "childAndParentsRelationships": [
+            {"id": "X1", "parent1": {"resourceId": "A"}, "child": {"resourceId": "K"},
+             "parent1Facts": [{"id": "L1", "type": "http://gedcomx.org/AdoptiveParent"}]}]}
+    couple = wc.relationship_view(result(body), "C1")
+    assert couple.kind == "couple" and couple.roles == {"person1": "A", "person2": "B"}
+    assert couple.facts_with("ZZSPIKEW1") == ["F1"]
+    cap = wc.relationship_view(result(body), "X1")
+    assert cap.kind == "child_and_parents" and cap.persons == {"A", "K"}
+    assert list(cap.facts["parent1Facts"]) == ["L1"] and cap.facts["parent2Facts"] == {}
+    assert wc.relationship_view(result(body), "PC").kind == "http://gedcomx.org/ParentChild"
+    with pytest.raises(AssertionError, match="does not hold it"):
+        wc.relationship_view(result(body), "ZZ")
+    with pytest.raises(AssertionError, match="are not facts with ids"):
+        wc.relationship_view(result({"relationships": [
+            {"id": "C1", "type": wc.COUPLE, "facts": [{"type": "x"}]}]}), "C1")
+
+
+def test_restore_is_bare_and_retries_with_an_empty_body_only_on_415():
+    sent = []
+
+    def call(status):
+        def send(body):
+            sent.append(body)
+            if status and len(sent) == 1:
+                raise FSHTTPError(status, "")
+            return result(None, 204)
+        return send
+
+    wc.restore(call(None))
+    assert sent == [None]
+    sent.clear()
+    wc.restore(call(415))
+    assert sent == [None, {}]
+    sent.clear()
+    with pytest.raises(FSHTTPError):
+        wc.restore(call(400))
+    assert sent == [None]
+
+
+@responses.activate
+def test_relationship_fixtures_are_tracked_read_back_and_torn_down():
+    tree = WriteTree().serve()
+    ctx = ctx_for()
+    dad, mom = ctx.fixtures.person(), ctx.fixtures.person(gender="Female")
+    child = ctx.fixtures.person(birth_year="1880")
+    crid = ctx.fixtures.couple(dad, mom)
+    caprid = ctx.fixtures.child_and_parents(child, [dad, mom])
+    assert ctx.fixtures.tracked("couple") == [crid]
+    assert ctx.fixtures.tracked("child_and_parents") == [caprid]
+    assert ctx.fixtures.person_ref(dad) == {"resource": f"{PERSONS}/{dad}", "resourceId": dad}
+    spouses = wc.relatives(ctx, "spouses", dad)
+    assert set(spouses.of_kind("couple")) == {crid} and mom in spouses.persons
+    assert set(wc.relatives(ctx, "parents", child).of_kind("child_and_parents")) == {caprid}
+    assert wc.relatives(ctx, "spouses", child).relationships == {}  # 204
+    assert wc.read_couple(ctx, crid).persons == {dad, mom}
+    assert wc.read_child_and_parents(ctx, caprid).roles == {
+        "parent1": dad, "parent2": mom, "child": child}
+    assert len(tree.relationships) == 2  # their couple existed: none derived
+    for bad in (lambda: ctx.fixtures.couple(dad, "KWQ7-ABC"),
+                lambda: ctx.fixtures.child_and_parents("KWQ7-ABC", [dad]),
+                lambda: ctx.fixtures.person_ref("KWQ7-ABC")):
+        with pytest.raises(ValueError):
+            bad()  # never a person this run did not make
+    with pytest.raises(ValueError):
+        wc.relatives(ctx, "cousins", dad)
+    assert ctx.fixtures.teardown() == [] and tree.live() == []
+
+
+@responses.activate
+def test_fake_derives_a_couple_for_two_parents_without_one():
+    tree = WriteTree().serve()
+    ctx = ctx_for()
+    dad, mom = ctx.fixtures.person(), ctx.fixtures.person(gender="Female")
+    child = ctx.fixtures.person(birth_year="1880")
+    ctx.fixtures.child_and_parents(child, [dad, mom])
+    [derived] = tree.couples_between(dad, mom)
+    assert derived in tree.live()  # untracked: left behind unless a recipe tracks it
+    ctx.fixtures.track("couple", derived)
+    assert ctx.fixtures.teardown() == [] and tree.live() == []

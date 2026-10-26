@@ -94,6 +94,34 @@ class FixtureSet:
             raise ValueError("attach_source attaches only this run's tracked fixtures")
         self._sources.attach_to_person(pid, self.source_url(sid), reason=self._reason)
 
+    def _own_persons(self, *pids: str) -> None:
+        if not pids or any(p not in self._tracked["person"] for p in pids):
+            raise ValueError("relationship fixtures join only this run's tracked persons")
+
+    def person_ref(self, pid: str) -> dict:
+        """A tracked person as a relationship names it (clean URL + id, as the library)."""
+        self._own_persons(pid)
+        return {"resource": join_path(self._collection("persons"), pid), "resourceId": pid}
+
+    def couple(self, person1: str, person2: str) -> str:
+        """A couple of two tracked persons (``TreeWriter.create_couple``), tracked at once."""
+        self._own_persons(person1, person2)
+        rid = self._writer.create_couple(person1, person2, reason=self._reason)
+        self.track("couple", rid)
+        return rid
+
+    def child_and_parents(self, child: str, parents: list[str]) -> str:
+        """ONE child-and-parents relationship (``TreeWriter.create_parent_child``), tracked.
+
+        Beta derives a couple for two parents that have none, which nothing here would
+        track: give two parents a ``couple`` first.
+        """
+        self._own_persons(child, *parents)
+        rid = self._writer.create_parent_child(child_id=child, parent_ids=list(parents),
+                                               reason=self._reason)
+        self.track("child_and_parents", rid)
+        return rid
+
     def _collection(self, rel: str) -> str:
         href = self._discovery.href(rel).split("?")[0]
         return href if href.startswith("http") else self._client.base_url + href

@@ -1,7 +1,9 @@
 """Helpers shared by the write recipes: read-backs, gone checks, markers and bodies.
 
 A write recipe proves its operation by reading the state back from the server
-(``read_person_view``, ``person_sources``, ``person_memories``) before and after the
+(``read_person_view``, ``person_sources``, ``person_memories``; for notes
+``note_listing`` / ``single_note``; for relationships ``read_couple``,
+``read_child_and_parents`` and a person's ``relatives``) before and after the
 write, never by the write's status. Each read-back keeps the ``ApiResult`` it was
 parsed from, so a failure can carry the response skeleton (``describe``) the
 controller needs to fix a recipe from a live run. Markers (``token``) are fresh
@@ -30,6 +32,7 @@ from ..core import VerifyContext
 from ..reads import skeleton
 
 GONE = (404, 410)
+UNSUPPORTED_MEDIA = 415
 FACT_RESIDENCE = GEDCOMX + "Residence"
 # The person -> source link lagged on beta (P2 Task 4 run 1); polled reads wait this
 # long at most: (attempts, seconds between them), as REFERENCE_EVENTUAL in the reads.
@@ -286,6 +289,217 @@ def source_reference_update(description_url: str) -> dict:
 def note_body(envelope: str, subject: str, text: str) -> dict:
     """A note embedded in its owner, as the fixture world posts it (persons proven)."""
     return {envelope: [{"notes": [{"subject": subject, "text": text}]}]}
+
+
+def note_update(envelope: str, nid: str, subject: str, text: str) -> dict:
+    """The same embedded note, carrying the id of the note it updates."""
+    return {envelope: [{"notes": [{"id": nid, "subject": subject, "text": text}]}]}
+
+
+def restore(call: Callable[[Any], ApiResult]) -> ApiResult:
+    """A restore: the spec takes */* and answers 204, so a bare POST assumes the least.
+
+    Only if beta refuses it 415 is it retried once with ``{}`` (as the pilot's
+    restorePerson). ``call(body)`` sends the restore.
+    """
+    try:
+        return call(None)
+    except FSHTTPError as e:
+        if e.status != UNSUPPORTED_MEDIA:
+            raise
+        return call({})
+
+
+# ------------------------------------------------------------------ notes read-back
+
+ENVELOPES = {"person": "persons", "couple": "relationships",
+             "child_and_parents": "childAndParentsRelationships"}
+
+
+def _owner_notes(result: ApiResult, envelope: str) -> list[dict]:
+    body = result.body if isinstance(result.body, dict) else {}
+    owners = body.get(envelope)
+    if not isinstance(owners, list):
+        raise AssertionError(f"the notes are not in {envelope}; {describe(result)}")
+    notes = []
+    for owner in owners:
+        found = owner.get("notes") if isinstance(owner, dict) else None
+        notes += [n for n in found or [] if isinstance(n, dict)]
+    return notes
+
+
+def note_listing(result: ApiResult, envelope: str) -> Listing:
+    """A notes list read: note id -> its subject. 204 (no body) means none."""
+    if result.status == 204 or not (result.text or "").strip():
+        return Listing({}, result)
+    items = {}
+    for note in _owner_notes(result, envelope):
+        if not note.get("id"):
+            raise AssertionError(f"a listed note has no id; {describe(result)}")
+        items[str(note["id"])] = note.get("subject")
+    return Listing(items, result)
+
+
+@dataclass(frozen=True)
+class Note:
+    """One note as a single-note read answers it."""
+
+    id: str
+    subject: str | None
+    text: str | None
+    result: ApiResult = field(compare=False, repr=False)
+
+    def has(self, marker: str) -> bool:
+        return any(marker in (v or "") for v in (self.subject, self.text))
+
+
+def single_note(result: ApiResult, envelope: str, nid: str) -> Note:
+    """A single-note read: exactly the note ``nid``."""
+    notes = _owner_notes(result, envelope)
+    if [n.get("id") for n in notes] != [nid]:
+        raise AssertionError(f"the read of note {nid} answered notes "
+                             f"{[n.get('id') for n in notes]}; {describe(result)}")
+    note = notes[0]
+    return Note(nid, note.get("subject"), note.get("text"), result)
+
+
+def new_note_id(result: ApiResult) -> str:
+    """A created note's id: the Location's last segment, else X-ENTITY-ID (as the
+    fixture world, whose note ids beta answered back)."""
+    lowered = {k.lower(): v for k, v in result.headers.items()}
+    location = (lowered.get("location") or "").split("?")[0].rstrip("/")
+    nid = location.rsplit("/", 1)[-1] if location else lowered.get("x-entity-id")
+    if not nid:
+        raise AssertionError(f"the note create answered no Location or X-ENTITY-ID; "
+                             f"{describe(result)}")
+    return nid
+
+
+# ------------------------------------------------------------------ relationship read-back
+
+COUPLE = GEDCOMX + "Couple"
+ROLES = {"couple": ("person1", "person2"),
+         "child_and_parents": ("parent1", "parent2", "child")}
+FACT_KEYS = {"couple": ("facts",), "child_and_parents": ("parent1Facts", "parent2Facts")}
+
+
+def ref_id(ref: Any) -> str:
+    """The person a reference names: its ``resourceId``, else its URI's last segment."""
+    if isinstance(ref, dict):
+        if isinstance(ref.get("resourceId"), str):
+            return ref["resourceId"]
+        ref = ref.get("resource")
+    if not isinstance(ref, str):
+        return ""
+    return ref.split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1].rsplit("#", 1)[-1]
+
+
+def _fact(fact: dict) -> Fact:
+    return Fact(type=fact.get("type"), date=_original(fact.get("date")),
+                place=_original(fact.get("place")), value=fact.get("value"),
+                text=json.dumps(fact, ensure_ascii=False, sort_keys=True))
+
+
+@dataclass(frozen=True)
+class Relationship:
+    """A relationship as the server answers it.
+
+    ``kind`` is ``couple`` (a ``relationships`` entry typed Couple),
+    ``child_and_parents`` (a ``childAndParentsRelationships`` entry) or, for another
+    ``relationships`` type, that type. ``roles`` maps each role present (person1 /
+    person2, parent1 / parent2 / child) to its person id; ``facts`` maps each fact list
+    (``facts``, ``parent1Facts``, ``parent2Facts``) to fact id -> ``Fact``.
+    """
+
+    id: str
+    kind: str
+    roles: Mapping[str, str]
+    facts: Mapping[str, Mapping[str, Fact]]
+    result: ApiResult = field(compare=False, repr=False)
+
+    @property
+    def persons(self) -> frozenset[str]:
+        return frozenset(self.roles.values())
+
+    def facts_with(self, marker: str, key: str = "facts") -> list[str]:
+        return [fid for fid, f in self.facts.get(key, {}).items() if f.has(marker)]
+
+    def summary(self) -> str:
+        facts = {k: {fid: [f.type, f.date, f.place] for fid, f in v.items()}
+                 for k, v in self.facts.items()}
+        return json.dumps({"id": self.id, "kind": self.kind, "roles": dict(self.roles),
+                           "facts": facts}, ensure_ascii=False)
+
+
+def _relationship(record: dict, envelope: str, result: ApiResult) -> Relationship:
+    if envelope == "childAndParentsRelationships":
+        kind = "child_and_parents"
+    else:
+        kind = "couple" if record.get("type") == COUPLE else str(record.get("type"))
+    roles = {role: ref_id(record[role]) for role in ROLES.get(kind, ("person1", "person2"))
+             if record.get(role)}
+    facts = {}
+    for key in FACT_KEYS.get(kind, ("facts",)):
+        items = record.get(key) or []
+        if not isinstance(items, list) or not all(
+                isinstance(f, dict) and f.get("id") for f in items):
+            raise AssertionError(f"{key} of relationship {record.get('id')} are not facts "
+                                 f"with ids; {describe(result)}")
+        facts[key] = {str(f["id"]): _fact(f) for f in items}
+    return Relationship(str(record.get("id")), kind, roles, facts, result)
+
+
+def _relationships(result: ApiResult) -> dict[str, Relationship]:
+    body = result.body if isinstance(result.body, dict) else {}
+    found = {}
+    for envelope in ("relationships", "childAndParentsRelationships"):
+        for record in body.get(envelope) or []:
+            if isinstance(record, dict) and record.get("id"):
+                found[str(record["id"])] = _relationship(record, envelope, result)
+    return found
+
+
+def relationship_view(result: ApiResult, rid: str) -> Relationship:
+    """A relationship resource read (readCoupleRelationship and the like): ``rid``."""
+    found = _relationships(result)
+    if rid not in found:
+        raise AssertionError(f"the read of relationship {rid} does not hold it; "
+                             f"{describe(result)}")
+    return found[rid]
+
+
+def read_couple(ctx: VerifyContext, crid: str) -> Relationship:
+    return relationship_view(ctx.api.read_couple_relationship(crid), crid)
+
+
+def read_child_and_parents(ctx: VerifyContext, caprid: str) -> Relationship:
+    return relationship_view(ctx.api.get_child_and_parents_relationship(caprid), caprid)
+
+
+@dataclass(frozen=True)
+class Relatives:
+    """A person's spouses / parents / children read: the persons and relationships it
+    lists (204, no body: none)."""
+
+    persons: frozenset[str]
+    relationships: Mapping[str, Relationship]
+    result: ApiResult = field(compare=False, repr=False)
+
+    def of_kind(self, kind: str) -> dict[str, Relationship]:
+        return {rid: r for rid, r in self.relationships.items() if r.kind == kind}
+
+
+def relatives(ctx: VerifyContext, which: str, pid: str) -> Relatives:
+    """readPersonSpouses / readPersonParents / readPersonChildren of ``pid``."""
+    if which not in ("spouses", "parents", "children"):
+        raise ValueError(f"unknown relatives {which!r}")
+    result = getattr(ctx.api, f"read_person_{which}")(pid)
+    if result.status == 204 or not (result.text or "").strip():
+        return Relatives(frozenset(), {}, result)
+    body = result.body if isinstance(result.body, dict) else {}
+    persons = frozenset(str(p["id"]) for p in body.get("persons") or []
+                        if isinstance(p, dict) and p.get("id"))
+    return Relatives(persons, _relationships(result), result)
 
 
 def other_gender(gender_type: str | None) -> str:

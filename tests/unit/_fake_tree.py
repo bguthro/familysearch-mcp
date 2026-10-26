@@ -401,9 +401,16 @@ class FakeTree:
 # ====================================================================== WriteTree
 
 PERSONS = TREE + "/persons"
+RELATIONSHIPS = TREE + "/relationships"
+COUPLES = TREE + "/couple-relationships"
+CAPS = TREE + "/child-and-parents-relationships"
 DESCRIPTIONS = BETA + "/platform/sources/descriptions"
 MEMORIES = BETA + "/platform/memories/memories"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+# The envelope each note owner's notes are posted and answered in (the read world's).
+NOTE_ENVELOPES = {"person": "persons", "couple": "relationships",
+                  "cap": "childAndParentsRelationships"}
+PARENT_FACTS = ("parent1Facts", "parent2Facts")
 # A write lie: the server says yes and does something else (or nothing).
 WRITE_LIES = frozenset({
     "ignore_update",      # a person POST answers 204 and changes nothing
@@ -417,6 +424,24 @@ WRITE_LIES = frozenset({
     "ref_removes_all",    # ... and removes every reference of the person
     "memory_not_attached",  # a person memory upload makes a floating memory
     "no_entity_id",       # a memory upload answers without X-ENTITY-ID (Location only)
+    # notes (every owner)
+    "note_ignore_create",    # a note POST answers 201 with an id and stores nothing
+    "note_ignore_update",    # a note update answers 204 and changes nothing
+    "note_update_creates",   # a note update adds a new note instead
+    "note_update_replaces",  # a note update replaces all the owner's notes with it
+    "note_sibling_changed",  # a note update also rewrites the owner's other notes
+    "note_wrong_delete",     # deleting a note deletes another one
+    "note_delete_noop",      # deleting a note answers 204, changes nothing
+    # relationships
+    "cap_creates_couples",   # the original bug: a child-and-parents POST makes couples
+    "duplicate_couple",      # a two-parent child-and-parents POST derives a new couple
+                             # even when the parents already have one
+    "ignore_rel_update",     # a relationship update answers 204, changes nothing
+    "rel_update_replaces",   # posted relationship facts replace all its facts
+    "rel_delete_noop",       # the first relationship delete answers 204, changes nothing
+    "restore_noop",          # restoring a relationship answers 204, changes nothing
+    "parent_delete_noop",    # deleting a parent answers 204, changes nothing
+    "parent_delete_wrong",   # deleting a parent removes the other parent
 })
 
 
@@ -433,6 +458,16 @@ class WriteTree:
     ``X-ENTITY-ID`` and a ``Location`` naming the persona reference
     (``.../memory-references/{mid}-1``), as beta does.
 
+    Notes are embedded in their owner (a person, a couple or a child-and-parents
+    relationship) and posted and answered in its envelope; a note list answers each
+    note's id and subject only, a single-note read the whole note. Relationships are
+    created by one POST to ``/tree/relationships`` (a ``relationships`` Couple, or a
+    ``childAndParentsRelationships``) and live at ``couple-relationships/{id}`` /
+    ``child-and-parents-relationships/{id}`` (GET, POST update, DELETE, POST restore,
+    DELETE ``/{parent1|parent2}``; 410 once deleted). As on beta, a two-parent
+    child-and-parents relationship derives a couple for its parents when they have none.
+    The persons' spouses / parents / children lists follow the live relationships.
+
     ``mode`` is None or one of ``WRITE_LIES``. ``source_lag`` / ``memory_lag``: how
     many reads of a person's sources / memories still answer the state before the
     last change of them (beta's person -> source lag). ``calls`` lists
@@ -446,12 +481,14 @@ class WriteTree:
         self.persons: dict[str, dict] = {}
         self.descriptions: dict[str, dict] = {}
         self.memories: dict[str, dict] = {}
+        self.relationships: dict[str, dict] = {}
+        self._fooled = False  # a one-shot lie was told
         self.calls: list[tuple[str, str]] = []
         self.lag = {"sources": source_lag, "memories": memory_lag}
         self._pending: dict[tuple[str, str], int] = {}  # (what, pid) -> stale reads left
         self._shown: dict[tuple[str, str], object] = {}  # (what, pid) -> the stale state
         self._seq = {"person": 0, "conclusion": 0, "source": 0, "reference": 0,
-                     "memory": 0}
+                     "memory": 0, "couple": 0, "cap": 0, "note": 0}
 
     # ------------------------------------------------------------ ids
 
@@ -460,7 +497,9 @@ class WriteTree:
         n = self._seq[kind]
         return {"person": f"WZ{n:02d}-ZZZ", "conclusion": f"C.{n:04d}-ZZ",
                 "source": f"SDWZ-{n:03d}", "reference": f"SRWZ-{n:03d}",
-                "memory": str(4100000 + n)}[kind]
+                "memory": str(4100000 + n), "couple": f"CR{n:02d}-ZZZ",
+                "cap": f"CP{n:02d}-ZZZ",
+                "note": f"0e0e{n:04d}-aaaa-4bbb-8ccc-{n:012d}"}[kind]
 
     # ------------------------------------------------------------ helpers
 
@@ -528,7 +567,7 @@ class WriteTree:
             "living": False, "deleted": False, "names": [self._named(n) for n in names],
             "facts": [self._named(f) for f in person.get("facts") or []],
             "gender": self._named(person["gender"]) if person.get("gender") else None,
-            "sources": [], "memories": []}
+            "sources": [], "memories": [], "notes": []}
         return 201, {"X-ENTITY-ID": pid, "Location": f"{PERSONS}/{pid}"}, ""
 
     def _merge(self, current, posted, part):
@@ -662,6 +701,10 @@ class WriteTree:
                 return self.person_memories(request, pid)
             if method == "POST":
                 return self.upload_memory(request, pid)
+        if what == "notes":
+            return self.notes_route(request, person, "person", pid, rest[1:])
+        if what in ("spouses", "parents", "children") and len(rest) == 1 and method == "GET":
+            return getattr(self, f"person_{what}")(pid)
         # Live: GET /persons/{pid}/source-references answered 404; /sources is GET-only.
         return 404, {}, ""
 
@@ -707,13 +750,278 @@ class WriteTree:
             return 204, {}, ""
         return self._json(200, {"sourceDescriptions": [self.memory_json(mid)]})
 
+    # ------------------------------------------------------------ notes
+
+    def notes_route(self, request, owner, kind, owner_id, rest):
+        """An owner's notes: list / create (``rest`` empty), read / update / delete one."""
+        envelope, method = NOTE_ENVELOPES[kind], request.method
+        notes = owner["notes"]
+        if not rest:
+            if method == "GET":
+                if not notes:
+                    return 204, {}, ""
+                return self._json(200, {envelope: [{"id": owner_id, "notes": [
+                    {"id": n["id"], "subject": n["subject"]} for n in notes]}]})
+            if method != "POST":
+                return 405, {}, ""
+            posted = self._posted_note(request, envelope)
+            if posted is None:
+                return 400, {}, "wrong note envelope"
+            nid = self._id("note")
+            if self.mode != "note_ignore_create":
+                notes.append({"id": nid, **posted})
+            url = urlsplit(request.url)
+            return 201, {"Location": f"{url.scheme}://{url.netloc}{url.path}/{nid}",
+                         "X-ENTITY-ID": nid}, ""
+        if len(rest) != 1:
+            return 404, {}, ""
+        note = next((n for n in notes if n["id"] == rest[0]), None)
+        if note is None:
+            return 404, {}, ""
+        if method == "GET":
+            return self._json(200, {envelope: [{"id": owner_id, "notes": [dict(note)]}]})
+        if method == "POST":
+            posted = self._posted_note(request, envelope)
+            if posted is None:
+                return 400, {}, "wrong note envelope"
+            if self.mode == "note_ignore_update":
+                pass
+            elif self.mode == "note_update_creates":
+                notes.append({"id": self._id("note"), **posted})
+            elif self.mode == "note_update_replaces":
+                owner["notes"] = [{**note, **posted}]
+            else:
+                note.update(posted)
+                if self.mode == "note_sibling_changed":
+                    for other in notes:
+                        other.update(posted)
+            return 204, {}, ""
+        if method == "DELETE":
+            target = note["id"]
+            if self.mode == "note_delete_noop":
+                return 204, {}, ""
+            if self.mode == "note_wrong_delete":
+                others = [n["id"] for n in notes if n["id"] != target]
+                target = others[0] if others else target
+            owner["notes"] = [n for n in notes if n["id"] != target]
+            return 204, {}, ""
+        return 405, {}, ""
+
+    @staticmethod
+    def _posted_note(request, envelope):
+        body = json.loads(request.body)
+        owners = body.get(envelope) if isinstance(body, dict) else None
+        if not (isinstance(owners, list) and len(owners) == 1):
+            return None
+        notes = owners[0].get("notes") or []
+        assert len(notes) == 1, "one note per request"
+        note = notes[0]
+        assert str(note.get("text", "")).startswith("ZZSPIKE")
+        return {"subject": note.get("subject"), "text": note.get("text")}
+
+    # ------------------------------------------------------------ relationships
+
+    @staticmethod
+    def _pref(pid):
+        return {"resource": f"{PERSONS}/{pid}", "resourceId": pid}
+
+    def _posted_pid(self, ref):
+        """The person a posted reference names; it must be a live fake person."""
+        if not isinstance(ref, dict):
+            return None
+        pid = ref.get("resourceId") or str(ref.get("resource") or "").rsplit("/", 1)[-1]
+        if ref.get("resource") and ref["resource"] != f"{PERSONS}/{pid}":
+            return None  # a clean persons URL, as the library sends
+        person = self.persons.get(pid)
+        return pid if person and not person["deleted"] else None
+
+    def _live(self, kind):
+        return {rid: r for rid, r in self.relationships.items()
+                if r["kind"] == kind and not r["deleted"]}
+
+    def _new_couple(self, p1, p2):
+        rid = self._id("couple")
+        self.relationships[rid] = {"kind": "couple", "deleted": False, "person1": p1,
+                                   "person2": p2, "facts": [], "notes": []}
+        return rid
+
+    def couples_between(self, a, b):
+        return [rid for rid, r in self._live("couple").items()
+                if {r["person1"], r["person2"]} == {a, b}]
+
+    def create_relationship(self, request):
+        self._record(request)
+        body = json.loads(request.body)
+        if list(body) == ["relationships"] and len(body["relationships"]) == 1:
+            rel = body["relationships"][0]
+            p1, p2 = self._posted_pid(rel.get("person1")), self._posted_pid(rel.get("person2"))
+            if rel.get("type") != GX + "Couple" or not (p1 and p2) or p1 == p2:
+                return 400, {}, "a couple needs type Couple and two persons"
+            rid = self._new_couple(p1, p2)
+            return 201, {"X-ENTITY-ID": rid, "Location": f"{COUPLES}/{rid}"}, ""
+        if list(body) == ["childAndParentsRelationships"] and len(
+                body["childAndParentsRelationships"]) == 1:
+            rel = body["childAndParentsRelationships"][0]
+            child = self._posted_pid(rel.get("child"))
+            parents = [self._posted_pid(rel[k]) for k in ("parent1", "parent2") if rel.get(k)]
+            if not child or not parents or None in parents or child in parents:
+                return 400, {}, "a child and one or two parents are required"
+            if self.mode == "cap_creates_couples":
+                ids = [self._new_couple(child, p) for p in parents]
+                return 201, {"X-ENTITY-ID": ids[0], "Location": f"{COUPLES}/{ids[0]}"}, ""
+            cid = self._id("cap")
+            self.relationships[cid] = {
+                "kind": "cap", "deleted": False, "child": child,
+                "parent1": parents[0], "parent2": parents[1] if len(parents) == 2 else None,
+                "parent1Facts": [], "parent2Facts": [], "notes": []}
+            if len(parents) == 2 and (self.mode == "duplicate_couple"
+                                      or not self.couples_between(*parents)):
+                self._new_couple(*parents)  # derived by the server, as beta does
+            return 201, {"X-ENTITY-ID": cid, "Location": f"{CAPS}/{cid}"}, ""
+        return 400, {}, "unknown relationship body"
+
+    def couple_json(self, rid):
+        r = self.relationships[rid]
+        body = {"id": rid, "type": GX + "Couple", "person1": self._pref(r["person1"]),
+                "person2": self._pref(r["person2"])}
+        if r["facts"]:
+            body["facts"] = [dict(f) for f in r["facts"]]
+        return body
+
+    def cap_json(self, rid):
+        r = self.relationships[rid]
+        body = {"id": rid, "child": self._pref(r["child"])}
+        for role in ("parent1", "parent2"):
+            if r[role]:
+                body[role] = self._pref(r[role])
+        for key in PARENT_FACTS:
+            if r[key]:
+                body[key] = [dict(f) for f in r[key]]
+        return body
+
+    def _relation_json(self, rid):
+        if self.relationships[rid]["kind"] == "couple":
+            return {"relationships": [self.couple_json(rid)]}
+        return {"childAndParentsRelationships": [self.cap_json(rid)]}
+
+    def _merge_facts(self, current, posted):
+        if self.mode == "rel_update_replaces":
+            return [self._named(self._bare(f)) for f in posted]
+        out = [dict(f) for f in current]
+        for fact in posted:
+            at = next((i for i, f in enumerate(out) if fact.get("id") == f["id"]), None)
+            if at is None:
+                out.append(self._named(self._bare(fact)))
+            else:
+                out[at] = {**fact, "id": out[at]["id"]}
+        return out
+
+    def update_relationship(self, request, rid):
+        r = self.relationships[rid]
+        envelope = "relationships" if r["kind"] == "couple" else "childAndParentsRelationships"
+        posted = json.loads(request.body).get(envelope)
+        if not (isinstance(posted, list) and len(posted) == 1):
+            return 400, {}, f"expected one {envelope} entry"
+        posted = posted[0]
+        if posted.get("id") not in (None, rid):
+            return 400, {}, "another relationship's id"
+        if self.mode == "ignore_rel_update":
+            return 204, {}, ""
+        keys = ("facts",) if r["kind"] == "couple" else PARENT_FACTS
+        for key in keys:
+            if key in posted:
+                r[key] = self._merge_facts(r[key], posted[key])
+            elif self.mode == "rel_update_replaces":
+                r[key] = []  # every fact the update did not post is gone
+        return 204, {}, ""
+
+    def relationship_route(self, request):
+        self._record(request)
+        path = urlsplit(request.url).path
+        segment, rest = path.split("/platform/tree/", 1)[1].split("/", 1)
+        kind = "couple" if segment == "couple-relationships" else "cap"
+        rid, *rest = rest.split("/")
+        r = self.relationships.get(rid)
+        method = request.method
+        if r is None or r["kind"] != kind:
+            return 404, {}, ""
+        if rest == ["restore"] and method == "POST":
+            if self.mode != "restore_noop":
+                r["deleted"] = False
+            return 204, {}, ""
+        if r["deleted"]:
+            return 410, {}, ""
+        if not rest:
+            if method == "GET":
+                return self._json(200, self._relation_json(rid))
+            if method == "POST":
+                return self.update_relationship(request, rid)
+            # DELETE. The no-op lie fools only the first delete (the recipe's), so
+            # teardown can still remove the relationship.
+            if self.mode == "rel_delete_noop" and not self._fooled:
+                self._fooled = True
+            else:
+                r["deleted"] = True
+            return 204, {}, ""
+        if rest[0] == "notes":
+            return self.notes_route(request, r, kind, rid, rest[1:])
+        if kind == "cap" and rest in (["parent1"], ["parent2"]) and method == "DELETE":
+            role = rest[0]
+            if not r[role]:
+                return 404, {}, ""
+            if self.mode == "parent_delete_noop":
+                return 204, {}, ""
+            if self.mode == "parent_delete_wrong":
+                role = "parent1" if role == "parent2" else "parent2"
+            r[role] = None
+            r[f"{role}Facts"] = []
+            return 204, {}, ""
+        return 404, {}, ""
+
+    # ------------------------------------------------------------ relatives
+
+    def _family(self, persons, couples=(), caps=()):
+        return self._json(200, {
+            "persons": [self.person_json(p) for p in dict.fromkeys(persons)],
+            "relationships": [self.couple_json(c) for c in couples],
+            "childAndParentsRelationships": [self.cap_json(c) for c in caps]})
+
+    def person_spouses(self, pid):
+        couples = [rid for rid, r in self._live("couple").items()
+                   if pid in (r["person1"], r["person2"])]
+        if not couples:
+            return 204, {}, ""
+        spouses = [p for c in couples for p in (self.relationships[c]["person1"],
+                                                 self.relationships[c]["person2"])]
+        caps = [rid for rid, r in self._live("cap").items()
+                if pid in (r["parent1"], r["parent2"])]
+        return self._family([pid, *spouses], couples, caps)
+
+    def person_parents(self, pid):
+        caps = [rid for rid, r in self._live("cap").items() if r["child"] == pid]
+        if not caps:
+            return 204, {}, ""
+        parents = [p for c in caps for p in (self.relationships[c]["parent1"],
+                                              self.relationships[c]["parent2"]) if p]
+        couples = [rid for rid, r in self._live("couple").items()
+                   if r["person1"] in parents and r["person2"] in parents]
+        return self._family(parents, couples, caps)
+
+    def person_children(self, pid):
+        caps = [rid for rid, r in self._live("cap").items()
+                if pid in (r["parent1"], r["parent2"])]
+        if not caps:
+            return 204, {}, ""
+        return self._family([pid, *[self.relationships[c]["child"] for c in caps]], (), caps)
+
     # ------------------------------------------------------------ wiring
 
     def live(self):
         """What was created and not deleted (empty after a strict teardown)."""
         return ([p for p, r in self.persons.items() if not r["deleted"]]
                 + [s for s, r in self.descriptions.items() if not r["deleted"]]
-                + [m for m, r in self.memories.items() if not r["deleted"]])
+                + [m for m, r in self.memories.items() if not r["deleted"]]
+                + [x for x, r in self.relationships.items() if not r["deleted"]])
 
     def serve(self):
         responses.add(responses.GET, BETA + "/platform/collections/tree", json={
@@ -729,6 +1037,13 @@ class WriteTree:
         one = re.compile(re.escape(PERSONS + "/") + r"[^?]+(\?.*)?$")
         for method in (responses.GET, responses.POST, responses.DELETE):
             responses.add_callback(method, one, callback=self.person_route)
+        responses.add_callback(responses.POST,
+                               re.compile(re.escape(RELATIONSHIPS) + r"(\?.*)?$"),
+                               callback=self.create_relationship)
+        relationship = re.compile(
+            re.escape(TREE) + r"/(couple|child-and-parents)-relationships/[^?]+(\?.*)?$")
+        for method in (responses.GET, responses.POST, responses.DELETE):
+            responses.add_callback(method, relationship, callback=self.relationship_route)
         responses.add_callback(responses.POST,
                                re.compile(re.escape(DESCRIPTIONS) + r"(\?.*)?$"),
                                callback=self.create_description)
