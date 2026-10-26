@@ -57,13 +57,6 @@ DEFERRED: dict[str, str] = {
     "readPersonNotAMatches": (
         "beta answers 204 for every fixture; a populated case needs a not-a-match "
         "declaration, which is an unverified write the read tier cannot make"),
-    "readPersonPortrait": (
-        "documents only 204/301/307, so the only accepted answer is a redirect to a "
-        "portrait image; recon got 204 even for the child with a memory, and setting a "
-        "portrait is an unverified write"),
-    "readPersonPortraits": (
-        "beta answers 204 for every fixture (recon: dad and child, the child with a "
-        "memory); a populated case needs a portrait, which is an unverified write"),
     "readPersonMerge": (
         "needs a viable merge pair; the fixture world's three persons are a couple and "
         "their son (parent-child and opposite-gender pairs), and recon's call answered 400"),

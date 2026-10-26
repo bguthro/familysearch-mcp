@@ -66,6 +66,12 @@ NO_MATCHING_SDIDS_EMPTY = (
     "fixture description under its title, which the request did not send")
 
 DEFERRED: dict[str, str] = {
+    "readPersonPortrait": (
+        "documents only 204/301/307 and the client follows the 307, so a populated answer "
+        "is the portrait image's bytes: no fixture id or name can appear in them (anchors "
+        "are matched in the response text, and the framework's mutants scrub only strings), "
+        "so no sound content check exists; readPersonPortraits is the verified view of the "
+        "same selection"),
     "readDiscussion": (
         "needs a discussion fixture; createDiscussion is an unverified write, and recon "
         "got 404 for the spec's example id"),
@@ -396,6 +402,28 @@ MEMORIES_CASES = (
 MEMORIES = reads_recipe("reads.tree.memories", MEMORIES_CASES)
 
 
+def _expect_portrait(result, world):
+    """``sourceDescriptions`` holds a description titled with the portrait memory's title
+    (the memory the world selected as the child's portrait)."""
+    want = world.names["portrait_title"]
+    found = json_path(result.body, "sourceDescriptions")
+    assert isinstance(found, list) and any(
+        want in _titles(d) for d in found if isinstance(d, dict)), (
+        f"no portrait description titled {want!r}")
+
+
+# The child's portrait is the memory the world selected with updatePersonPortraits' body
+# (unproven until its write recipe passes); the dad has none (204, after the populated case).
+PORTRAITS_CASES = (
+    ReadCase(op="readPersonPortraits", path_args=_pid("child"), missing=MISSING_PID,
+             expect=_expect_portrait, anchors=(lambda w: w.names["portrait_title"],),
+             needs=("portrait",)),
+    ReadCase(op="readPersonPortraits", path_args=_pid("dad"), missing=MISSING_PID,
+             expect=_no_relatives("portraits"), allow_empty=True, needs=("portrait",)),
+)
+PORTRAITS = reads_recipe("reads.tree.portraits", PORTRAITS_CASES)
+
+
 def _expect_collection(result, world):
     """``collections`` holds the fixture collection (by id) under its own title."""
     udcid, want = world.ids["collection"], world.names["collection_title"]
@@ -426,5 +454,5 @@ COLLECTION_DESCRIPTIONS = reads_recipe("reads.sources.collection_descriptions",
                                        COLLECTION_DESCRIPTIONS_CASES)
 
 READS_TREE_RELATIONS = (RELATIONSHIPS, RELATIONSHIP_HISTORY, PEDIGREE, NOTES, COUPLE_NOTES,
-                        CHILD_AND_PARENTS_NOTES, SOURCES, SOURCE_QUERIES, MEMORIES,
+                        CHILD_AND_PARENTS_NOTES, SOURCES, SOURCE_QUERIES, MEMORIES, PORTRAITS,
                         COLLECTION, COLLECTION_DESCRIPTIONS)

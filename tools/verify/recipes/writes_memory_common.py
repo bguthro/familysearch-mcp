@@ -19,6 +19,7 @@ import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import quote
 
 from familysearch.api._runtime import ApiResult
 from familysearch.models import build_name
@@ -230,3 +231,40 @@ def read_persona(ctx: VerifyContext, mid: str, persona_id: str) -> Persona:
         raise AssertionError(f"the read of persona {persona_id} does not hold it once; "
                              f"{describe_box(result)}")
     return _persona(found[0])
+
+
+def poll_persona(ctx: VerifyContext, mid: str, persona_id: str,
+                 done: Callable[[Persona], bool], what: str) -> Persona:
+    return poll(ctx, lambda: read_persona(ctx, mid, persona_id), done, what,
+                result_of=lambda _p: None)
+
+
+def persona_link_body(memory_url: str, base_url: str, pid: str) -> dict:
+    """createMemoryPersona linking an existing memory to a tree person: the body
+    ``Memories.link_to_person`` proved on beta (the memory, and the person's ark)."""
+    ark = f"{base_url}/ark:/61903/4:1:{quote(pid, safe='')}"
+    return {"persons": [{"media": [{"description": memory_url}],
+                         "identifiers": {TREE_PERSON: [ark]}}]}
+
+
+# ------------------------------------------------------------------ portraits
+
+
+def portraits_listing(ctx: VerifyContext, pid: str) -> Listing:
+    """readPersonPortraits: description id -> its title values; 204 (none set): empty."""
+    result = ctx.api.read_person_portraits(pid)
+    if result.status == 204 or not (result.text or "").strip():
+        return Listing({}, result)
+    body = result.body if isinstance(result.body, dict) else {}
+    return Listing({str(d.get("id")): _values(d.get("titles"))
+                    for d in body.get("sourceDescriptions") or [] if isinstance(d, dict)},
+                   result)
+
+
+def portrait_titles(found: Listing) -> list:
+    return sorted(t for titles in found.items.values() for t in titles)
+
+
+def poll_portraits(ctx: VerifyContext, pid: str, done: Callable[[Listing], bool],
+                   what: str) -> Listing:
+    return poll(ctx, lambda: portraits_listing(ctx, pid), done, what, shown=describe_box)

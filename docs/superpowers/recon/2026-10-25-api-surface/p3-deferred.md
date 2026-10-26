@@ -8,9 +8,9 @@ Family Tree writes: 60. Verified: 39. Not verified: 21.
 
 | Operation | Reason unverified | Unblocked by |
 |---|---|---|
-| deletePersonMemoriesPersonaReference | portraits and memory personas are memories: the P5 tier | P5 |
-| deletePersonPortrait | portraits and memory personas are memories: the P5 tier | P5 |
-| updatePersonPortraits | portraits and memory personas are memories: the P5 tier | P5 |
+| deletePersonMemoriesPersonaReference | claimed by recipe writes.memories.reference_delete; awaiting its live run on beta | P5 |
+| deletePersonPortrait | claimed by recipe writes.memories.portrait_delete; awaiting its live run on beta | P5 |
+| updatePersonPortraits | claimed by recipe writes.memories.portraits_update; awaiting its live run on beta | P5 |
 | deletePersonNotAMatch | matches, merges and change history are the P6 tier: P3 excludes mergePerson, match resolution and not-a-match by plan | P6 |
 | deletePersonNotAMatches | matches, merges and change history are the P6 tier: P3 excludes mergePerson, match resolution and not-a-match by plan | P6 |
 | mergePerson | matches, merges and change history are the P6 tier: P3 excludes mergePerson, match resolution and not-a-match by plan | P6 |

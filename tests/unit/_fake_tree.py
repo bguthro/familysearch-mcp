@@ -33,6 +33,7 @@ NOTE_TEXT = {"person_note": "ZZSPIKEP100000000004", "couple_note": "ZZSPIKER1000
              "child_and_parents_note": "ZZSPIKEA100000000006"}
 SOURCE = ("SDZZ-SRC", "ZZSPIKES100000000007")
 MEMORY = ("4017777", "ZZSPIKEM100000000008")
+PORTRAIT = ("4018888", "ZZSPIKEP100000000010")  # the memory selected as the child's portrait
 COLLECTION = ("UDZZ-COL", "ZZSPIKEF100000000009")  # a folder holding the source
 # Records of the same kinds that are not the fixtures' (the ``other_record`` lie).
 OTHER_SOURCE = ("SDZZ-OTH", "ZZSPIKES199999999999")
@@ -246,6 +247,11 @@ class FakeTree:
             memory = {**self.description(MEMORY), "mediaType": "image/png"}
             body = {"persons": [], "sourceDescriptions": [memory],
                     "links": {"self": {"href": request.url}}} if role == "child" else None
+            return self._list(request, body)
+        if what == "portraits" and len(rest) == 1:
+            # Only the child has a portrait; the dad's list is 204 (as for memories).
+            portrait = {**self.description(PORTRAIT), "mediaType": "image/png"}
+            body = {"sourceDescriptions": [portrait]} if role == "child" else None
             return self._list(request, body)
         return self._answer(request, 404, {"errors": [{"code": 404}]})
 

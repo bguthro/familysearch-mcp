@@ -21,7 +21,8 @@ from familysearch.api.registry import effective_status
 from tools.spec.coverage import load_inputs
 
 from .recipes import (RECIPES, reads_misc, reads_standards, reads_tree_persons,
-                      reads_tree_relations, writes_memories, writes_tree_relationship_details,
+                      reads_tree_relations, writes_memories, writes_memory_links,
+                      writes_tree_relationship_details,
                       writes_tree_relationships)
 
 REPORT_PATH = (Path(__file__).resolve().parents[2] / "docs" / "superpowers" / "recon"
@@ -132,7 +133,9 @@ AWAITING_TIERS: dict[str, str] = {op: "P4" for op in (
     "updateSourceDescriptionsToCollection", "deleteSourceDescriptionsFromCollections")}
 AWAITING_TIERS.update({op: "P5" for op in (
     "createMemories", "updateMemory", "deleteMemory", "createMemoryComments",
-    "deleteMemoryComment")})
+    "deleteMemoryComment", "createMemoryPersona", "updateMemoryPersona",
+    "deleteMemoryPersona", "deletePersonMemoriesPersonaReference", "updatePersonPortraits",
+    "deletePersonPortrait")})
 
 
 def awaiting_tier(op: str) -> str:
@@ -141,7 +144,7 @@ def awaiting_tier(op: str) -> str:
 # Writes a recipe tried and deferred with live evidence, and the tier that takes them up.
 WRITE_DEFERRED: dict[str, str] = {}
 for _module in (writes_tree_relationships, writes_tree_relationship_details,
-                writes_memories):
+                writes_memories, writes_memory_links):
     WRITE_DEFERRED.update(_module.DEFERRED)
 # The artifact ops need story-text and coverage fixtures no tier builds yet: the long tail.
 WRITE_DEFERRED_TIERS: dict[str, str] = {
@@ -154,16 +157,8 @@ _DISCUSSIONS = "discussions and their comments are the P8 tier"
 _ACCOUNT = ("changes the signed-in account's state (preferred relationships, publishing), "
             "which P3 excludes by plan: the P8 tier")
 
-_MEMORIES = "portraits and memory personas are memories: the P5 tier"
-
 # The Family Tree writes P3 did not attempt: (tier, reason).
 NOT_ATTEMPTED: dict[str, tuple[str, str]] = {
-    "createMemoryPersona": ("P5", _MEMORIES),
-    "updateMemoryPersona": ("P5", _MEMORIES),
-    "deleteMemoryPersona": ("P5", _MEMORIES),
-    "deletePersonMemoriesPersonaReference": ("P5", _MEMORIES),
-    "updatePersonPortraits": ("P5", _MEMORIES),
-    "deletePersonPortrait": ("P5", _MEMORIES),
     "mergePerson": ("P6", _MATCHES),
     "updateMatchResolution": ("P6", _MATCHES),
     "updatePersonNotAMatches": ("P6", _MATCHES),

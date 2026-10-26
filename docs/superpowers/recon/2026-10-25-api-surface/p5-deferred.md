@@ -10,12 +10,12 @@ Memories writes: 10. Verified: 0. Not verified: 10.
 |---|---|---|
 | createMemories | claimed by recipe writes.memories.memory_create; awaiting its live run on beta | P5 |
 | createMemoryComments | claimed by recipe writes.memories.comment_create; awaiting its live run on beta | P5 |
-| createMemoryPersona | portraits and memory personas are memories: the P5 tier | P5 |
+| createMemoryPersona | claimed by recipe writes.memories.persona_create; awaiting its live run on beta | P5 |
 | deleteMemory | claimed by recipe writes.memories.memory_delete; awaiting its live run on beta | P5 |
 | deleteMemoryComment | claimed by recipe writes.memories.comment_delete; awaiting its live run on beta | P5 |
-| deleteMemoryPersona | portraits and memory personas are memories: the P5 tier | P5 |
+| deleteMemoryPersona | claimed by recipe writes.memories.persona_delete; awaiting its live run on beta | P5 |
 | updateMemory | claimed by recipe writes.memories.memory_update; awaiting its live run on beta | P5 |
-| updateMemoryPersona | portraits and memory personas are memories: the P5 tier | P5 |
+| updateMemoryPersona | claimed by recipe writes.memories.persona_update; awaiting its live run on beta | P5 |
 | deleteMemoryArtifactCoverage | coverage is the artifact's date and place, but no operation in the spec sets it (updateMemory documents titles and descriptions only) so a fresh fixture has none and deleting nothing changes nothing; no honest negative control, and the aid is not documented to equal the memory id | P9 |
 | updateMemoryArtifact | the spec says only story text can be updated, so a fixture needs a text/plain story memory, which the proven library refuses to upload (image and pdf only) and no verified create has made; its aid is not documented to equal the memory id, and no catalogued operation reads a story's text back, so no state-change evidence exists for it | P9 |
 

@@ -33,14 +33,14 @@ from tools.verify.recipes import reads_tree_relations as rtr
 
 # The fake tree lives in tests/unit/_fake_tree.py (shared with the write recipe tests).
 from _fake_tree import (ATOM_JSON, BETA, COLLECTION, FS_JSON, GIVEN, IDS, MEMORY, NOTE_IDS,
-                        NOTE_TEXT, SOURCE, SURNAME, TREE, FakeTree)
+                        NOTE_TEXT, PORTRAIT, SOURCE, SURNAME, TREE, FakeTree)
 
 PID_FORMAT = re.compile(r"^[A-Z0-9]{4}-[A-Z0-9]{3,4}$")
 OWN_RECIPES = {r.name for r in rtp.READS_TREE_PERSONS}
 SCOPE_PREFIXES = ("/tree/persons", "/tree/search", "/tree/matches", "/tree/current-person")
 # Sub-resources of a person that Task 4 verifies (with the other relationship reads).
 TASK4_SEGMENTS = {"notes", "sources", "source-references", "memories", "discussions",
-                  "comments", "collections"}
+                  "comments", "collections", "portrait", "portraits"}
 
 
 @pytest.fixture
@@ -58,6 +58,8 @@ class FakeWorld:
                     "collection": COLLECTION[0]}
         self.names = {f"{role}_name": f"{given} {SURNAME}" for role, given in GIVEN.items()}
         self.names.update({f"{key}_text": text for key, text in NOTE_TEXT.items()})
+        self.ids["portrait_memory"] = PORTRAIT[0]
+        self.names.update(portrait_title=PORTRAIT[1])
         self.names.update(source_title=SOURCE[1], memory_title=MEMORY[1],
                           collection_title=COLLECTION[1])
         self.needed: list[str] = []
@@ -298,6 +300,7 @@ RELATION_CASES = {
     "reads.tree.sources": rtr.SOURCES_CASES,
     "reads.tree.source_queries": rtr.SOURCE_QUERIES_CASES,
     "reads.tree.memories": rtr.MEMORIES_CASES,
+    "reads.tree.portraits": rtr.PORTRAITS_CASES,
     "reads.sources.collection": rtr.COLLECTION_CASES,
     "reads.sources.collection_descriptions": rtr.COLLECTION_DESCRIPTIONS_CASES,
 }
@@ -313,6 +316,7 @@ RELATION_NEEDS = {
     "reads.tree.sources": {"source"},
     "reads.tree.source_queries": {"source"},
     "reads.tree.memories": {"memory"},
+    "reads.tree.portraits": {"portrait"},
     "reads.sources.collection": {"collection"},
     "reads.sources.collection_descriptions": {"collection"},
 }
@@ -445,6 +449,7 @@ RELATION_LIES = {
     "other_record": {"reads.tree.notes", "reads.tree.couple_notes",
                      "reads.tree.child_and_parents_notes", "reads.tree.sources",
                      "reads.tree.source_queries", "reads.tree.memories",
+                     "reads.tree.portraits",
                      "reads.sources.collection", "reads.sources.collection_descriptions"},
     "swap_relationships": {"reads.tree.relationships", "reads.tree.relationship_history",
                            "reads.tree.couple_notes", "reads.tree.child_and_parents_notes"},
@@ -506,7 +511,8 @@ def test_empty_variants_only_count_after_their_populated_case(reg_path, fake_wor
     # populated cases fail, and so do the empty variants that lean on them.
     for name, op in (("reads.tree.notes", "readPersonNotes"),
                      ("reads.tree.sources", "readPersonSources"),
-                     ("reads.tree.memories", "getPersonMemories")):
+                     ("reads.tree.memories", "getPersonMemories"),
+                     ("reads.tree.portraits", "readPersonPortraits")):
         result, _tree = run(name, reg_path, "empty")
         problems = "\n".join(result["problems"])
         assert f"{op}: 204 (empty) accepted only after a populated" in problems, problems
@@ -665,3 +671,11 @@ def test_relationship_source_recipe_fails_when_the_fake_lies(mode, name, reg_pat
     problems = "\n".join(result["problems"])
     assert any(s in problems for s in REL_SOURCE_LIES[mode]), result["problems"]
     assert reg_path.read_bytes() == raw
+
+
+def test_portrait_reads_anchor_on_the_portrait_title_and_the_image_read_is_deferred():
+    child, dad = rtr.PORTRAITS_CASES
+    assert child.needs == dad.needs == ("portrait",) and dad.allow_empty
+    assert [a(FakeWorld(None, None, None, None)) for a in child.anchors] == [PORTRAIT[1]]
+    assert "readPersonPortraits" not in rtp.DEFERRED and "readPersonPortrait" not in rtp.DEFERRED
+    assert "readPersonPortrait" in rtr.DEFERRED and "bytes" in rtr.DEFERRED["readPersonPortrait"]
