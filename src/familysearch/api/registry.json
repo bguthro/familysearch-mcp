@@ -439,7 +439,12 @@
   },
   "getNameSegments": {
    "generated": {
-    "status": "unverified"
+    "commit": "fd11d777ff503c9a853225e03defc973cb5569d8",
+    "evidence": "read-content",
+    "fingerprint": "51311a0d7e676eccd2a7a4fef8e46d865eeb9321bd0c04868122298f99a61b36",
+    "recipe": "reads.standards.dates_names",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "getPersonMemories": {
@@ -872,12 +877,22 @@
   },
   "readPlace": {
    "generated": {
-    "status": "unverified"
+    "commit": "fd11d777ff503c9a853225e03defc973cb5569d8",
+    "evidence": "read-content",
+    "fingerprint": "268c235182cd22e4f652b99a74b93f5df076397e0e2834a79d2442ad06ce1f25",
+    "recipe": "reads.standards.places_by_id",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readPlaceAttributes": {
    "generated": {
-    "status": "unverified"
+    "commit": "fd11d777ff503c9a853225e03defc973cb5569d8",
+    "evidence": "read-content",
+    "fingerprint": "67d632848ca545b79c4807dbce9b3a947e04270533fb5bdcc7939fcdf721f176",
+    "recipe": "reads.standards.place_groups",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readPlaceChildren": {
@@ -902,17 +917,32 @@
   },
   "readPlaceDescriptionsGroup": {
    "generated": {
-    "status": "unverified"
+    "commit": "fd11d777ff503c9a853225e03defc973cb5569d8",
+    "evidence": "read-content",
+    "fingerprint": "ab6c1026fd6aa37ce631f5dfc5cdde40b2da402349ac1de5909b558e89b3d877",
+    "recipe": "reads.standards.place_groups",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readPlaceType": {
    "generated": {
-    "status": "unverified"
+    "commit": "fd11d777ff503c9a853225e03defc973cb5569d8",
+    "evidence": "read-content",
+    "fingerprint": "c78686d615657b90cb292b7ab8c6215372eea57192821df12d9b1f00590e1a1a",
+    "recipe": "reads.standards.places_by_id",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readPlaceTypeGroup": {
    "generated": {
-    "status": "unverified"
+    "commit": "fd11d777ff503c9a853225e03defc973cb5569d8",
+    "evidence": "read-content",
+    "fingerprint": "76ab087a82942adf8ec6e490d15292bbd4e8e198a770f9804c7ce9e2f37a4738",
+    "recipe": "reads.standards.places_by_id",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readPlaceTypeGroups": {
@@ -1051,32 +1081,62 @@
   },
   "readVocabConceptDefinition": {
    "generated": {
-    "status": "unverified"
+    "commit": "fd11d777ff503c9a853225e03defc973cb5569d8",
+    "evidence": "read-content",
+    "fingerprint": "75e3f24305456ed0ede858399c988a2478fd3f9aeb776a58286255aaa1b29b86",
+    "recipe": "reads.standards.vocab_more",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readVocabConceptV2": {
    "generated": {
-    "status": "unverified"
+    "commit": "fd11d777ff503c9a853225e03defc973cb5569d8",
+    "evidence": "read-content",
+    "fingerprint": "78c0f033af445597d29bac696602a2de56f108db67711822864bf8fa6f918ed6",
+    "recipe": "reads.standards.vocab",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readVocabConceptsSearch": {
    "generated": {
-    "status": "unverified"
+    "commit": "fd11d777ff503c9a853225e03defc973cb5569d8",
+    "evidence": "read-content",
+    "fingerprint": "85c75ac29ace041b4da0041fd2df111e6d3bc1e420e4664d038354f8248f4c79",
+    "recipe": "reads.standards.vocab_more",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readVocabList": {
    "generated": {
-    "status": "unverified"
+    "commit": "fd11d777ff503c9a853225e03defc973cb5569d8",
+    "evidence": "read-content",
+    "fingerprint": "ab7650dfb4dddaa76598d193404470b9e01fd5ebc53e41c23fea372a96551ba9",
+    "recipe": "reads.standards.vocab",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readVocabTerm": {
    "generated": {
-    "status": "unverified"
+    "commit": "fd11d777ff503c9a853225e03defc973cb5569d8",
+    "evidence": "read-content",
+    "fingerprint": "b4e27796f49552a8c286dce9af7f68a8a4b3c6f0a541b491104be65b6a8c6e36",
+    "recipe": "reads.standards.vocab",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readVocabTermTranslation": {
    "generated": {
-    "status": "unverified"
+    "commit": "fd11d777ff503c9a853225e03defc973cb5569d8",
+    "evidence": "read-content",
+    "fingerprint": "3369f5c09640fc7dbc239e611d043066b441f167d0a432fa7dc51603a9c2ffd9",
+    "recipe": "reads.standards.vocab_more",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "restoreChange": {
@@ -1140,7 +1200,12 @@
   },
   "standardizeDate": {
    "generated": {
-    "status": "unverified"
+    "commit": "fd11d777ff503c9a853225e03defc973cb5569d8",
+    "evidence": "read-content",
+    "fingerprint": "6c50f77070e702eb7a2febbd0cb22cbd78eb64c8b0f755e9e40b194d480a49a3",
+    "recipe": "reads.standards.dates_names",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "updateChildAndParentsRelationship": {
