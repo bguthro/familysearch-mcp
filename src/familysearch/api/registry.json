@@ -80,7 +80,12 @@
   },
   "createNameSegments": {
    "generated": {
-    "status": "unverified"
+    "commit": "84d590f50130700e9305d4cc2ba9d5b734c7db87",
+    "evidence": "read-content",
+    "fingerprint": "db5be0b3e6cf52f628a8543078c0d9823011bb67f0f25261b3fd07d14ccc5b19",
+    "recipe": "reads.standards.compose_name",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "createPartnerAccount": {
@@ -922,7 +927,12 @@
   },
   "readPlaces": {
    "generated": {
-    "status": "unverified"
+    "commit": "84d590f50130700e9305d4cc2ba9d5b734c7db87",
+    "evidence": "read-content",
+    "fingerprint": "25bfaebf57cd75dd18e7b3f15dbf0f964ec004e256e3aa28c964d35552bf9fd3",
+    "recipe": "reads.standards.place_search",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "readPreferredSpouseRelationship": {
@@ -1101,7 +1111,12 @@
   },
   "searchForParentPlaces": {
    "generated": {
-    "status": "unverified"
+    "commit": "84d590f50130700e9305d4cc2ba9d5b734c7db87",
+    "evidence": "read-content",
+    "fingerprint": "94ac51cd5e150cd387857ceda34aff37657be35108c21423f6110fcb35fad319",
+    "recipe": "reads.standards.place_search",
+    "status": "verified",
+    "verified_on": "2026-10-25"
    }
   },
   "searchTreePersons": {
