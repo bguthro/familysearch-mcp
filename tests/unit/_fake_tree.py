@@ -1166,7 +1166,17 @@ class WriteTree:
         posted = json.loads(request.body).get(self._envelope(r))
         if not (isinstance(posted, list) and len(posted) == 1):
             return 400, {}, f"expected one {self._envelope(r)} entry"
-        wanted = [self._posted_pid(posted[0].get(role)) for role in roles]
+        # Live 2026-10-26: beta refused a couple entry of person refs only (400 "Exactly
+        # one Couple Relationship must be provided") and answered 500 (an NPE) to a
+        # child-and-parents entry of parent refs only: the whole relationship is wanted.
+        entry = posted[0]
+        if entry.get("id") != rid:
+            return 400, {}, "the relationship's id is required"
+        if r["kind"] == "couple" and entry.get("type") != GX + "Couple":
+            return 400, {}, "Exactly one Couple Relationship must be provided."
+        if r["kind"] == "cap" and self._posted_pid(entry.get("child")) != r["child"]:
+            return 500, {}, "NullPointerException: the child is required"
+        wanted = [self._posted_pid(entry.get(role)) for role in roles]
         current = [r[role] for role in roles]
         if None in wanted or sorted(wanted) != sorted(current) or wanted[0] == wanted[1]:
             return 400, {}, "the given persons are not the relationship's"

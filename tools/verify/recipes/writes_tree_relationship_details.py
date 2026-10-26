@@ -25,7 +25,7 @@ from familysearch.api._runtime import ApiResult
 from familysearch.models import FACT_MARRIAGE, build_fact
 
 from ..core import Recipe, VerifyContext
-from .writes_common import (Citations, Relationship, citations, describe, expect_same, poll,
+from .writes_common import (COUPLE, Citations, Relationship, citations, describe, expect_same, poll,
                             read_child_and_parents, read_couple, token)
 from .writes_tree_relationships import ADOPTIVE, FACT_DIVORCE, _expect_kind, _sweep_quietly
 
@@ -265,6 +265,30 @@ def _delete_parent_fact(ctx: VerifyContext, caprid: str, roles: dict[str, str]) 
 # ------------------------------------------------------------------ order
 
 
+def _order_entry(ctx: VerifyContext, kind: str, v0: Relationship, roles: tuple[str, str],
+                 first: str, second: str) -> dict:
+    """The whole relationship, as its resource and the proven create name it, with the
+    two persons in the order wanted.
+
+    Live 2026-10-26 (f79a5c3): an entry of the two role refs alone was refused, the
+    couple's with 400 "Exactly one Couple Relationship must be provided.", the
+    child-and-parents' with a 500 NPE. So the entry carries the relationship's ``id``
+    and, for a couple, its ``type`` (as createRelationship posts it); for a
+    child-and-parents relationship, its ``child`` too.
+    """
+    ref = ctx.fixtures.person_ref
+    entry: dict = {"id": v0.id}
+    if kind == "couple":
+        entry["type"] = COUPLE
+    entry.update({roles[0]: ref(second), roles[1]: ref(first)})
+    if kind == "child_and_parents":
+        if not v0.roles.get("child"):
+            raise AssertionError(f"the fixture child-and-parents {v0.id} reads back no "
+                                 f"child: {v0.summary()}")
+        entry["child"] = ref(v0.roles["child"])
+    return entry
+
+
 def _order(ctx: VerifyContext, kind: str, rid: str, read, post, roles: tuple[str, str]
            ) -> tuple[Relationship, Relationship]:
     """Post the relationship's two persons in swapped ``roles``; read the swap back."""
@@ -273,8 +297,7 @@ def _order(ctx: VerifyContext, kind: str, rid: str, read, post, roles: tuple[str
     if not (first and second) or first == second:
         raise AssertionError(f"the fixture {WHAT[kind]} {rid} does not have two persons in "
                              f"{roles}: {v0.summary()}")
-    ref = ctx.fixtures.person_ref
-    post({ENVELOPE[kind]: [{roles[0]: ref(second), roles[1]: ref(first)}]})
+    post({ENVELOPE[kind]: [_order_entry(ctx, kind, v0, roles, first, second)]})
     v1 = read()
     ctx.expect_changed(tuple(v0.roles.get(r) for r in roles),
                        tuple(v1.roles.get(r) for r in roles),
@@ -290,8 +313,8 @@ def couple_spouses_order(ctx: VerifyContext) -> None:
     """Swap person1 and person2 of a fixture couple of two men.
 
     Same gender, so no traditional (husband-first) order applies. A Marriage is added
-    first with the verified updateCoupleRelationship (not claimed). The body names the
-    couple's own persons in the roles wanted. Negative control: (person1, person2)
+    first with the verified updateCoupleRelationship (not claimed). The body is the whole
+    couple (id, type, its own persons in the roles wanted). Negative control: (person1, person2)
     read back from the couple's resource before and after. Siblings: the roles are
     exactly swapped (no person lost or added) and the Marriage reads back unchanged.
     """

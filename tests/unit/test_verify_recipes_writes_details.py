@@ -212,17 +212,24 @@ def test_child_and_parents_conclusion_delete_uses_the_parent1_role(reg_path, sle
 
 
 @responses.activate
-@pytest.mark.parametrize("name, suffix, roles", [
-    ("writes.tree.couple_spouses_order", "/spouses/order", ("person1", "person2")),
+@pytest.mark.parametrize("name, suffix, roles, rest", [
+    ("writes.tree.couple_spouses_order", "/spouses/order", ("person1", "person2"),
+     {"id", "type"}),
     ("writes.tree.child_and_parents_parents_order", "/parents/order",
-     ("parent1", "parent2"))])
-def test_order_posts_the_relationships_own_persons_swapped(name, suffix, roles, reg_path,
-                                                           slept):
+     ("parent1", "parent2"), {"id", "child"})])
+def test_order_posts_the_whole_relationship_with_its_persons_swapped(
+        name, suffix, roles, rest, reg_path, slept):
+    # Live (f79a5c3): role refs alone were refused (400 couple, 500 child-and-parents).
     result, tree, _ctx = run(name, reg_path)
     assert result["passed"], result["problems"]
     [post] = requests_to("POST", suffix)
     [entry] = next(iter(json.loads(post.body).values()))
-    assert set(entry) == set(roles)
+    assert set(entry) == set(roles) | rest
+    assert post.url.split("?")[0].endswith(f"/{entry['id']}{suffix}")
+    if "type" in entry:
+        assert entry["type"] == "http://gedcomx.org/Couple"
+    if "child" in entry:
+        assert entry["child"]["resource"] == f"{PERSONS}/{entry['child']['resourceId']}"
     posted = [entry[r]["resourceId"] for r in roles]
     assert posted[0] != posted[1] and set(posted) <= set(tree.persons)
 
@@ -236,7 +243,8 @@ def test_order_fixtures_have_one_gender_so_no_traditional_order_applies(name, re
     assert result["passed"], result["problems"]
     [post] = [c.request for c in responses.calls if c.request.url.endswith("/order")]
     [entry] = next(iter(json.loads(post.body).values()))
-    genders = {tree.persons[ref["resourceId"]]["gender"]["type"] for ref in entry.values()}
+    roles = ("person1", "person2") if "person1" in entry else ("parent1", "parent2")
+    genders = {tree.persons[entry[r]["resourceId"]]["gender"]["type"] for r in roles}
     assert len(genders) == 1
 
 
