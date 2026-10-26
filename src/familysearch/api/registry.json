@@ -438,7 +438,12 @@
   },
   "deletePersonPortrait": {
    "generated": {
-    "status": "unverified"
+    "commit": "afc0cf414d67f313e729bf8dabc8a57ea2aff8e5",
+    "evidence": "state-change",
+    "fingerprint": "2fcc6e4eb22c8a8178955a2fb0e7836e6c096f2c4a59eb92ab0b752a02c6b115",
+    "recipe": "writes.memories.portrait_delete",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "deletePersonSourceReference": {
@@ -1600,7 +1605,12 @@
   },
   "updatePersonPortraits": {
    "generated": {
-    "status": "unverified"
+    "commit": "afc0cf414d67f313e729bf8dabc8a57ea2aff8e5",
+    "evidence": "state-change",
+    "fingerprint": "07cb51370894fec05fb0f0b0adf71078f4d5f741c449db906c010bdbe0d21c1a",
+    "recipe": "writes.memories.portraits_update",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "updatePreferredParentRelationship": {
