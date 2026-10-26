@@ -56,32 +56,37 @@ GROUPS[CANARY_GROUP] = ()
 # against these stable values, and are MEANT TO FAIL LOUDLY if beta's reference data
 # ever changes. Edit them only here. The ids below are only sent (path/query values) and
 # never become world values: short numbers would match by containment. Only the anchor
-# strings in CANARY_NAMES are world names. Values marked UNVERIFIED are not yet known:
-# the first live run's failure skeleton shows the real value to put here.
-CANARY_PLACE_DESCRIPTION = "4229303"  # spec example; recon: 200 for description/children/related/attributes
-CANARY_PLACE_GROUP = "15"             # spec example; recon: 200
-CANARY_PLACE = "1"                    # GUESS (no spec example; recon 404 for "X")
-CANARY_PLACE_TYPE = "186"             # GUESS (no spec example)
-CANARY_PLACE_TYPE_GROUP = "1"         # GUESS (no spec example)
-CANARY_VOCAB_LIST = "122774"          # spec example; recon: 200
-CANARY_VOCAB_TERM = "123363"          # spec example; recon: 200 (as term and as concept)
-CANARY_VOCAB_CONCEPT = "123363"
-CANARY_LOCALE = "en"                  # GUESS (recon used "X": 404)
+# strings in CANARY_NAMES are world names. Values are copied verbatim from Task 5 live
+# run 1's response skeletons (strings there are cut at 60 characters, so a long text is
+# kept as a leading part: anchors and checks match by containment), except where noted.
+CANARY_PLACE_DESCRIPTION = "4229303"  # Weymouth (Massachusetts Bay Colony), a Town
+CANARY_PLACE_GROUP = "15"             # "Asien und Naher Osten" (62 places)
+CANARY_PLACE = "1"                    # the United States (descriptions named "u s", ...)
+CANARY_PLACE_TYPE = "186"             # City
+CANARY_PLACE_TYPE_GROUP = "1"         # Administrative
+CANARY_VOCAB_LIST = "122774"          # Vitals
+CANARY_VOCAB_TERM = "123363"          # Officer-in-Chief
+CANARY_VOCAB_CONCEPT = "123363"       # Census (concept ids are not term ids)
+CANARY_LOCALE = "en"
 CANARY_PLACE_QUERY = "Provo"          # spec example (searchForParentPlaces value)
 CANARY_NAMES: Mapping[str, str] = MappingProxyType({
-    # medium confidence: FamilySearch's standard full name for the city of Provo
-    "provo_full_name": "Provo, Utah, Utah, United States",
-    "place_name": "UNVERIFIED name of place description 4229303",
-    "place_child_name": "UNVERIFIED name of a child place of 4229303",
-    "place_by_id_name": "UNVERIFIED name of place 1",
-    "place_group_title": "UNVERIFIED title of place group 15",
-    "place_attribute_value": "UNVERIFIED attribute value of 4229303",
-    "place_type_label": "UNVERIFIED label of place type 186",
-    "place_type_group_label": "UNVERIFIED label of place type group 1",
-    "vocab_list_title": "UNVERIFIED title of vocab list 122774",
-    "vocab_term_label": "UNVERIFIED label of vocab term 123363",
-    "vocab_search_hit": "UNVERIFIED a concept found by string:List",
-    "vocab_definition": "UNVERIFIED definition text of concept 123363",
+    "provo_full_name": "Provo, Utah, Utah, United States",  # live run 1: passed
+    "place_name": "Weymouth",
+    "place_child_name": "Church of the Holy Nativity",
+    # Not shown verbatim: place 1 has 228 names, the skeleton showed only "u s" (too
+    # short to anchor). Probe: GET /platform/places/1 (names[].value).
+    "place_by_id_name": "United States of America",
+    "place_group_title": "Asien und Naher Osten",  # its German title (titles[0])
+    # The attribute values are empty strings: the attribute's own id is the anchor.
+    "place_attribute_id": "fs-place-attribute:1217708",
+    "place_type_description": "A relatively large and permanent human settlement",
+    "place_type_group_description": "Administrative place types",
+    "vocab_list_title": "Vitals",
+    "vocab_term_label": "Officer-in-Chief",
+    "vocab_concept_uri": "http://gedcomx.org/Census",
+    # The first hit for string:"List" (start 0, count 20).
+    "vocab_search_hit": "Use as a form subdivision under topical headings",
+    "vocab_definition": "An enumeration of the inhabitants of a specific geographic",
 })
 # ------------------------------------------------------------------ end of CANARY BLOCK
 # Each part of these is tried even if another fails: one wrong note envelope (only the
@@ -323,7 +328,7 @@ class World:
             self._fixtures.track("memory", mid)
             self._ids["memory"] = mid
             self._named("memory_title", title)
-        if "memory_persona" in self._ids:
+        if "memory_persona_seq" in self._ids:
             return
         # Best effort, as deep.py: the persona the upload made for the child (it goes
         # with the memory). A 204 or 4xx means "not discoverable"; a 5xx fails the build.
@@ -341,8 +346,14 @@ class World:
             return
         persons = body.get("persons") if isinstance(body, dict) else None
         first = persons[0] if isinstance(persons, list) and persons else {}
-        if isinstance(first, dict) and first.get("id"):
-            self._ids["memory_persona"] = str(first["id"])
+        # Live (Task 5 run 1): a persona id is "<memory id>-<sequence>". It contains the
+        # memory id, so it cannot be a world value of its own: only the sequence is
+        # kept (a case joins them). Another form is not discoverable.
+        persona = str(first.get("id") or "") if isinstance(first, dict) else ""
+        mid = self._ids["memory"]
+        seq = persona[len(mid) + 1:] if persona.startswith(mid + "-") else ""
+        if seq:
+            self._ids["memory_persona_seq"] = seq
 
     # ---------------------------------------------------------------- anchors safety
 

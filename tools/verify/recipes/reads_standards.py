@@ -7,7 +7,7 @@ child place's name, a group's title, a type's or a term's label. The ids sent ar
 module-level constants of that block and never world values (short numbers would match
 by containment). Pure computations without a path parameter (date standardization, name
 segmentation and composition) are anchor-free: their literal anchors are what the
-server must compute (the formal date, the part types, the composed full name), never
+server must compute (the standard form of a date, the part types, the composed full name), never
 what was sent. Recipes are split by confidence, since one failing case keeps its whole
 recipe from being recorded. The reads no sound case can prove are in ``DEFERRED``.
 """
@@ -28,8 +28,8 @@ NO_MATCH = "Qzxqzvqzxjj"        # a name no place or concept carries
 GX = "http://gedcomx.org/"
 NEEDS = (CANARY_GROUP,)
 # The literals the name and date services must compute (not echoes of the request).
-DATE_SENT = "26 Nov 1934"
-DATE_FORMAL = "+1934-11-26"
+DATE_SENT = "26 Nov 1934"  # beta answers its standard form as text/plain
+DATE_STANDARD = "26 November 1934"  # live run 1: what beta answers for DATE_SENT
 NAME_GIVEN, NAME_SURNAME = "Johann Sebastian", "Bach"
 NAME_FULL = f"{NAME_GIVEN} {NAME_SURNAME}"
 NO_PLACES_EMPTY = (
@@ -151,13 +151,14 @@ def _expect_children(result, world):
 
 
 def _expect_labelled(label_key: str, rid: str | None = None, *, under: str | None = None):
-    """A string value equal to the canary ``label_key`` (under ``under`` if given), and
-    (with ``rid``) an ``id``/``@id`` naming the requested resource."""
+    """A string value holding the canary ``label_key`` (under ``under`` if given; a long
+    text's canary is its leading part), and (with ``rid``) an ``id``/``@id`` naming the
+    requested resource."""
 
     def expect(result, world):
         body = json_path(result.body, under) if under else result.body
         want = world.names[label_key]
-        assert want in set(_strings(body)), f"no value {want!r}" + (
+        assert any(want in s for s in _strings(body)), f"no value {want!r}" + (
             f" under {under}" if under else "")
         if rid is not None:
             ids = [str(d.get(k)) for d in _dicts(result.body) for k in ("id", "@id")
@@ -175,9 +176,9 @@ def _expect_full_name(result, world):
         f"no place hit named {want!r}")
 
 
-def _expect_formal_date(result, world):
+def _expect_standard_date(result, world):
     text = (result.text or "").strip()
-    assert DATE_FORMAL in text, f"the standardized date is {text[:80]!r}, not {DATE_FORMAL}"
+    assert DATE_STANDARD in text, f"the standardized date is {text[:80]!r}, not {DATE_STANDARD}"
 
 
 def _parts(body: Any) -> list[dict[str, str]]:
@@ -236,8 +237,8 @@ PLACE_GROUPS_CASES = (
              expect=_expect_labelled("place_group_title", CANARY_PLACE_GROUP),
              anchors=(_canary("place_group_title"),), needs=NEEDS),
     ReadCase(op="readPlaceAttributes", path_args=PDID, missing=MISSING_PDID,
-             expect=_expect_labelled("place_attribute_value"),
-             anchors=(_canary("place_attribute_value"),), needs=NEEDS),
+             expect=_expect_labelled("place_attribute_id"),
+             anchors=(_canary("place_attribute_id"),), needs=NEEDS),
 )
 PLACE_GROUPS = reads_recipe("reads.standards.place_groups", PLACE_GROUPS_CASES)
 
@@ -251,12 +252,12 @@ PLACES_BY_ID_CASES = (
              anchors=(_canary("place_by_id_name"),), needs=NEEDS),
     ReadCase(op="readPlaceType", path_args=lambda w: {"ptid": CANARY_PLACE_TYPE},
              missing={"ptid": NO_SUCH_STANDARD},
-             expect=_expect_labelled("place_type_label", CANARY_PLACE_TYPE),
-             anchors=(_canary("place_type_label"),), needs=NEEDS),
+             expect=_expect_labelled("place_type_description", CANARY_PLACE_TYPE),
+             anchors=(_canary("place_type_description"),), needs=NEEDS),
     ReadCase(op="readPlaceTypeGroup", path_args=lambda w: {"ptgid": CANARY_PLACE_TYPE_GROUP},
              missing={"ptgid": NO_SUCH_STANDARD},
-             expect=_expect_labelled("place_type_group_label", CANARY_PLACE_TYPE_GROUP),
-             anchors=(_canary("place_type_group_label"),), needs=NEEDS),
+             expect=_expect_labelled("place_type_group_description", CANARY_PLACE_TYPE_GROUP),
+             anchors=(_canary("place_type_group_description"),), needs=NEEDS),
 )
 PLACES_BY_ID = reads_recipe("reads.standards.places_by_id", PLACES_BY_ID_CASES)
 
@@ -286,8 +287,9 @@ VOCAB_CASES = (
              anchors=(_canary("vocab_term_label"),), needs=NEEDS),
     ReadCase(op="readVocabConceptV2", path_args=lambda w: {"cvcid": CANARY_VOCAB_CONCEPT},
              missing={"cvcid": NO_SUCH_STANDARD},
-             expect=_expect_labelled("vocab_term_label", under="vocabConcepts"),
-             anchors=(_canary("vocab_term_label"),), needs=NEEDS),
+             expect=_expect_labelled("vocab_concept_uri", CANARY_VOCAB_CONCEPT,
+                                     under="vocabConcepts"),
+             anchors=(_canary("vocab_concept_uri"),), needs=NEEDS),
 )
 VOCAB = reads_recipe("reads.standards.vocab", VOCAB_CASES)
 
@@ -314,10 +316,10 @@ VOCAB_MORE = reads_recipe("reads.standards.vocab_more", VOCAB_MORE_CASES)
 DATES_NAMES_CASES = (
     ReadCase(op="standardizeDate", path_args=lambda w: {}, query={"date": DATE_SENT},
              missing={}, missing_query={"date": NO_MATCH}, missing_statuses=(400,),
-             expect=_expect_formal_date,
-             anchor_free_reason=("standards computation, no fixture: the formal date of "
-                                 "an informal one"),
-             literal_anchors=(DATE_FORMAL,)),
+             expect=_expect_standard_date,
+             anchor_free_reason=("standards computation, no fixture: the standard form of "
+                                 "an abbreviated date"),
+             literal_anchors=(DATE_STANDARD,)),
     # Recon: an empty fullName answers 400 ("A name must be provided.").
     ReadCase(op="getNameSegments", path_args=lambda w: {}, query={"fullName": NAME_FULL},
              missing={}, missing_query={"fullName": ""}, missing_statuses=(400,),

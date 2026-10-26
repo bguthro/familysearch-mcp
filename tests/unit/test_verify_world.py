@@ -47,6 +47,7 @@ class FakeBeta:
         self.list_personas = True  # a memory's personas list the person it was uploaded to
         self.personas_status = None  # set: the personas read answers this error status
         self.personas: dict[str, str] = {}  # memory path -> its persona id
+        self.persona_form = "{mid}-{n}"  # how beta forms a persona id
         self.fail_person_at = 0  # the n-th person POST answers 500
         self.person_posts = 0
         rsps.add(responses.GET, P + "/collections/tree", json={"collections": [{
@@ -137,7 +138,10 @@ class FakeBeta:
             memory = self.live.get(m.group(1))
             if memory is None or not self.list_personas:
                 return 204, {}, ""
-            pid = self.personas.setdefault(m.group(1), f"PRS{next(self.counter):04d}Q")
+            # Live (Task 5 run 1): "<memory id>-<sequence>", e.g. 238410642-74542947.
+            mid = m.group(1).rsplit("/", 1)[-1]
+            pid = self.personas.setdefault(
+                m.group(1), self.persona_form.format(mid=mid, n=74542900 + next(self.counter)))
             return 200, {}, json.dumps({"persons": [{"id": pid, "identifiers": {
                 "http://familysearch.org/v1/FamilyTreePerson": [memory["person"]]}}]})
         m = re.fullmatch(r"/platform/tree/persons/([^/]+)/source-references", path)
@@ -454,7 +458,10 @@ def test_memory_uploads_to_child_and_is_tracked(beta):
     mid = world.ids["memory"]
     assert fixtures.tracked("memory") == [mid]
     # The persona the upload made for the child, read back as deep.py does.
-    assert world.ids["memory_persona"] == beta.personas["/platform/memories/memories/" + mid]
+    # Only its sequence is a world value: the full id contains the memory id.
+    persona = beta.personas["/platform/memories/memories/" + mid]
+    assert f"{mid}-{world.ids['memory_persona_seq']}" == persona
+    assert mid not in world.ids["memory_persona_seq"]
     assert fixtures.tracked("memory") == [mid]  # the persona goes with the memory
     stored = beta.live["/platform/memories/memories/" + mid]
     assert stored["person"] == world.ids["child"]
@@ -470,7 +477,15 @@ def test_memory_persona_is_best_effort(beta, status):
     beta.list_personas = False  # None: the personas read answers 204
     beta.personas_status = status
     world.need("memory")
-    assert "memory" in world.ids and "memory_persona" not in world.ids
+    assert "memory" in world.ids and "memory_persona_seq" not in world.ids
+    assert fixtures.teardown() == [] and beta.live == {}
+
+
+def test_memory_persona_of_another_form_is_not_kept(beta):
+    world, fixtures = make_world()
+    beta.persona_form = "P{n}"  # not "<memory id>-<sequence>": not discoverable
+    world.need("memory")
+    assert "memory" in world.ids and "memory_persona_seq" not in world.ids
     assert fixtures.teardown() == [] and beta.live == {}
 
 
@@ -482,7 +497,7 @@ def test_memory_persona_lookup_server_error_is_not_swallowed(beta):
     assert fixtures.tracked("memory") == [world.ids["memory"]]
     beta.personas_status = None
     world.need("memory")  # the retry looks the persona up, uploads nothing new
-    assert world.ids["memory_persona"] and len(beta.posts("/platform/tree/persons/")) == 1
+    assert world.ids["memory_persona_seq"] and len(beta.posts("/platform/tree/persons/")) == 1
     assert fixtures.teardown() == [] and beta.live == {}
 
 
@@ -534,7 +549,7 @@ def test_every_value_is_distinct_and_no_value_contains_another(beta):
     assert set(world.ids) == {"dad", "mom", "child", "couple", "child_and_parents",
                               "person_note", "couple_note", "child_and_parents_note",
                               "source_description", "source_reference", "memory",
-                              "memory_persona"}
+                              "memory_persona_seq"}
 
 
 def test_names_are_long_per_fixture_and_free_of_shared_constants(beta):

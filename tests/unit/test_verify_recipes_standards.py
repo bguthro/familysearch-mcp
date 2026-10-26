@@ -38,7 +38,8 @@ GX = "http://gedcomx.org/"
 CHILD = "KWZZ-CHD"
 MEMORY = ("4017777", "ZZSPIKEM100000000008")
 OTHER_MEMORY_TITLE = "ZZSPIKEM199999999999"
-PERSONA = "PRS0001Q"
+PERSONA_SEQ = "74542947"
+PERSONA = f"{MEMORY[0]}-{PERSONA_SEQ}"  # live run 1: "<memory id>-<sequence>"
 STANDARDS = {r.name for r in rs.READS_STANDARDS}
 MISC = {r.name for r in rm.READS_MISC}
 OWN = STANDARDS | MISC
@@ -64,7 +65,7 @@ class FakeWorld:
             self.names.update(world.CANARY_NAMES)
             return
         self.ids.update(dad="KWZZ-DAD", mom="KWZZ-MOM", child=CHILD, memory=MEMORY[0],
-                        memory_persona=PERSONA)
+                        memory_persona_seq=PERSONA_SEQ)
         self.names.update(child_name="ZZSPIKEC100000000003 ZZSPIKETESTSURNAME",
                           memory_title=MEMORY[1])
 
@@ -152,26 +153,39 @@ class FakeStandards:
                 return self._ok({"places": [self.description(), self.jurisdiction(),
                                             self.child_place()]})
             if what == "/attributes":
+                # Live run 1: the attribute values are empty; each attribute has an id.
                 return self._ok({"@id": f"{P}/places/description/{pdid}/attributes",
-                                 "474": [{"value": self.name("place_attribute_value"),
-                                          "year": 1900}]}, LD_JSON)
+                                 "474": [{"@id": self.name("place_attribute_id"),
+                                          "@type": "fs-place-attribute-type:474",
+                                          "value": ""}],
+                                 "@context": {"474": {
+                                     "http://www.w3.org/2000/01/rdf-schema#label":
+                                         "Wikipedia link"}}}, LD_JSON)
         m = re.fullmatch(r"/groups/([^/]+)", path)
         if m:
             if not self._known(m.group(1), world.CANARY_PLACE_GROUP):
                 return self._unknown()
             return self._ok({"description": "#g", "places": [self.child_place()],
                              "sourceDescriptions": [{"id": world.CANARY_PLACE_GROUP, "titles": [
-                                 {"value": self.name("place_group_title")}]}]})
+                                 {"lang": "de", "value": self.name("place_group_title")},
+                                 {"lang": "en", "value": "Asia and Middle East"}]}]})
         m = re.fullmatch(r"/(types|type-groups)/([^/]+)", path)
         if m:
-            canary, key = {"types": (world.CANARY_PLACE_TYPE, "place_type_label"),
-                           "type-groups": (world.CANARY_PLACE_TYPE_GROUP,
-                                           "place_type_group_label")}[m.group(1)]
+            kind = m.group(1)
+            canary = world.CANARY_PLACE_TYPE if kind == "types" else world.CANARY_PLACE_TYPE_GROUP
             if not self._known(m.group(2), canary):
                 return self._unknown(LD_JSON)
-            return self._ok({"@id": f"{P}/places/{m.group(1)}/{canary}", "id": canary,
-                             "labels": [{"@value": self.name(key), "@language": "en"}]},
-                            LD_JSON)
+            if kind == "types":  # live run 1: a short label and a long description
+                return self._ok({"id": canary, "@id": f"{P}/places/types/{canary}",
+                                 "labels": [{"@language": "en", "@value": "City"}],
+                                 "descriptions": [{"@language": "en", "@value": self.name(
+                                     "place_type_description") + " with complex systems"}]},
+                                LD_JSON)
+            return self._ok({"id": canary, "@id": f"{P}/places/type-groups/{canary}",
+                             "title": "Administrative",
+                             "description": self.name("place_type_group_description"),
+                             "elements": [{"id": "321", "labels": [
+                                 {"@value": "Principality or Emirate"}]}]}, LD_JSON)
         if path in ("/search", "/parents"):
             asked = query.get("q", "") if path == "/search" else query.get("value", "")
             if world.CANARY_PLACE_QUERY not in asked and self.mode != "ignore_id":
@@ -185,8 +199,10 @@ class FakeStandards:
         if m:  # /places/{pid}
             if not self._known(m.group(1), world.CANARY_PLACE):
                 return self._unknown()
-            return self._ok({"places": [{"id": "7700004", "display": {
-                "name": self.name("place_by_id_name")}}]})
+            # Live run 1: the place's descriptions, each with its many names.
+            return self._ok({"places": [{"id": "1", "names": [
+                {"lang": "en", "value": "u s"},
+                {"lang": "en", "value": self.name("place_by_id_name")}]}]})
         return self._unknown()
 
     # ------------------------------------------------------------ vocab
@@ -197,8 +213,9 @@ class FakeStandards:
         if path == "/concepts/search":
             if "List" not in query.get("q", "") and self.mode != "ignore_id":
                 return self._nothing(ATOM_JSON)
-            return self._ok({"entries": [{"id": "1", "content": {
-                "label": self.name("vocab_search_hit")}}], "index": 0}, ATOM_JSON)
+            hit = "(3) - " + self.name("vocab_search_hit") + " for works"
+            return self._ok({"entries": [{"content": {"gedcomx": {"vocabConcepts": [
+                {"id": "135106", "description": hit}]}}}], "index": 0}, ATOM_JSON)
         m = re.fullmatch(r"/(lists|terms|concepts)/([^/]+)(?:/(translations|definition)/"
                          r"([^/]+))?", path)
         if not m:
@@ -212,10 +229,10 @@ class FakeStandards:
         if self.mode == "wrong_endpoint" and not sub:
             kind = {"lists": "terms", "terms": "lists"}.get(kind, kind)
         label = {"@value": self.name("vocab_term_label"), "@language": "en"}
-        if sub == "translations":
-            return self._ok({"id": canary, "labels": [label]})
+        if sub == "translations":  # live run 1: {"lang", "text"}
+            return self._ok({"lang": "en", "text": self.name("vocab_term_label")})
         if sub == "definition":
-            return self._ok({"id": canary, "definition": self.name("vocab_definition")})
+            return self._ok({"lang": "en", "text": self.name("vocab_definition") + " region"})
         if kind == "lists":
             return self._ok({"id": canary, "@id": f"{P}/vocab/lists/{canary}",
                              "title": self.name("vocab_list_title"),
@@ -223,7 +240,11 @@ class FakeStandards:
         if kind == "terms":
             return self._ok({"id": canary, "@id": f"{P}/vocab/terms/{canary}",
                              "labels": [label]}, LD_JSON)
-        return self._ok({"vocabConcepts": [{"id": canary, "terms": [{"labels": [label]}]}]},
+        # Live run 1: concept 123363 is Census (not the term of the same id).
+        return self._ok({"vocabConcepts": [{"id": canary,
+                                            "gedcomxUri": self.name("vocab_concept_uri"),
+                                            "vocabTerms": [{"id": "101613", "values": [
+                                                {"value": "Federal Census Record"}]}]}]},
                         "application/ld-v2+json")
 
     # ------------------------------------------------------------ dates and names
@@ -234,8 +255,8 @@ class FakeStandards:
             return self._answer(200, date)
         if date != rs.DATE_SENT and self.mode != "ignore_id":
             return self._answer(400, {"errors": [{"message": "cannot parse the date"}]})
-        formal = "+1934-11-27" if self.mode == "other_record" else rs.DATE_FORMAL
-        return self._answer(204) if self.mode == "empty" else self._answer(200, formal)
+        standard = "27 November 1934" if self.mode == "other_record" else rs.DATE_STANDARD
+        return self._answer(204) if self.mode == "empty" else self._answer(200, standard)
 
     def names(self, request):
         if request.method == "POST":

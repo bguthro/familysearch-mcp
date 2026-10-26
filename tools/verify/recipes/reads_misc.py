@@ -89,9 +89,15 @@ def _expect_tree_persona(result, world):
                for p in persons), f"no persona identifies the child {child}"
 
 
+def _persona_id(world) -> str:
+    """Live (Task 5 run 1): a persona id is "<memory id>-<sequence>"; the world keeps
+    only the sequence (the full id contains the memory id, so it is no world value)."""
+    return f"{world.ids['memory']}-{world.ids['memory_persona_seq']}"
+
+
 def _expect_persona(result, world):
     """The persona asked for, with the memory it belongs to."""
-    pid = world.ids["memory_persona"]
+    pid = _persona_id(world)
     persons = json_path(result.body, "persons")
     ids = {p.get("id") for p in persons if isinstance(p, dict)} if isinstance(
         persons, list) else set()
@@ -125,7 +131,7 @@ MEMORIES_CASES = (
              query={"includeTreeIdentifier": True}, missing=MISSING_MID,
              expect=_expect_tree_persona, anchors=(lambda w: w.ids["child"],), needs=MEMORY),
     ReadCase(op="readMemoryPersona",
-             path_args=lambda w: {"mid": w.ids["memory"], "pid": w.ids["memory_persona"]},
+             path_args=lambda w: {"mid": w.ids["memory"], "pid": _persona_id(w)},
              missing={"pid": NO_SUCH_PERSONA}, expect=_expect_persona,
              anchors=(_title,), needs=MEMORY),
 )
