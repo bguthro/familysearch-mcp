@@ -177,7 +177,12 @@
   },
   "deleteChildAndParentsRelationship": {
    "generated": {
-    "status": "unverified"
+    "commit": "35b6c9c0217f09d2f8b8d6f09a538324b0dfe911",
+    "evidence": "state-change",
+    "fingerprint": "40cd287c68a7fc33b33210bea4b4c3708e37d6b1be7a57567f401c5cd48a3373",
+    "recipe": "writes.tree.child_and_parents_delete",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    },
    "handwritten": {
     "recipe": "tests/integration/test_beta_roundtrip.py::test_create_parent_child_relationship",
