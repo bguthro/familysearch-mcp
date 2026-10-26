@@ -1,0 +1,742 @@
+"""Fake FamilySearch beta trees shared by the verification recipe tests (offline).
+
+``FakeTree`` is the read recipes' fixed fixture family (moved here unchanged from
+test_verify_recipes_reads.py); ``WriteTree`` (below) is a stateful tree whose writes
+change what later reads answer, for the write recipes.
+"""
+import json
+import re
+import zlib
+from urllib.parse import parse_qs, urlsplit
+
+import responses
+
+from familysearch.auth import Environment
+from tools.verify.recipes import reads_tree_persons as rtp
+
+BETA = Environment.BETA.base_url
+TREE = BETA + "/platform/tree"
+GX = "http://gedcomx.org/"
+FS_JSON = "application/x-fs-v1+json"
+ATOM_JSON = "application/x-gedcomx-atom+json"
+SURNAME = "ZZSPIKETESTSURNAME"
+IDS = {"dad": "KWZZ-DAD", "mom": "KWZZ-MOM", "child": "KWZZ-CHD",
+       "couple": "MMZZ-CPL", "child_and_parents": "MMZZ-CAP"}
+GIVEN = {"dad": "ZZSPIKED100000000001", "mom": "ZZSPIKEM100000000002",
+         "child": "ZZSPIKEC100000000003"}
+GENDER = {"dad": "Male", "mom": "Female", "child": "Male"}
+# The notes, source and memory hung on the family (Task 4), and the envelopes they live in.
+NOTE_IDS = {"person_note": "0f0f0001-aaaa-4bbb-8ccc-000000000001",
+            "couple_note": "0f0f0002-aaaa-4bbb-8ccc-000000000002",
+            "child_and_parents_note": "0f0f0003-aaaa-4bbb-8ccc-000000000003"}
+NOTE_TEXT = {"person_note": "ZZSPIKEP100000000004", "couple_note": "ZZSPIKER100000000005",
+             "child_and_parents_note": "ZZSPIKEA100000000006"}
+SOURCE = ("SDZZ-SRC", "ZZSPIKES100000000007")
+MEMORY = ("4017777", "ZZSPIKEM100000000008")
+# Records of the same kinds that are not the fixtures' (the ``other_record`` lie).
+OTHER_SOURCE = ("SDZZ-OTH", "ZZSPIKES199999999999")
+OTHER_MEMORY = ("4019999", "ZZSPIKEM199999999999")
+
+
+class FakeTree:
+    """The fixture family on a fake beta.
+
+    ``mode`` is None (honest) or one lie: ``other_person`` answers every person read with
+    the next person's data (dad -> mom -> child -> dad); ``ignore_pids`` answers
+    readPersons with everyone; ``catch_all`` answers 200 for unknown ids; ``empty``
+    answers 204 for every populated list; ``stale_head`` answers HEAD with another
+    revision than the GET. For the Task 4 reads: ``other_record`` answers each note,
+    source and memory read with another record of its kind; ``swap_relationships``
+    answers the couple's resources with the child-and-parents' and back;
+    ``pedigree_swap`` answers ancestry with the descendancy and back; ``ignore_nid``
+    answers a single-note read with the owner's note whatever the id; ``ignore_sdids``
+    answers readSourceDescriptions with the whole source box; ``wrong_location`` answers
+    a source description's HEAD (which, as on beta, carries no validator) with another
+    description's Content-Location.
+    """
+
+    def __init__(self, mode=None, *, relationship_lag=0, search_lie=None, reference_lag=0):
+        self.relationship_lag = relationship_lag  # 204s before the relationship is computed
+        # 204s each person -> source read answers before the attach shows (Task 4 run 1)
+        self.reference_lag = {"sources": reference_lag, "references": reference_lag}
+        self.search_lie = search_lie  # ignore_count / other_first / no_confidence
+        self.search_params: list[dict] = []
+        self.mode = mode
+        self.role = {pid: role for role, pid in IDS.items() if role in GIVEN}
+
+    # ------------------------------------------------------------ shapes
+
+    def _who(self, pid):
+        if self.mode == "other_person" and pid in self.role:
+            order = ["dad", "mom", "child"]
+            return IDS[order[(order.index(self.role[pid]) + 1) % 3]]
+        return pid
+
+    def person(self, pid):
+        role = self.role[pid]
+        name = f"{GIVEN[role]} {SURNAME}"
+        return {"id": pid, "living": False,
+                "gender": {"type": GX + GENDER[role]},
+                "names": [{"type": GX + "BirthName",
+                           "nameForms": [{"fullText": name}]}],
+                "display": {"name": name, "gender": GENDER[role], "lifespan": "Deceased"},
+                "links": {"person": {"href": f"{TREE}/persons/{pid}"}}}
+
+    @staticmethod
+    def _ref(pid):
+        return {"resource": f"{TREE}/persons/{pid}", "resourceId": pid}
+
+    def couple(self):
+        ref = lambda role: self._ref(self._who(IDS[role]))  # noqa: E731
+        return {"id": IDS["couple"], "type": GX + "Couple",
+                "person1": ref("dad"), "person2": ref("mom")}
+
+    def cap(self):
+        ref = lambda role: self._ref(self._who(IDS[role]))  # noqa: E731
+        return {"id": IDS["child_and_parents"], "parent1": ref("dad"),
+                "parent2": ref("mom"), "child": ref("child")}
+
+    def note(self, key):
+        if self.mode == "other_record":  # the next note: person -> couple -> c&p -> person
+            order = list(NOTE_IDS)
+            key = order[(order.index(key) + 1) % len(order)]
+        text = NOTE_TEXT[key]
+        return {"id": NOTE_IDS[key], "subject": f"{text} subject", "text": text}
+
+    def description(self, record=SOURCE):
+        if self.mode == "other_record":
+            record = OTHER_SOURCE if record == SOURCE else OTHER_MEMORY
+        sid, title = record
+        return {"id": sid, "about": f"https://example.org/{title.lower()}",
+                "titles": [{"value": title}], "citations": [{"value": f"{title} citation"}]}
+
+    def cited_by(self, role):
+        """``role`` as /tree/source-references and /persons/{pid}/sources answer it."""
+        sid = OTHER_SOURCE[0] if self.mode == "other_record" else SOURCE[0]
+        return {"id": IDS[role], "sources": [{
+            "id": "SRZZ-REF", "description": f"{BETA}/platform/sources/descriptions/{sid}"}]}
+
+    def family(self, *roles, couple=False, cap=False):
+        body = {"description": "#sd1",
+                "persons": [self.person(IDS[r]) for r in roles],
+                "sourceDescriptions": [{"id": "sd1", "about": "#p1"}]}
+        if couple:
+            body["relationships"] = [self.couple()]
+        if cap:
+            body["childAndParentsRelationships"] = [self.cap()]
+        return body
+
+    def changes(self, pid):
+        role = self.role[pid]
+        url = f"{TREE}/persons/{pid}?flag=fsh"  # as beta links it (live run)
+        entry = {"id": "1729-1", "title": "Name Added", "updated": 1729000000000,
+                 "links": {"person": {"href": url}},
+                 "content": {"gedcomx": {"persons": [{
+                     "names": [{"nameForms": [{"fullText": f"{GIVEN[role]} {SURNAME}"}]}]}]}}}
+        created = {"id": "1729-0", "title": "Person Created", "updated": 1728000000000,
+                   "links": {"person": {"href": url}}}
+        return {"entries": [entry, created], "updated": 1729000000000,
+                "links": {"person": {"href": url},
+                          "self": {"href": f"{TREE}/persons/{pid}/changes"}}}
+
+    # ------------------------------------------------------------ answers
+
+    def _etag(self, path):
+        return '"%d"' % zlib.crc32(path.encode())
+
+    def _answer(self, request, status, body=None, content_type=FS_JSON):
+        path = urlsplit(request.url).path
+        headers = {"ETag": self._etag(path)}
+        if path.startswith("/platform/sources/descriptions/"):
+            # Live run 2: a source description's HEAD and GET carry no validator, only
+            # where the description lives.
+            headers = {"Content-Location": f"{path}?flag=fsh"}
+            if request.method == "HEAD" and self.mode == "wrong_location":
+                headers = {"Content-Location": "/platform/sources/descriptions/SDZZ-OTH"}
+        if request.method == "HEAD":
+            if self.mode == "stale_head":
+                headers["ETag"] = '"stale-0"'
+            return status, headers, ""
+        if body is None:
+            return status, headers, ""
+        headers["Content-Type"] = content_type
+        return status, headers, json.dumps(body)
+
+    def _unknown(self, request):
+        if self.mode == "catch_all":
+            return self._answer(request, 200, {"persons": []})
+        return self._answer(request, 404, {"errors": [{"code": 404}]})
+
+    def _list(self, request, body, content_type=FS_JSON):
+        if self.mode == "empty" or body is None:
+            return self._answer(request, 204)
+        return self._answer(request, 200, body, content_type)
+
+    def persons(self, request):
+        query = parse_qs(urlsplit(request.url).query)
+        if "pids" not in query:
+            return self._answer(request, 400, {"errors": [{"message": "pids is required"}]})
+        pids = [p for value in query["pids"] for p in value.split(",") if p]
+        if self.mode == "ignore_pids":
+            pids = [IDS[r] for r in GIVEN]
+        if self.mode == "empty":
+            return self._answer(request, 204)
+        if any(p not in self.role for p in pids):
+            # Beta (live runs): an unknown id, well-formed or not, is reported as nothing.
+            return self._unknown(request) if self.mode == "catch_all" else self._answer(
+                request, 204)
+        return self._answer(request, 200,
+                            {"persons": [self.person(self._who(p)) for p in pids]})
+
+    def person_route(self, request):
+        parts = urlsplit(request.url).path.split("/platform/tree/persons/", 1)[1].split("/")
+        pid, rest = parts[0], parts[1:]
+        if pid not in self.role:
+            return self._unknown(request)
+        role = self.role[self._who(pid)]
+        if not rest:
+            return self._answer(request, 200, self.family(role, couple=True, cap=True))
+        what = rest[0]
+        if what == "changes":
+            if request.headers.get("Accept") != ATOM_JSON:
+                return 406, {}, ""  # beta (live run): /changes serves only the atom types
+            return self._list(request, self.changes(self._who(pid)), ATOM_JSON)
+        if what == "parents":
+            body = self.family("dad", "mom", couple=True, cap=True) if role == "child" else None
+            return self._list(request, body)
+        if what == "children":
+            body = self.family("child", cap=True) if role in ("dad", "mom") else None
+            return self._list(request, body)
+        if what == "spouses":
+            other = {"dad": "mom", "mom": "dad"}.get(role)
+            return self._list(request, self.family(other, couple=True) if other else None)
+        if what == "families":
+            if self.mode == "families_as_parents":  # the child's /parents payload
+                return self._list(request, self.family("dad", "mom", couple=True, cap=True))
+            return self._list(request, self.family(role, *[r for r in GIVEN if r != role],
+                                                   couple=True, cap=True))
+        if what == "relationships" and len(rest) == 2:
+            other = rest[1]
+            if self.mode == "ignore_opid":  # answers the child-dad relationship for any opid
+                other = IDS["dad"]
+            if other not in self.role:
+                if self.mode == "catch_all":
+                    return self._answer(request, 200, {"persons": []})
+                return self._answer(request, 204)  # live run 3: unknown opid is "none"
+            if self.relationship_lag:  # live run 2: 204 for just-created fixtures
+                self.relationship_lag -= 1
+                return self._answer(request, 204)
+            # Live: the child-and-parents id is not in this answer; the persons are.
+            return self._answer(request, 200, self.family(role, self.role[self._who(other)]))
+        # Recon: only the child has a note, a source and a memory; the dad's lists are 204.
+        if what == "notes":
+            if role != "child":
+                return self._list(request, None) if len(rest) == 1 else self._unknown(request)
+            return self._notes(request, "persons", IDS["child"], "person_note", rest[1:])
+        if what == "sources" and len(rest) == 1:
+            if role == "child" and self._lagging("sources"):
+                return self._answer(request, 204)
+            body = {"persons": [self.cited_by("child")],
+                    "sourceDescriptions": [self.description()]} if role == "child" else None
+            return self._list(request, body)
+        if what == "memories" and len(rest) == 1:
+            memory = {**self.description(MEMORY), "mediaType": "image/png"}
+            body = {"persons": [], "sourceDescriptions": [memory],
+                    "links": {"self": {"href": request.url}}} if role == "child" else None
+            return self._list(request, body)
+        return self._answer(request, 404, {"errors": [{"code": 404}]})
+
+    def _lagging(self, what):
+        if self.reference_lag[what]:
+            self.reference_lag[what] -= 1
+            return True
+        return False
+
+    def _notes(self, request, envelope, owner, key, rest):
+        """An owner's notes (``rest`` empty) or one of them (``rest`` = [nid])."""
+        if rest and rest[0] != NOTE_IDS[key] and self.mode != "ignore_nid":
+            return self._unknown(request)  # recon: a note id that is not the owner's: 404
+        return self._list(request, {envelope: [{"id": owner, "notes": [self.note(key)]}]})
+
+    # ------------------------------------------------------------ relationships
+
+    KINDS = {"couple-relationships": ("couple", "relationships", "couple_note"),
+             "child-and-parents-relationships": ("child_and_parents",
+                                                 "childAndParentsRelationships",
+                                                 "child_and_parents_note")}
+
+    def relationship_route(self, request):
+        kind, rest = urlsplit(request.url).path.split("/platform/tree/", 1)[1].split("/", 1)
+        rid, *rest = rest.split("/")
+        role = self.KINDS[kind][0]
+        if rid != IDS[role]:
+            return self._unknown(request)
+        if self.mode == "swap_relationships":
+            kind = next(k for k in self.KINDS if k != kind)
+        role, envelope, note = self.KINDS[kind]
+        rid = IDS[role]
+        record = self.couple() if role == "couple" else self.cap()
+        if not rest:
+            return self._list(request, {envelope: [record]})
+        if rest == ["changes"]:
+            if request.headers.get("Accept") != ATOM_JSON:
+                return 406, {}, ""  # as the person feeds: atom types only
+            url = f"{TREE}/{kind}/{rid}?flag=fsh"
+            entry = {"id": "1729-0", "title": "Relationship Created", "updated": 1729000000000,
+                     "links": {"relationship": {"href": url}},
+                     "content": {"gedcomx": {envelope: [record]}}}
+            return self._list(request, {"entries": [entry], "updated": 1729000000000,
+                                        "links": {"relationship": {"href": url},
+                                                  "self": {"href": f"{url}/changes"}}},
+                              ATOM_JSON)
+        if rest[0] == "notes":
+            return self._notes(request, envelope, rid, note, rest[1:])
+        return self._answer(request, 404, {"errors": [{"code": 404}]})
+
+    # ------------------------------------------------------------ pedigrees, sources
+
+    def pedigree(self, request):
+        path = urlsplit(request.url).path
+        query = {k: v[0] for k, v in parse_qs(urlsplit(request.url).query).items()}
+        ancestry = path.endswith("/ancestry")
+        if "person" not in query or (not ancestry and "generations" not in query):
+            return self._answer(request, 400, {"errors": [{"message": "missing parameter"}]})
+        pid = query["person"]
+        if pid not in self.role:
+            return self._unknown(request)
+        if self.mode == "pedigree_swap":
+            ancestry = not ancestry
+        role = self.role[self._who(pid)]
+        if ancestry:
+            roles = [role, "dad", "mom"] if role == "child" else [role]
+        else:
+            roles = ["dad", "mom", "child"] if role in ("dad", "mom") else [role]
+        return self._list(request, {"persons": [self.person(IDS[r]) for r in roles],
+                                    "links": {"collection": {"href": TREE}}})
+
+    def source_references(self, request):
+        query = {k: v[0] for k, v in parse_qs(urlsplit(request.url).query).items()}
+        if "description" not in query:  # recon: 404 without a parameter
+            return self._answer(request, 404, {"errors": [{"code": 404}]})
+        if query["description"] != SOURCE[0]:
+            if self.mode == "catch_all":
+                return self._unknown(request)
+            return self._answer(request, 204)  # live run 2: unknown description, empty
+        if self._lagging("references"):
+            return self._answer(request, 204)  # documented: "no results" (yet)
+        role = "dad" if self.mode == "other_record" else "child"
+        return self._list(request, {"persons": [self.cited_by(role)]})
+
+    def source_descriptions(self, request):
+        """/sources/descriptions?sdids= and /sources/descriptions/{sdid}."""
+        path = urlsplit(request.url).path
+        sdid = path.split("/platform/sources/descriptions", 1)[1].strip("/")
+        if sdid:
+            if sdid != SOURCE[0]:
+                return self._unknown(request)
+            return self._list(request, {"sourceDescriptions": [self.description()]})
+        query = parse_qs(urlsplit(request.url).query)
+        sdids = [s for value in query.get("sdids", []) for s in value.split(",") if s]
+        if self.mode == "ignore_sdids":
+            return self._list(request, {"sourceDescriptions": self.source_box()})
+        if any(s != SOURCE[0] for s in sdids):
+            # The spec documents 204 for "no source descriptions matched".
+            if self.mode == "catch_all":
+                return self._unknown(request)
+            return self._answer(request, 204)
+        return self._list(request, {"sourceDescriptions": [self.description()]})
+
+    def source_box(self):
+        stranger = {"id": "SDZZ-BOX", "titles": [{"value": "an older source"}]}
+        return [stranger, self.description()]
+
+    def search(self, request):
+        """Beta's tree search over real data, as probed: the canary is the best hit for
+        its own name and birth year; no parameter at all answers 400."""
+        query = {k: v[0] for k, v in parse_qs(urlsplit(request.url).query).items()}
+        self.search_params.append(query)
+        if not query:
+            if self.mode == "catch_all":
+                return self._answer(request, 200, {"entries": []}, ATOM_JSON)
+            return self._answer(request, 400, {"errors": [{"message": "upstream 400"}]})
+        if self.mode == "empty":
+            return self._answer(request, 204)
+        count = 20 if self.search_lie == "ignore_count" else int(query.get("count", 20))
+        canary = (query.get("q.givenName"), query.get("q.surname")) == (
+            rtp.CANARY_NAME.split()[0], rtp.CANARY_NAME.split()[-1])
+        hits = [{"id": f"GQZZ-{n:03d}", "confidence": 2, "content": {"gedcomx": {"persons": [{
+            "id": f"GQZZ-{n:03d}", "display": {"name": f"Rosine Zopf {n}",
+                                                "birthDate": "1871"}}]}}}
+                for n in range(count)]
+        if canary and self.mode != "other_person" and self.search_lie != "other_first":
+            hits[0] = {"id": rtp.CANARY_ID, "confidence": 4, "content": {"gedcomx": {
+                "persons": [{"id": rtp.CANARY_ID, "display": {
+                    "name": rtp.CANARY_NAME, "birthDate": rtp.CANARY_BIRTH_DATE,
+                    "birthPlace": "Switzerland"}}]}}}
+        if self.search_lie == "no_confidence":
+            for hit in hits:
+                hit.pop("confidence")
+        return self._answer(request, 200, {"entries": hits, "results": 200}, ATOM_JSON)
+
+    def serve(self):
+        persons_list = re.compile(re.escape(TREE + "/persons") + r"(\?.*)?$")
+        person = re.compile(re.escape(TREE + "/persons/") + r".+")
+        search = re.compile(re.escape(TREE + "/search") + r"(\?.*)?$")
+        relationship = re.compile(
+            re.escape(TREE) + r"/(couple|child-and-parents)-relationships/.+")
+        pedigree = re.compile(re.escape(TREE) + r"/(ancestry|descendancy)(\?.*)?$")
+        references = re.compile(re.escape(TREE + "/source-references") + r"(\?.*)?$")
+        descriptions = re.compile(re.escape(BETA + "/platform/sources/descriptions")
+                                  + r"(/[^?]*)?(\?.*)?$")
+        for method in (responses.GET, responses.HEAD):
+            responses.add_callback(method, persons_list, callback=self.persons)
+            responses.add_callback(method, person, callback=self.person_route)
+            responses.add_callback(method, search, callback=self.search)
+            responses.add_callback(method, relationship, callback=self.relationship_route)
+            responses.add_callback(method, pedigree, callback=self.pedigree)
+            responses.add_callback(method, references, callback=self.source_references)
+            responses.add_callback(method, descriptions, callback=self.source_descriptions)
+
+
+# ====================================================================== WriteTree
+
+PERSONS = TREE + "/persons"
+DESCRIPTIONS = BETA + "/platform/sources/descriptions"
+MEMORIES = BETA + "/platform/memories/memories"
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+# A write lie: the server says yes and does something else (or nothing).
+WRITE_LIES = frozenset({
+    "ignore_update",      # a person POST answers 204 and changes nothing
+    "ignore_names", "ignore_facts", "ignore_gender",  # ... ignores that part only
+    "replace_facts",      # posted facts replace all the person's facts
+    "update_creates",     # a posted conclusion with an id is added, not updated
+    "collateral",         # every person POST also drops the person's oldest fact
+    "ignore_conclusion_delete",  # deleting a conclusion answers 204, changes nothing
+    "wrong_conclusion",   # deleting a conclusion deletes another fact
+    "ref_not_removed",    # deleting a source reference answers 204, changes nothing
+    "ref_removes_all",    # ... and removes every reference of the person
+    "memory_not_attached",  # a person memory upload makes a floating memory
+    "no_entity_id",       # a memory upload answers without X-ENTITY-ID (Location only)
+})
+
+
+class WriteTree:
+    """A stateful fake beta: writes change what later reads answer, in live shapes.
+
+    Persons hold their conclusions (names, facts, gender), each with a server id, as
+    readPerson answers them. A POST to the person resource follows the spec: a
+    conclusion that carries its id updates that conclusion, one without an id is
+    created (and ``sources`` add references). Names without ``parts`` are refused 400,
+    as beta refuses them. Conclusions and source references are deleted by id; source
+    descriptions and memories are resources of their own (GET/DELETE, 410 once
+    deleted). A memory upload to a person answers 201 with the memory id in
+    ``X-ENTITY-ID`` and a ``Location`` naming the persona reference
+    (``.../memory-references/{mid}-1``), as beta does.
+
+    ``mode`` is None or one of ``WRITE_LIES``. ``source_lag`` / ``memory_lag``: how
+    many reads of a person's sources / memories still answer the state before the
+    last change of them (beta's person -> source lag). ``calls`` lists
+    ``(method, path)`` for every request.
+    """
+
+    def __init__(self, mode=None, *, source_lag=0, memory_lag=0):
+        if mode is not None and mode not in WRITE_LIES:
+            raise ValueError(f"unknown lie {mode!r}")
+        self.mode = mode
+        self.persons: dict[str, dict] = {}
+        self.descriptions: dict[str, dict] = {}
+        self.memories: dict[str, dict] = {}
+        self.calls: list[tuple[str, str]] = []
+        self.lag = {"sources": source_lag, "memories": memory_lag}
+        self._pending: dict[tuple[str, str], int] = {}  # (what, pid) -> stale reads left
+        self._shown: dict[tuple[str, str], object] = {}  # (what, pid) -> the stale state
+        self._seq = {"person": 0, "conclusion": 0, "source": 0, "reference": 0,
+                     "memory": 0}
+
+    # ------------------------------------------------------------ ids
+
+    def _id(self, kind):
+        self._seq[kind] += 1
+        n = self._seq[kind]
+        return {"person": f"WZ{n:02d}-ZZZ", "conclusion": f"C.{n:04d}-ZZ",
+                "source": f"SDWZ-{n:03d}", "reference": f"SRWZ-{n:03d}",
+                "memory": str(4100000 + n)}[kind]
+
+    # ------------------------------------------------------------ helpers
+
+    @staticmethod
+    def _json(status, body):
+        return status, {"Content-Type": FS_JSON}, json.dumps(body)
+
+    @staticmethod
+    def _gone(record):
+        return (404, {}, "") if record is None else (410, {}, "")
+
+    def _record(self, request):
+        self.calls.append((request.method, urlsplit(request.url).path))
+
+    def _changed(self, what, pid, before):
+        """``what`` of ``pid`` changed from ``before``: reads show it after the lag."""
+        if self.lag[what]:
+            key = (what, pid)
+            if not self._pending.get(key):
+                self._shown[key] = before
+            self._pending[key] = self.lag[what]
+
+    def _visible(self, what, pid, current):
+        key = (what, pid)
+        if self._pending.get(key):
+            self._pending[key] -= 1
+            return self._shown[key]
+        return current
+
+    def _named(self, conclusion):
+        return {**conclusion, "id": conclusion.get("id") or self._id("conclusion")}
+
+    @staticmethod
+    def _bare(conclusion):
+        return {k: v for k, v in conclusion.items() if k != "id"}
+
+    # ------------------------------------------------------------ persons
+
+    def person_json(self, pid):
+        p = self.persons[pid]
+        name = (p["names"][0]["nameForms"][0].get("fullText") if p["names"] else "") or ""
+        body = {"id": pid, "living": p["living"], "names": p["names"], "facts": p["facts"],
+                "display": {"name": name, "lifespan": "Deceased"},
+                "links": {"person": {"href": f"{PERSONS}/{pid}"},
+                          "artifacts": {"href": f"{PERSONS}/{pid}/memories?flag=fsh"},
+                          "source-descriptions": {"href": f"{PERSONS}/{pid}/sources?flag=fsh"}}}
+        if p["gender"]:
+            body["gender"] = p["gender"]
+        return body
+
+    @staticmethod
+    def _bad_names(names):
+        return any(not (n.get("nameForms") or [{}])[0].get("parts") for n in names)
+
+    def create_person(self, request):
+        self._record(request)
+        person = json.loads(request.body)["persons"][0]
+        assert person["living"] is False
+        names = person.get("names") or []
+        assert names and names[0]["nameForms"][0]["fullText"].startswith("ZZSPIKE")
+        if self._bad_names(names):
+            return 400, {}, "name parts are required"
+        pid = self._id("person")
+        self.persons[pid] = {
+            "living": False, "deleted": False, "names": [self._named(n) for n in names],
+            "facts": [self._named(f) for f in person.get("facts") or []],
+            "gender": self._named(person["gender"]) if person.get("gender") else None,
+            "sources": [], "memories": []}
+        return 201, {"X-ENTITY-ID": pid, "Location": f"{PERSONS}/{pid}"}, ""
+
+    def _merge(self, current, posted, part):
+        """Posted conclusions into ``current``: by id an update, without one a create."""
+        if self.mode in ("ignore_update", f"ignore_{part}"):
+            return current
+        if self.mode == f"replace_{part}":
+            return [self._named(self._bare(c)) for c in posted]
+        out = [dict(c) for c in current]
+        for conclusion in posted:
+            cid = conclusion.get("id")
+            at = next((i for i, c in enumerate(out) if cid and c["id"] == cid), None)
+            if at is None or self.mode == "update_creates":
+                out.append(self._named(self._bare(conclusion)))
+            else:
+                out[at] = {**conclusion, "id": cid}
+        return out
+
+    def update_person(self, request, pid):
+        person = self.persons[pid]
+        posted = json.loads(request.body)["persons"]
+        assert len(posted) == 1 and posted[0].get("id") in (None, pid)
+        posted = posted[0]
+        if self._bad_names(posted.get("names") or []):
+            return 400, {}, "name parts are required"
+        if "names" in posted:
+            person["names"] = self._merge(person["names"], posted["names"], "names")
+        if "facts" in posted:
+            person["facts"] = self._merge(person["facts"], posted["facts"], "facts")
+        if "gender" in posted and self.mode not in ("ignore_update", "ignore_gender"):
+            gender, old = posted["gender"], person["gender"]
+            keep = old and gender.get("id") == old["id"]
+            person["gender"] = {**gender, "id": old["id"]} if keep \
+                else self._named(self._bare(gender))
+        if posted.get("sources") and self.mode != "ignore_update":
+            before = [dict(r) for r in person["sources"]]
+            for ref in posted["sources"]:
+                person["sources"].append({"id": self._id("reference"),
+                                          "description": ref["description"]})
+            self._changed("sources", pid, before)
+        if self.mode == "collateral" and person["facts"]:
+            person["facts"] = person["facts"][1:]
+        return 204, {}, ""
+
+    def delete_conclusion(self, pid, cid):
+        person = self.persons[pid]
+        conclusions = [*person["names"], *person["facts"], person["gender"]]
+        if not any(c and c["id"] == cid for c in conclusions):
+            return 404, {}, ""
+        if self.mode == "ignore_conclusion_delete":
+            return 204, {}, ""
+        if self.mode == "wrong_conclusion":
+            others = [f for f in person["facts"] if f["id"] != cid]
+            cid = others[0]["id"] if others else cid
+        person["names"] = [n for n in person["names"] if n["id"] != cid]
+        person["facts"] = [f for f in person["facts"] if f["id"] != cid]
+        if person["gender"] and person["gender"]["id"] == cid:
+            person["gender"] = None
+        return 204, {}, ""
+
+    def person_sources(self, pid):
+        refs = self._visible("sources", pid, self.persons[pid]["sources"])
+        if not refs:
+            return 204, {}, ""
+        sids = [r["description"].split("?")[0].rsplit("/", 1)[-1] for r in refs]
+        return self._json(200, {
+            "persons": [{"id": pid, "sources": [dict(r) for r in refs]}],
+            "sourceDescriptions": [self.description_json(s) for s in sids
+                                   if s in self.descriptions]})
+
+    def delete_reference(self, pid, srid):
+        person = self.persons[pid]
+        if not any(r["id"] == srid for r in person["sources"]):
+            return 404, {}, ""
+        if self.mode == "ref_not_removed":
+            return 204, {}, ""
+        before = [dict(r) for r in person["sources"]]
+        person["sources"] = [] if self.mode == "ref_removes_all" else [
+            r for r in person["sources"] if r["id"] != srid]
+        self._changed("sources", pid, before)
+        return 204, {}, ""
+
+    def person_memories(self, request, pid):
+        listed = self._visible("memories", pid, list(self.persons[pid]["memories"]))
+        listed = [m for m in listed if not self.memories[m]["deleted"]]
+        if not listed:
+            return 204, {}, ""
+        return self._json(200, {"persons": [], "sourceDescriptions": [
+            self.memory_json(m) for m in listed], "links": {"self": {"href": request.url}}})
+
+    def upload_memory(self, request, pid):
+        assert b'name="artifact"' in request.body and PNG_SIGNATURE in request.body
+        assert b"Content-Type: image/png" in request.body
+        query = {k: v[0] for k, v in parse_qs(urlsplit(request.url).query).items()}
+        mid = self._id("memory")
+        self.memories[mid] = {"title": query.get("title"), "filename": query.get("filename"),
+                              "deleted": False}
+        if self.mode != "memory_not_attached":
+            before = list(self.persons[pid]["memories"])
+            self.persons[pid]["memories"].append(mid)
+            self._changed("memories", pid, before)
+        headers = {"Location": f"{PERSONS}/{pid}/memory-references/{mid}-1"}
+        if self.mode != "no_entity_id":
+            headers["X-ENTITY-ID"] = mid
+        return 201, headers, ""
+
+    def person_route(self, request):
+        self._record(request)
+        path = urlsplit(request.url).path
+        pid, *rest = path.split("/platform/tree/persons/", 1)[1].split("/")
+        person = self.persons.get(pid)
+        if person is None or person["deleted"]:
+            return self._gone(person)
+        method = request.method
+        if not rest:
+            if method == "GET":
+                return self._json(200, {"persons": [self.person_json(pid)]})
+            if method == "POST":
+                return self.update_person(request, pid)
+            person["deleted"] = True  # DELETE
+            return 204, {}, ""
+        what = rest[0]
+        if what == "conclusions" and len(rest) == 2 and method == "DELETE":
+            return self.delete_conclusion(pid, rest[1])
+        if what == "sources" and len(rest) == 1 and method == "GET":
+            return self.person_sources(pid)
+        if what == "source-references" and len(rest) == 2 and method == "DELETE":
+            return self.delete_reference(pid, rest[1])
+        if what == "memories" and len(rest) == 1:
+            if method == "GET":
+                return self.person_memories(request, pid)
+            if method == "POST":
+                return self.upload_memory(request, pid)
+        # Live: GET /persons/{pid}/source-references answered 404; /sources is GET-only.
+        return 404, {}, ""
+
+    # ------------------------------------------------------------ sources, memories
+
+    def description_json(self, sid):
+        d = self.descriptions[sid]
+        return {"id": sid, "about": d["about"], "titles": [{"value": d["title"]}],
+                "citations": [{"value": d["citation"]}]}
+
+    def create_description(self, request):
+        self._record(request)
+        desc = json.loads(request.body)["sourceDescriptions"][0]
+        sid = self._id("source")
+        self.descriptions[sid] = {"about": desc["about"], "title": desc["titles"][0]["value"],
+                                  "citation": desc["citations"][0]["value"], "deleted": False}
+        return 201, {"X-ENTITY-ID": sid, "Location": f"{DESCRIPTIONS}/{sid}"}, ""
+
+    def description_route(self, request):
+        self._record(request)
+        sid = urlsplit(request.url).path.rsplit("/", 1)[-1]
+        desc = self.descriptions.get(sid)
+        if desc is None or desc["deleted"]:
+            return self._gone(desc)
+        if request.method == "DELETE":
+            desc["deleted"] = True
+            return 204, {}, ""
+        return self._json(200, {"sourceDescriptions": [self.description_json(sid)]})
+
+    def memory_json(self, mid):
+        m = self.memories[mid]
+        return {"id": mid, "about": f"{MEMORIES}/{mid}", "mediaType": "image/png",
+                "titles": [{"value": m["title"]}] if m["title"] else []}
+
+    def memory_route(self, request):
+        self._record(request)
+        mid = urlsplit(request.url).path.rsplit("/", 1)[-1]
+        memory = self.memories.get(mid)
+        if memory is None or memory["deleted"]:
+            return self._gone(memory)
+        if request.method == "DELETE":
+            memory["deleted"] = True
+            return 204, {}, ""
+        return self._json(200, {"sourceDescriptions": [self.memory_json(mid)]})
+
+    # ------------------------------------------------------------ wiring
+
+    def live(self):
+        """What was created and not deleted (empty after a strict teardown)."""
+        return ([p for p, r in self.persons.items() if not r["deleted"]]
+                + [s for s, r in self.descriptions.items() if not r["deleted"]]
+                + [m for m, r in self.memories.items() if not r["deleted"]])
+
+    def serve(self):
+        responses.add(responses.GET, BETA + "/platform/collections/tree", json={
+            "collections": [{"links": {
+                "persons": {"href": PERSONS},
+                "relationships": {"href": TREE + "/relationships"},
+                "artifacts": {"href": MEMORIES},
+                "source-descriptions": {"href": DESCRIPTIONS}}}]})
+        responses.add(responses.GET, BETA + "/platform/users/current",
+                      json={"users": [{"id": "U"}]})
+        responses.add_callback(responses.POST, re.compile(re.escape(PERSONS) + r"(\?.*)?$"),
+                               callback=self.create_person)
+        one = re.compile(re.escape(PERSONS + "/") + r"[^?]+(\?.*)?$")
+        for method in (responses.GET, responses.POST, responses.DELETE):
+            responses.add_callback(method, one, callback=self.person_route)
+        responses.add_callback(responses.POST,
+                               re.compile(re.escape(DESCRIPTIONS) + r"(\?.*)?$"),
+                               callback=self.create_description)
+        for method in (responses.GET, responses.DELETE):
+            responses.add_callback(
+                method, re.compile(re.escape(DESCRIPTIONS + "/") + r"[^/?]+(\?.*)?$"),
+                callback=self.description_route)
+            responses.add_callback(
+                method, re.compile(re.escape(MEMORIES + "/") + r"[^/?]+(\?.*)?$"),
+                callback=self.memory_route)
+        return self

@@ -11,6 +11,7 @@ from familysearch.client import FSClient
 from familysearch.discovery import Discovery
 from familysearch.memories import Memories
 from familysearch.models import FACT_BIRTH, build_fact, build_person
+from familysearch.sources import Sources
 from familysearch.tree import TreeWriter, child_and_parents_url, couple_url
 
 from .core import _require_beta
@@ -30,6 +31,7 @@ class FixtureSet:
         self._discovery = Discovery(client)
         self._writer = TreeWriter(client, self._discovery)
         self._memories = Memories(client, self._discovery)
+        self._sources = Sources(client, self._discovery)
         self._tracked: dict[str, list[str]] = {k: [] for k in KINDS}
         self._deleted: set[tuple[str, str]] = set()
 
@@ -51,19 +53,46 @@ class FixtureSet:
         return list(self._tracked[self._kind(kind)])
 
     def person(
-        self, given: str = "Test", gender: str = "Male", birth_year: str | None = "1850"
+        self, given: str = "Test", gender: str = "Male", birth_year: str | None = "1850",
+        *, facts: list[dict] | None = None,
     ) -> str:
-        """Create a deceased ZZSPIKE person and track it before anything else runs."""
-        facts = [build_fact(FACT_BIRTH, date=birth_year)] if birth_year else None
+        """Create a deceased ZZSPIKE person and track it before anything else runs.
+
+        ``facts`` are created with it, after the birth.
+        """
+        born = [build_fact(FACT_BIRTH, date=birth_year)] if birth_year else []
         pid = self._writer.create_person(
             build_person(
                 given=f"ZZSPIKE {given}", surname=f"Test{uuid.uuid4().hex[:8]}",
-                gender=gender, living=False, facts=facts,
+                gender=gender, living=False, facts=[*born, *(facts or [])] or None,
             ),
             reason=self._reason,
         )
         self.track("person", pid)
         return pid
+
+    def source(self, title: str) -> str:
+        """Create a ZZSPIKE source description (as the read world does) and track it."""
+        if not (isinstance(title, str) and title.startswith("ZZSPIKE")):
+            raise ValueError("a fixture source's title must start with ZZSPIKE")
+        sid = self._sources.create_description(
+            f"https://example.org/{title.lower()}", title, f"{title} citation",
+            reason=self._reason)
+        self.track("source", sid)
+        return sid
+
+    def source_url(self, sid: str) -> str:
+        """The description's resource URL, as a person's source reference names it."""
+        return join_path(self._collection("source-descriptions"), sid)
+
+    def attach_source(self, pid: str, sid: str) -> None:
+        """Attach a tracked source to a tracked person (``Sources.attach_to_person``).
+
+        Only this run's fixtures: the reference goes with the person at teardown.
+        """
+        if pid not in self._tracked["person"] or sid not in self._tracked["source"]:
+            raise ValueError("attach_source attaches only this run's tracked fixtures")
+        self._sources.attach_to_person(pid, self.source_url(sid), reason=self._reason)
 
     def _collection(self, rel: str) -> str:
         href = self._discovery.href(rel).split("?")[0]
