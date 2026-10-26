@@ -3,34 +3,32 @@
 The memory cases read the ``memory`` fixture (a PNG uploaded to the child, titled with
 its own ``ZZSPIKE`` value, and the persona the upload made for the child, both from
 tools/verify/world.py) and anchor on what the request does not send: the memory's
-title, or the child's id in the persona's tree identifier. The user's own memories are
-apart, since whether beta honours the uid is unproven (it ignored it for the source
-box). The Users and Utilities reads, and the memory comments, have no sound case under
-the read rules: they are in ``DEFERRED``.
+title, or the child (its id in the persona's tree identifier, its name on the persona).
+The user's own memories, the Users and Utilities reads, and the memory comments have no
+sound case under the read rules: they are in ``DEFERRED``.
 """
 from __future__ import annotations
 
 import json
 
 from ..reads import ReadCase, json_path, reads_recipe
+from .reads_tree_persons import _names_of
 from .reads_tree_relations import _titles
 
 NO_SUCH_MEMORY = "999999999"  # memory ids are numeric (recon)
 NO_SUCH_PERSONA = "999999999"
-NO_SUCH_USER = "cis.user.ZZZZ-ZZZZ"
-# Live (Task 4): a fresh upload may take a moment to show in a list.
-MEMORY_EVENTUAL = (8, 5.0)
 NO_MATCHING_MIDS_EMPTY = (
     "the spec documents 204 for getMemories 'upon a successful read with no results', so "
     "an unknown mid is an empty answer; it counts only because the positive call in the "
     "same recipe answered the fixture memory under its title, which the request did not "
     "send")
-NO_USER_MEMORIES_EMPTY = (
-    "the spec documents 204 for readUserMemories 'upon a successful read with no "
-    "results' (and no 404), so an unknown user may be an empty answer; it counts only "
-    "because the positive call answered the fixture memory under its title")
 
 DEFERRED: dict[str, str] = {
+    "readUserMemories": (
+        "needs the signed-in user's real id: with uid=current beta answered 400 'Failure "
+        "in upstream call: Unable to read artifacts belonging to this user' (Task 5 live "
+        "run 2), and the sealed world does not and must not hold an account id (ruling "
+        "I-4), so path args cannot name the user"),
     "readMemoryComments": (
         "a populated case needs a comment on the fixture memory, and createMemoryComments "
         "is an unverified write; recon's 200 for the fixture carried only the memory's "
@@ -96,13 +94,14 @@ def _persona_id(world) -> str:
 
 
 def _expect_persona(result, world):
-    """The persona asked for, with the memory it belongs to."""
-    pid = _persona_id(world)
+    """The persona asked for, named as the child it was made for (live run 2: the
+    persona carries the child's full name; the memory's title is not in this answer)."""
+    pid, name = _persona_id(world), world.names["child_name"]
     persons = json_path(result.body, "persons")
-    ids = {p.get("id") for p in persons if isinstance(p, dict)} if isinstance(
-        persons, list) else set()
-    assert pid in ids, f"persons {sorted(map(str, ids))} do not hold the persona {pid}"
-    _expect_memory()(result, world)
+    by_id = {p.get("id"): p for p in persons if isinstance(p, dict)} if isinstance(
+        persons, list) else {}
+    assert pid in by_id, f"persons {sorted(map(str, by_id))} do not hold the persona {pid}"
+    assert name in _names_of(by_id[pid]), f"the persona {pid} is not named {name!r}"
 
 
 # ------------------------------------------------------------------ cases
@@ -133,17 +132,8 @@ MEMORIES_CASES = (
     ReadCase(op="readMemoryPersona",
              path_args=lambda w: {"mid": w.ids["memory"], "pid": _persona_id(w)},
              missing={"pid": NO_SUCH_PERSONA}, expect=_expect_persona,
-             anchors=(_title,), needs=MEMORY),
+             anchors=(lambda w: w.names["child_name"],), needs=MEMORY),
 )
 MEMORIES = reads_recipe("reads.memories", MEMORIES_CASES)
 
-USER_MEMORIES_CASES = (
-    ReadCase(op="readUserMemories", path_args=lambda w: {"uid": "current"},
-             query={"start": 0, "count": 50},
-             missing={"uid": NO_SUCH_USER}, control_may_be_empty=NO_USER_MEMORIES_EMPTY,
-             expect=_expect_memory(), anchors=(_title,), needs=MEMORY,
-             eventual=MEMORY_EVENTUAL),
-)
-USER_MEMORIES = reads_recipe("reads.memories.user", USER_MEMORIES_CASES)
-
-READS_MISC = (MEMORIES, USER_MEMORIES)
+READS_MISC = (MEMORIES,)

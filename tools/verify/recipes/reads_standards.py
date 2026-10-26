@@ -117,9 +117,8 @@ def _place(body: Any, pdid: str) -> dict:
 
 
 def _expect_place(name_key: str, pdid: str = CANARY_PLACE_DESCRIPTION, *,
-                  exactly: bool = False, child_key: str | None = None):
-    """The place ``pdid`` under its canary name; optionally the only place, or with a
-    canary child place among the others."""
+                  exactly: bool = False):
+    """The place ``pdid`` under its canary name; optionally the only place."""
 
     def expect(result, world):
         place, want = _place(result.body, pdid), world.names[name_key]
@@ -128,8 +127,6 @@ def _expect_place(name_key: str, pdid: str = CANARY_PLACE_DESCRIPTION, *,
         if exactly:
             ids = [str(p.get("id")) for p in _places(result.body)]
             assert ids == [pdid], f"places are {ids}, not only the requested {pdid}"
-        if child_key:
-            _expect_child(child_key)(result, world)
 
     return expect
 
@@ -141,6 +138,19 @@ def _expect_child(child_key: str):
         assert any(want in _place_names(p) for p in places), f"no child place {want!r}"
 
     return expect
+
+
+def _expect_related(result, world):
+    """The canary with its related places (live run 2: 94 places, the canary first,
+    linked as ``description-with-related``; its children are not among them)."""
+    _expect_place("place_name")(result, world)
+    place = _place(result.body, CANARY_PLACE_DESCRIPTION)
+    links = place.get("links") if isinstance(place.get("links"), dict) else {}
+    assert "description-with-related" in links, (
+        f"place {CANARY_PLACE_DESCRIPTION} is not linked as described with related "
+        f"places (links {sorted(links)})")
+    others = {str(p.get("id")) for p in _places(result.body)} - {CANARY_PLACE_DESCRIPTION}
+    assert others, "no related place besides the canary"
 
 
 def _expect_children(result, world):
@@ -223,8 +233,7 @@ PLACE_DESCRIPTIONS_CASES = (
              expect=_expect_place("place_name", exactly=True),
              anchors=(_canary("place_name"),), needs=NEEDS),
     ReadCase(op="readPlaceDescriptionWithRelated", path_args=PDID, missing=MISSING_PDID,
-             expect=_expect_place("place_name", child_key="place_child_name"),
-             anchors=(_canary("place_name"), _canary("place_child_name")), needs=NEEDS),
+             expect=_expect_related, anchors=(_canary("place_name"),), needs=NEEDS),
     ReadCase(op="readPlaceChildren", path_args=PDID, missing=MISSING_PDID,
              expect=_expect_children, anchors=(_canary("place_child_name"),), needs=NEEDS),
 )

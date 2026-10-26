@@ -36,6 +36,7 @@ ATOM_JSON = "application/x-gedcomx-atom+json"
 LD_JSON = "application/ld+json"
 GX = "http://gedcomx.org/"
 CHILD = "KWZZ-CHD"
+CHILD_NAME = "ZZSPIKEC100000000003 ZZSPIKETESTSURNAME"
 MEMORY = ("4017777", "ZZSPIKEM100000000008")
 OTHER_MEMORY_TITLE = "ZZSPIKEM199999999999"
 PERSONA_SEQ = "74542947"
@@ -66,7 +67,7 @@ class FakeWorld:
             return
         self.ids.update(dad="KWZZ-DAD", mom="KWZZ-MOM", child=CHILD, memory=MEMORY[0],
                         memory_persona_seq=PERSONA_SEQ)
-        self.names.update(child_name="ZZSPIKEC100000000003 ZZSPIKETESTSURNAME",
+        self.names.update(child_name=CHILD_NAME,
                           memory_title=MEMORY[1])
 
 
@@ -144,14 +145,15 @@ class FakeStandards:
                 return self._unknown()
             what = m.group(2) or ""
             if self.mode == "wrong_endpoint":
-                what = {"": "/children", "/children": ""}.get(what, what)
+                what = {"": "/children", "/children": "", "/related": ""}.get(what, what)
             if what == "":
                 return self._ok({"places": [self.description(), self.jurisdiction()]})
             if what == "/children":
                 return self._ok({"places": [self.child_place()]})
-            if what == "/related":
-                return self._ok({"places": [self.description(), self.jurisdiction(),
-                                            self.child_place()]})
+            if what == "/related":  # live run 2: the canary first, linked as such; no child
+                place = dict(self.description(), links={"description-with-related": {
+                    "href": f"{P}/places/description/{pdid}/related"}})
+                return self._ok({"places": [place, self.jurisdiction()]})
             if what == "/attributes":
                 # Live run 1: the attribute values are empty; each attribute has an id.
                 return self._ok({"@id": f"{P}/places/description/{pdid}/attributes",
@@ -289,7 +291,11 @@ class FakeStandards:
         return {"id": MEMORY[0], "titles": [{"value": title}], "mediaType": "image/png"}
 
     def persona(self, tree_id):
-        person = {"id": PERSONA, "names": [{"nameForms": [{"fullText": "ZZSPIKE persona"}]}],
+        # Live run 2: the persona is named as the child it was made for.
+        name = ("ZZSPIKEC199999999999 ZZSPIKETESTSURNAME" if self.mode == "other_record"
+                else CHILD_NAME)
+        person = {"id": PERSONA, "display": {"name": name},
+                  "names": [{"nameForms": [{"fullText": name}]}],
                   "media": [{"description": f"{P}/memories/memories/{MEMORY[0]}"}]}
         if tree_id:
             ark = f"{BETA}/ark:/61903/4:1:{'KWZZ-OTH' if self.mode == 'other_record' else CHILD}"
@@ -305,11 +311,6 @@ class FakeStandards:
             extra = [{"id": "4019999", "titles": [{"value": "an older memory"}]}]
             return self._ok({"sourceDescriptions": [self.memory()] + (
                 extra if self.mode == "ignore_id" else [])})
-        m = re.fullmatch(r"/users/([^/]+)/memories", path)
-        if m:
-            if not self._known(m.group(1), "current"):
-                return self._nothing()
-            return self._ok({"sourceDescriptions": [self.memory()]})
         m = re.fullmatch(r"/memories/([^/]+)(?:/personas(?:/([^/]+))?)?", path)
         if not m or not self._known(m.group(1), MEMORY[0]):
             return self._unknown()
@@ -322,8 +323,9 @@ class FakeStandards:
         if m.group(2) is not None:
             if not self._known(m.group(2), PERSONA):
                 return self._unknown()
-            return self._ok({"persons": [self.persona(False)],
-                             "sourceDescriptions": [self.memory()]})
+            # Live run 2: the memory here is a bare reference, without its title.
+            return self._ok({"persons": [self.persona(True)],
+                             "sourceDescriptions": [{"id": MEMORY[0]}]})
         return self._ok({"sourceDescriptions": [self.memory()]})
 
     def serve(self):
@@ -364,11 +366,8 @@ def run(name, reg_path, mode=None):
 @pytest.mark.parametrize("name", sorted(OWN))
 def test_recipe_passes_against_the_honest_fake(name, reg_path, fake_world):
     result = run(name, reg_path)
-    notes = result.pop("notes", [])
+    assert result.pop("notes", []) == []  # nothing polls
     assert result == {"recipe": name, "passed": True, "problems": []}
-    polled = [op for op in RECIPES[name].ops if op == "readUserMemories"]
-    assert notes == [f"{op}: content after 1 of {rm.MEMORY_EVENTUAL[0]} attempts"
-                     for op in polled]
     registry = json.loads(reg_path.read_text())["operations"]
     for op in RECIPES[name].ops:
         entry = registry[op]["generated"]
@@ -410,6 +409,30 @@ def test_compose_name_posts_parts_and_is_a_read(reg_path, fake_world):
     assert rs.NAME_FULL not in sent  # the literal is computed, not echoed
 
 
+def test_user_memories_deferred_for_want_of_the_account_id():
+    # Live run 2: uid=current answers 400; the world holds no account id (ruling I-4).
+    reason = rm.DEFERRED["readUserMemories"]
+    assert "400" in reason and "I-4" in reason
+    assert "reads.memories.user" not in RECIPES
+
+
+@responses.activate
+def test_related_places_need_the_related_link_not_a_child(reg_path, fake_world):
+    # Live run 2: the 94 related places hold no child of the canary.
+    case = next(c for c in rs.PLACE_DESCRIPTIONS_CASES
+                if c.op == "readPlaceDescriptionWithRelated")
+    assert [a(FakeWorldFor("canaries")) for a in case.anchors] == ["Weymouth"]
+    # The plain description (its jurisdiction chain, no related link) must not pass.
+    result = run("reads.standards.place_descriptions", reg_path, "wrong_endpoint")
+    assert ("readPlaceDescriptionWithRelated: place 4229303 is not linked as described "
+            "with related places") in "\n".join(result["problems"])
+
+
+def test_memory_persona_anchors_on_the_child_name():
+    case = next(c for c in rm.MEMORIES_CASES if c.op == "readMemoryPersona")
+    assert [a(FakeWorldFor("memory")) for a in case.anchors] == [CHILD_NAME]
+
+
 def test_memory_persona_case_needs_the_discovered_persona():
     case = next(c for c in rm.MEMORIES_CASES if c.op == "readMemoryPersona")
     assert case.needs == ("memory",)
@@ -439,7 +462,8 @@ CAUGHT_BY = {
     "ignore_id": ("not-found control answered 200", "not only the memory"),
     "catch_all": ("not-found control answered 200",),
     "empty": ("positive call answered 204",),
-    "wrong_endpoint": ("not in the response", "no persons in the response"),
+    "wrong_endpoint": ("not in the response", "no persons in the response",
+                       "not linked as described with related"),
     "echo": ("not in the response",),
 }
 
@@ -458,7 +482,8 @@ def test_recipe_fails_when_the_fake_lies(mode, name, reg_path, fake_world):
 
 @responses.activate
 def test_every_wrong_endpoint_case_is_caught(reg_path, fake_world):
-    swapped = {"readPlaceDescription", "readPlaceChildren", "readVocabList",
+    swapped = {"readPlaceDescription", "readPlaceChildren", "readPlaceDescriptionWithRelated",
+               "readVocabList",
                "readVocabTerm", "readMemoryPersonas", "readMemoryPersona"}
     failed = set()
     for name in LIES["wrong_endpoint"]:
@@ -507,5 +532,5 @@ def test_recipes_registered_small_and_canaries_stay_apart():
     for case in cases:  # canaries only, or anchor-free with no needs at all
         assert case.needs in ((world.CANARY_GROUP,), ()), case.op
         assert bool(case.needs) != bool(case.anchor_free_reason), case.op
-    for case in (*rm.MEMORIES_CASES, *rm.USER_MEMORIES_CASES):
+    for case in rm.MEMORIES_CASES:
         assert case.needs == ("memory",)
