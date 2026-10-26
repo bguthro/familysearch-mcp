@@ -110,7 +110,12 @@
   },
   "createPersonMemory": {
    "generated": {
-    "status": "unverified"
+    "commit": "3f3fb64277da2d7c66df0f46feaad2003054ca8e",
+    "evidence": "state-change",
+    "fingerprint": "60be8d4db88eaf02327b578f5653b00d5db0c6830ca111d971767cab5389c878",
+    "recipe": "writes.tree.person_memory",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    },
    "handwritten": {
     "recipe": "tests/integration/test_beta_roundtrip.py::test_upload_to_person_then_link_to_second_person",
@@ -278,7 +283,12 @@
   },
   "deletePersonConclusion": {
    "generated": {
-    "status": "unverified"
+    "commit": "3f3fb64277da2d7c66df0f46feaad2003054ca8e",
+    "evidence": "state-change",
+    "fingerprint": "cf09ddd08e77fdfca77156d59c3de9f187517daad62a63c35746722a6b5a0bf2",
+    "recipe": "writes.tree.person_conclusions",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "deletePersonDiscussionReference": {
@@ -313,7 +323,12 @@
   },
   "deletePersonSourceReference": {
    "generated": {
-    "status": "unverified"
+    "commit": "3f3fb64277da2d7c66df0f46feaad2003054ca8e",
+    "evidence": "state-change",
+    "fingerprint": "98b9fa7a9f34d6dd5936c6723247eceac8d9996dfc503a0ffe72bbbf8811c6eb",
+    "recipe": "writes.tree.person_source_reference",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "deletePreferredParentRelationship": {
@@ -1341,7 +1356,12 @@
   },
   "updatePerson": {
    "generated": {
-    "status": "unverified"
+    "commit": "3f3fb64277da2d7c66df0f46feaad2003054ca8e",
+    "evidence": "state-change",
+    "fingerprint": "c89cc3ab05731b1ef42263f12fa66e886c508b75002bedc29e75b3aed17ad0c7",
+    "recipe": "writes.tree.person_update",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    },
    "handwritten": {
     "recipe": "tests/integration/test_beta_roundtrip.py::test_create_addfact_delete_person",
