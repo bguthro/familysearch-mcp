@@ -251,12 +251,12 @@ completion gate.
 ### Verification status
 
 As of the P4 source verification (2026-10-26), `python -m tools.spec.coverage`
-reports 205 operations: 102 `verified` (all on **beta only**), 97 `unverified`, 4
-`unverifiable` and 2 `excluded`. Of the 107 reads, 63 are verified and 44 are deferred;
-of the 60 Family Tree writes, 39 are verified. Those numbers change as recipes are run:
+reports 205 operations: 113 `verified` (all on **beta only**), 86 `unverified`, 4
+`unverifiable` and 2 `excluded`. Of the 107 reads, 64 are verified and 43 are deferred;
+of the 60 Family Tree writes, 41 are verified and 8 of the 10 Memories writes. Those numbers change as recipes are run:
 regenerate them with `python -m tools.spec.coverage` rather than trusting this paragraph.
 
-The 39 verified Family Tree writes are the pilot's `createPerson`, `deletePerson` and
+The 41 verified Family Tree writes are the pilot's `createPerson`, `deletePerson` and
 `restorePerson` (with `readPerson`; recipes `family_tree.person_create_read` and
 `family_tree.person_delete_restore`) and the P3 Family Tree writes proven by the
 `writes.tree.*` recipes: `updatePerson`, the person conclusion, source reference and
@@ -268,7 +268,10 @@ conclusion delete, the two ordering operations (`updateCoupleRelationshipSpouses
 (`createSourceDescription`, `updateSourceDescription`, `deleteSourceDescription`,
 `createSourceFolder`, `updateUserDefinedCollection`,
 `updateSourceDescriptionsToCollection`, `deleteSourceDescriptionsFromCollections`,
-`deleteUserDefinedCollection`). Because they are verified they can run on production, but only with
+`deleteUserDefinedCollection`), the P5 portrait writes (`updatePersonPortraits`,
+`deletePersonPortrait`) and the Memories writes (`createMemories`, `updateMemory`,
+`deleteMemory`, `createMemoryComments`, `deleteMemoryComment`, `createMemoryPersona`,
+`updateMemoryPersona`, `deleteMemoryPersona`). Because they are verified they can run on production, but only with
 `allow_production=True` (plus `confirm_destructive=True` for the destructive ones),
 even though they were proven on beta only. Every other generated write is still
 unverified and locked: it needs `allow_unverified=True` and runs on beta only. The
