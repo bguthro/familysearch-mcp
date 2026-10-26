@@ -36,6 +36,18 @@ PATHS = {"couple": "/couple-relationships/",
 KIND_NAMES = {"couple": "a couple relationship",
               "child_and_parents": "a child-and-parents relationship"}
 
+# Relationship writes that no recipe claims, with the evidence why (for p3-deferred.md).
+DEFERRED: dict[str, str] = {
+    "restoreChildAndParentsRelationship": (
+        "live run 2026-10-26 (code d0ba628): after a proven delete (listed -> unlisted, "
+        "then 410), the restore of the one-parent child-and-parents relationship "
+        "answered 204 (Content-Location only) but the relationship stayed 410 and "
+        "unlisted from the child's parents for 40 s (8 polls x 5 s), under the old id "
+        "and any other; the same op shape restores couples (couple_delete_restore "
+        "passed). Left for the change-history/restore tier (P6/P9) to look into via "
+        "the relationship's /changes"),
+}
+
 
 # ------------------------------------------------------------------ tracking
 
@@ -372,29 +384,50 @@ def couple_delete_restore(ctx: VerifyContext) -> None:
         lambda: _joining(relatives(ctx, "spouses", husband), "couple", persons), persons)
 
 
-def child_and_parents_delete_restore(ctx: VerifyContext) -> None:
-    """Delete a fixture child-and-parents relationship, read it gone, restore it.
+def child_and_parents_delete(ctx: VerifyContext) -> None:
+    """Delete one of two fixture child-and-parents relationships; read it gone.
 
-    One parent, so beta derives no couple. Negative controls, on the relationship
-    resource's status: readable -> 404/410 after the delete, gone -> 200 after the
-    restore (polled). The child's parents list it before, not after the delete
-    (polled), and again after the restore, which must name the same parent and
-    child. Should beta restore it under a new id, that id is tracked and checked
-    instead. The restored relationship stays tracked: teardown deletes it again.
+    One parent with two children, a relationship each (one parent: beta derives no
+    couple). Negative controls: the deleted relationship's resource status, readable
+    before and 404/410 after; its id in the child's parents list, before and (polled)
+    not after. Sibling: the other child's relationship still reads 200 with the same
+    parent and child, and is still listed among the parent's children. The deleted one
+    is marked deleted once read gone, so teardown does not look for it again.
+    restoreChildAndParentsRelationship is not called: see ``DEFERRED``.
     """
     parent = ctx.fixtures.person(given="DelParent")
     child = ctx.fixtures.person(given="DelChild", birth_year="1880")
+    sibling = ctx.fixtures.person(given="DelSibling", birth_year="1882")
     caprid = ctx.fixtures.child_and_parents(child, [parent])
-    api, reason = ctx.api, ctx.reason
+    other = ctx.fixtures.child_and_parents(sibling, [parent])
+    api = ctx.api
     persons = frozenset({parent, child})
-    _delete_restore(
-        ctx, caprid, "child_and_parents", api.get_child_and_parents_relationship,
-        lambda rid: api.delete_child_and_parents_relationship(rid, reason=reason),
-        lambda rid, body: api.restore_child_and_parents_relationship(rid, reason=reason,
-                                                                     body=body),
-        lambda: _joining(relatives(ctx, "parents", child), "child_and_parents", persons),
-        persons)
-
+    listed = lambda: _joining(relatives(ctx, "parents", child),  # noqa: E731
+                              "child_and_parents", persons)
+    s0 = status_of(lambda: api.get_child_and_parents_relationship(caprid))
+    if s0 != 200:
+        raise AssertionError(f"the fixture child-and-parents {caprid} read back {s0}")
+    before = poll(ctx, listed, lambda ids: caprid in ids,
+                  f"child-and-parents {caprid} among the child's parents",
+                  result_of=lambda v: None)
+    other0 = read_child_and_parents(ctx, other)
+    api.delete_child_and_parents_relationship(caprid, reason=ctx.reason)
+    s1 = status_of(lambda: api.get_child_and_parents_relationship(caprid))
+    ctx.expect_changed(s0, s1, f"the readability of child-and-parents {caprid}")
+    if s1 not in GONE:
+        raise AssertionError(f"deleted child-and-parents {caprid} read back {s1}, "
+                             "not 404/410")
+    after = poll(ctx, listed, lambda ids: caprid not in ids,
+                 f"child-and-parents {caprid} unlisted after the delete",
+                 result_of=lambda v: None)
+    ctx.expect_changed(caprid in before, caprid in after,
+                       f"presence of child-and-parents {caprid} among the child's parents")
+    ctx.fixtures.mark_deleted("child_and_parents", caprid)
+    other1 = read_child_and_parents(ctx, other)
+    expect_same(dict(other0.roles), dict(other1.roles),
+                f"the other child's relationship {other}")
+    poll(ctx, lambda: relatives(ctx, "children", parent),
+         lambda s: other in s.relationships, f"child-and-parents {other} still listed")
 
 def relationship_parent_delete(ctx: VerifyContext) -> None:
     """Remove parent2 from a fixture two-parent child-and-parents relationship.
@@ -445,9 +478,8 @@ WRITES_TREE_RELATIONSHIPS = (
     Recipe("writes.tree.couple_delete_restore",
            ("deleteCoupleRelationship", "restoreCoupleRelationship"), "state-change",
            couple_delete_restore),
-    Recipe("writes.tree.child_and_parents_delete_restore",
-           ("deleteChildAndParentsRelationship", "restoreChildAndParentsRelationship"),
-           "state-change", child_and_parents_delete_restore),
+    Recipe("writes.tree.child_and_parents_delete", ("deleteChildAndParentsRelationship",),
+           "state-change", child_and_parents_delete),
     Recipe("writes.tree.relationship_parent_delete",
            ("deleteChildAndParentsRelationshipParent",), "state-change",
            relationship_parent_delete),

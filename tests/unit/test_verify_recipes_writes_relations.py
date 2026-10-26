@@ -38,8 +38,7 @@ RELATIONSHIP_OPS = {
     "writes.tree.child_and_parents_update": ("updateChildAndParentsRelationship",),
     "writes.tree.couple_delete_restore": ("deleteCoupleRelationship",
                                           "restoreCoupleRelationship"),
-    "writes.tree.child_and_parents_delete_restore": ("deleteChildAndParentsRelationship",
-                                                     "restoreChildAndParentsRelationship"),
+    "writes.tree.child_and_parents_delete": ("deleteChildAndParentsRelationship",),
     "writes.tree.relationship_parent_delete": ("deleteChildAndParentsRelationshipParent",),
 }
 OPS = {**NOTE_OPS, **RELATIONSHIP_OPS}
@@ -187,8 +186,7 @@ def test_parent_delete_removes_parent2_of_a_two_parent_relationship(reg_path, sl
 
 
 @responses.activate
-@pytest.mark.parametrize("name", ["writes.tree.couple_delete_restore",
-                                  "writes.tree.child_and_parents_delete_restore"])
+@pytest.mark.parametrize("name", ["writes.tree.couple_delete_restore"])
 def test_delete_restore_restores_with_a_bare_post_and_deletes_again(name, reg_path, slept):
     result, tree, _ctx = run(name, reg_path)
     assert result["passed"], result["problems"]
@@ -198,8 +196,7 @@ def test_delete_restore_restores_with_a_bare_post_and_deletes_again(name, reg_pa
     assert len(deletes) == 2 and deletes[0] == deletes[1]  # the recipe's, then teardown's
 
 
-DELETE_RESTORE = ["writes.tree.couple_delete_restore",
-                  "writes.tree.child_and_parents_delete_restore"]
+DELETE_RESTORE = ["writes.tree.couple_delete_restore"]
 
 
 @responses.activate
@@ -230,6 +227,23 @@ def test_delete_restore_follows_a_restore_under_a_new_id(name, mode, reg_path, s
     assert len(tree.relationships) == 2 and tree.live() == []
 
 
+@responses.activate
+def test_child_and_parents_delete_calls_no_restore_and_skips_it_at_teardown(reg_path, slept):
+    result, tree, _ctx = run("writes.tree.child_and_parents_delete", reg_path)
+    assert result["passed"], result["problems"]
+    assert not any(c.request.url.endswith("/restore") for c in responses.calls)
+    deletes = [p for m, p in tree.calls if m == "DELETE" and "-relationships/" in p]
+    # The recipe's delete of the first, then teardown's of the sibling only.
+    assert len(deletes) == 2 and deletes[0] != deletes[1]
+
+
+def test_restore_of_child_and_parents_is_deferred_with_the_live_evidence():
+    assert "restoreChildAndParentsRelationship" not in {
+        op for recipe in RECIPES.values() for op in recipe.ops}
+    reason = wtr.DEFERRED["restoreChildAndParentsRelationship"]
+    assert "204" in reason and "410" in reason and "2026-10-26" in reason
+
+
 # ---------------------------------------------------------------- the fake lies
 
 
@@ -253,10 +267,8 @@ LIES = {
     ("writes.tree.child_and_parents_update", "rel_update_replaces"): "parent1Facts",
     ("writes.tree.couple_delete_restore", "rel_delete_noop"): "negative control failed",
     ("writes.tree.couple_delete_restore", "restore_noop"): "readable again after the restore",
-    ("writes.tree.child_and_parents_delete_restore", "rel_delete_noop"):
-        "negative control failed",
-    ("writes.tree.child_and_parents_delete_restore", "restore_noop"):
-        "readable again after the restore",
+    ("writes.tree.child_and_parents_delete", "rel_delete_noop"): "negative control failed",
+    ("writes.tree.child_and_parents_delete", "rel_delete_wrong"): "negative control failed",
     ("writes.tree.relationship_parent_delete", "parent_delete_noop"):
         "negative control failed",
     ("writes.tree.relationship_parent_delete", "parent_delete_wrong"):

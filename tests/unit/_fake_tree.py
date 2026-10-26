@@ -439,6 +439,7 @@ WRITE_LIES = frozenset({
     "ignore_rel_update",     # a relationship update answers 204, changes nothing
     "rel_update_replaces",   # posted relationship facts replace all its facts
     "rel_delete_noop",       # the first relationship delete answers 204, changes nothing
+    "rel_delete_wrong",      # the first relationship delete deletes another of its kind
     "restore_noop",          # restoring a relationship answers 204, changes nothing
     "restore_new_id",        # a restore makes a copy under a new id (201, X-ENTITY-ID,
                              # Location); the old id stays deleted
@@ -981,6 +982,10 @@ class WriteTree:
             # teardown can still remove the relationship.
             if self.mode == "rel_delete_noop" and not self._fooled:
                 self._fooled = True
+            elif self.mode == "rel_delete_wrong" and not self._fooled:
+                self._fooled = True
+                other = next((i for i in self._live(kind) if i != rid), rid)
+                self.relationships[other]["deleted"] = True
             else:
                 r["deleted"] = True
             return 204, {}, ""
