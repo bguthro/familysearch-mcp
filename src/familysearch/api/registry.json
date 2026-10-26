@@ -679,7 +679,12 @@
   },
   "performPersonMatchesByExample": {
    "generated": {
-    "status": "unverified"
+    "commit": "51628ebe008736906a24f0a44a1b0d13e6bb5951",
+    "evidence": "read-content",
+    "fingerprint": "f15f14de68223932e2b7ee139e35a31d41514bcda9c8d87ec9c3c0b19c82ff36",
+    "recipe": "reads.tree.matches_by_example",
+    "status": "verified",
+    "verified_on": "2026-10-26"
    }
   },
   "readAgent": {
