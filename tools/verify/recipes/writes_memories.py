@@ -16,7 +16,7 @@ discussion) are in ``writes_memory_common`` / ``tools/verify/fixtures``.
 from __future__ import annotations
 
 from ..core import Recipe, VerifyContext
-from ..fixtures import PNG, PNG_NAME, comments_body
+from ..fixtures import PNG_NAME, comments_body, unique_png
 from .writes_common import (GONE, created_id, describe_box, expect_same, person_memories,
                             redacted, status_of, token)
 from .writes_memory_common import (NO_SUCH_MEMORY, NOT_FOUND, comment_id, comments_listing, exactly,
@@ -59,7 +59,7 @@ def memory_create(ctx: VerifyContext) -> None:
     title, description = token("m"), token("d")
     before = any(title in t for t in (*s0.titles, *(x for v in o0.items.values() for x in v)))
     result = ctx.api.create_memories(
-        reason=ctx.reason, files={"artifact": (PNG_NAME, PNG, "image/png")},
+        reason=ctx.reason, files={"artifact": (PNG_NAME, unique_png(), "image/png")},
         query={"filename": PNG_NAME, "title": title, "description": description})
     mid = created_id(result, "memory")
     if not mid:

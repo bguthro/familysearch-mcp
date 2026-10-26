@@ -43,7 +43,7 @@ from familysearch.sources import Sources
 from familysearch.tree import CHILD_AND_PARENTS_PATH, COUPLE_PATH, TreeWriter
 
 from .core import _require_beta
-from .fixtures import PNG, FixtureSet
+from .fixtures import FixtureSet, unique_png
 
 # group -> the groups it implies (built first)
 GROUPS: dict[str, tuple[str, ...]] = {
@@ -362,7 +362,7 @@ class World:
         if "memory" not in self._ids:
             title = self._value("memory_title", "m")
             mid = self._memories.upload_to_person(
-                self._ids["child"], PNG, filename="zzspike.png", content_type="image/png",
+                self._ids["child"], unique_png(), filename="zzspike.png", content_type="image/png",
                 title=title, reason=self._reason)
             self._fixtures.track("memory", mid)
             self._ids["memory"] = mid

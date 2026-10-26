@@ -134,7 +134,7 @@ AWAITING_TIERS: dict[str, str] = {op: "P4" for op in (
 AWAITING_TIERS.update({op: "P5" for op in (
     "createMemories", "updateMemory", "deleteMemory", "createMemoryComments",
     "deleteMemoryComment", "createMemoryPersona", "updateMemoryPersona",
-    "deleteMemoryPersona", "deletePersonMemoriesPersonaReference", "updatePersonPortraits",
+    "deleteMemoryPersona", "updatePersonPortraits",
     "deletePersonPortrait")})
 
 
@@ -149,7 +149,8 @@ for _module in (writes_tree_relationships, writes_tree_relationship_details,
 # The artifact ops need story-text and coverage fixtures no tier builds yet: the long tail.
 WRITE_DEFERRED_TIERS: dict[str, str] = {
     "restoreChildAndParentsRelationship": "P6",
-    "updateMemoryArtifact": "P9", "deleteMemoryArtifactCoverage": "P9"}
+    "updateMemoryArtifact": "P9", "deleteMemoryArtifactCoverage": "P9",
+    "deletePersonMemoriesPersonaReference": "P9"}
 
 _MATCHES = ("matches, merges and change history are the P6 tier: P3 excludes "
             "mergePerson, match resolution and not-a-match by plan")

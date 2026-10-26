@@ -15,6 +15,7 @@ verified readMemoryPersonas / readMemoryPersona / getPersonMemories / readMemory
 unverified readPersonPortraits, all unclaimed. A persona is addressed by the id
 readMemoryPersonas answers (the form ``{memory id}-{n}``, which is also the id in the
 Location of the person-memory upload: the reference recipe relies on that equality).
+The reference delete (deletePersonMemoriesPersonaReference) is deferred, see ``DEFERRED``.
 Failure text drops links and contributors (``describe_box``).
 """
 from __future__ import annotations
@@ -29,7 +30,24 @@ from .writes_memory_common import (exactly, link_sets, own, persona_link_body,
                                    poll_portraits, portrait_titles, read_memory,
                                    read_persona)
 
-DEFERRED: dict[str, str] = {}
+DEFERRED: dict[str, str] = {
+    "deletePersonMemoriesPersonaReference": (
+        "the erid is the entity id of the person's memory reference, but P5 live run 1 "
+        "answered HTTP 400 'entityId must not be empty or null' for the persona id "
+        "{memory id}-{n} (the id in the person-memory upload's Location), and no read the "
+        "recipes use shows another id for the reference; without an id beta accepts, no "
+        "request can remove one reference"),
+}
+
+
+def _identifiers(personas, persona_id: str):
+    """The persona's identifiers as listed, to post back unchanged."""
+    result = personas.result
+    body = result.body if isinstance(result.body, dict) else {}
+    for person in body.get("persons") or []:
+        if isinstance(person, dict) and person.get("id") == persona_id:
+            return person.get("identifiers")
+    return None
 
 
 def _linked(ctx: VerifyContext, given: str):
@@ -137,7 +155,7 @@ def persona_update(ctx: VerifyContext) -> None:
     v0 = read_person_view(ctx, owner)
     given = token("n")
     ctx.api.update_memory_persona(mid, persona_id, reason=ctx.reason,
-                                  body=persona_name_body(persona_id, given))
+                                  body=persona_name_body(persona_id, given, _identifiers(personas, persona_id)))
     n1 = poll_persona(ctx, mid, persona_id, lambda p: any(given in n for n in p.names),
                       f"readMemoryPersona: persona {persona_id} renamed")
     ctx.expect_changed(sorted(n0.names), sorted(n1.names), f"names of persona {persona_id}")
@@ -199,21 +217,6 @@ def persona_delete(ctx: VerifyContext) -> None:
 
 
 @redacted
-def reference_delete(ctx: VerifyContext) -> None:
-    """Remove a person's memory reference with deletePersonMemoriesPersonaReference.
-
-    The same setup as deleteMemoryPersona, but the second person's link is removed from
-    the person's side: ``DELETE /tree/persons/{pid}/memory-references/{erid}`` with the
-    persona id as erid (the id of the Location the person-memory upload answers, which
-    readMemoryPersonas also lists). Negative control, link sets and the intact memory as
-    for deleteMemoryPersona.
-    """
-    _unlink(ctx, "ReferenceDelete", lambda owner, other, mid, persona_id:
-            ctx.api.delete_person_memories_persona_reference(other, persona_id,
-                                                             reason=ctx.reason))
-
-
-@redacted
 def portraits_update(ctx: VerifyContext) -> None:
     """Select a fixture person's portrait with updatePersonPortraits.
 
@@ -235,7 +238,7 @@ def portraits_update(ctx: VerifyContext) -> None:
                          f"getPersonMemories: {chosen} and {other}")
     before = poll_portraits(ctx, owner, lambda p: True, "")
     ctx.api.update_person_portraits(owner, reason=ctx.reason, body=portrait_body(
-        ctx.fixtures.memory_url(chosen), chosen))
+        ctx.fixtures.memory_url(chosen), owner))
     after = poll_portraits(ctx, owner, lambda p: chosen_title in portrait_titles(p),
                            f"readPersonPortraits: portrait of {owner}")
     ctx.expect_changed(portrait_titles(before), portrait_titles(after),
@@ -297,8 +300,6 @@ WRITES_MEMORY_LINKS = (
            persona_update),
     Recipe("writes.memories.persona_delete", ("deleteMemoryPersona",), "state-change",
            persona_delete),
-    Recipe("writes.memories.reference_delete", ("deletePersonMemoriesPersonaReference",),
-           "state-change", reference_delete),
     Recipe("writes.memories.portraits_update", ("updatePersonPortraits",), "state-change",
            portraits_update),
     Recipe("writes.memories.portrait_delete", ("deletePersonPortrait",), "state-change",

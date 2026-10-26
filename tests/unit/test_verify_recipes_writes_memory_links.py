@@ -28,7 +28,6 @@ OPS = {
     "writes.memories.persona_create": ("createMemoryPersona",),
     "writes.memories.persona_update": ("updateMemoryPersona",),
     "writes.memories.persona_delete": ("deleteMemoryPersona",),
-    "writes.memories.reference_delete": ("deletePersonMemoriesPersonaReference",),
     "writes.memories.portraits_update": ("updatePersonPortraits",),
     "writes.memories.portrait_delete": ("deletePersonPortrait",),
 }
@@ -138,20 +137,13 @@ def test_persona_delete_removes_the_second_persons_persona_by_id(reg_path, slept
 
 
 @responses.activate
-def test_reference_delete_removes_the_second_persons_reference_by_persona_id(reg_path, slept):
-    result, tree, _ctx = run("writes.memories.reference_delete", reg_path)
-    assert result["passed"], result["problems"]
-    [delete] = requests_to("DELETE", PERSONS + "/WZ02-ZZZ/memory-references/")
-    assert delete.url.split("?")[0] == f"{PERSONS}/WZ02-ZZZ/memory-references/4100001-2"
-
-
-@responses.activate
 def test_portraits_update_posts_the_memory_description_for_the_first_person(reg_path, slept):
     result, tree, _ctx = run("writes.memories.portraits_update", reg_path)
     assert result["passed"], result["problems"]
     [post] = requests_to("POST", PERSONS + "/WZ01-ZZZ/portraits")
-    assert json.loads(post.body) == {"sourceDescriptions": [
-        {"id": "4100001", "about": f"{MEMORIES}/4100001"}]}
+    assert json.loads(post.body) == {"persons": [{"id": "WZ01-ZZZ", "media": [{
+        "description": f"{MEMORIES}/4100001", "qualifiers": [{
+            "name": "http://gedcomx.org/RectangleRegion", "value": "0.0,0.0,1.0,1.0"}]}]}]}
 
 
 @responses.activate
@@ -206,9 +198,6 @@ LIES = {
     ("writes.memories.persona_delete", "persona_delete_wrong"): "not seen after",
     ("writes.memories.persona_delete", "persona_delete_all"): "not exactly",
     ("writes.memories.persona_delete", "persona_delete_memory"): "410",
-    ("writes.memories.reference_delete", "reference_delete_noop"): "not seen after",
-    ("writes.memories.reference_delete", "reference_delete_wrong"): "not seen after",
-    ("writes.memories.reference_delete", "reference_delete_all"): "not exactly",
     ("writes.memories.portraits_update", "portrait_ignored"): "not seen after",
     ("writes.memories.portraits_update", "portrait_wrong_person"): "not seen after",
     ("writes.memories.portrait_delete", "portrait_delete_noop"): "not seen after",
@@ -228,3 +217,40 @@ def test_recipe_fails_when_the_fake_lies(name, mode, reg_path, slept):
     no_account_ids(result)
     assert reg_path.read_bytes() == raw  # nothing recorded
     assert tree.live() == []  # and still nothing left behind
+
+
+def test_deferred_reference_delete_is_explained():
+    assert set(wml.DEFERRED) == {"deletePersonMemoriesPersonaReference"}
+    assert "entityId must not be empty" in wml.DEFERRED["deletePersonMemoriesPersonaReference"]
+
+
+def test_every_fixture_png_is_valid_and_unique():
+    import zlib
+    from tools.verify.fixtures import unique_png
+    pngs = {unique_png() for _ in range(20)}
+    assert len(pngs) == 20
+    for png in pngs:
+        assert png.startswith(b"\x89PNG\r\n\x1a\n") and png.endswith(b"IEND\xaeB`\x82")
+        pos = 8
+        while pos < len(png):  # every chunk's CRC checks out
+            n = int.from_bytes(png[pos:pos + 4], "big")
+            body = png[pos + 4:pos + 8 + n]
+            assert int.from_bytes(png[pos + 8 + n:pos + 12 + n], "big") == zlib.crc32(body)
+            pos += 12 + n
+
+
+@responses.activate
+def test_a_duplicate_artifact_is_refused_409_like_beta(reg_path, slept):
+    from familysearch.client import FSClient as C
+    from familysearch.discovery import Discovery
+    from familysearch.errors import FSHTTPError
+    from familysearch.memories import Memories
+    from tools.verify.fixtures import unique_png
+    WriteTree().serve()
+    client = C("tkn", Environment.BETA, min_write_interval=0)
+    memories = Memories(client, Discovery(client))
+    data = unique_png()
+    memories.upload(data, filename="a.png", content_type="image/png", reason="r")
+    with pytest.raises(FSHTTPError) as e:
+        memories.upload(data, filename="a.png", content_type="image/png", reason="r")
+    assert e.value.status == 409

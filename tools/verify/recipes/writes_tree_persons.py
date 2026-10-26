@@ -12,7 +12,7 @@ their person, the memory itself through ``Memories.delete``).
 from familysearch.models import FACT_BIRTH, GENDER_URI, build_fact
 
 from ..core import Recipe, VerifyContext
-from ..world import PNG
+from ..fixtures import unique_png
 from .writes_common import (FACT_RESIDENCE, describe, expect_same, fact_update,
                             gender_update, name_update, other_gender, person_memories,
                             person_sources, poll, read_person_view, token)
@@ -167,7 +167,7 @@ def person_memory(ctx: VerifyContext) -> None:
     before = person_memories(ctx, pid)
     title = token("m")
     result = ctx.api.create_person_memory(
-        pid, reason=ctx.reason, files={"artifact": (PNG_NAME, PNG, "image/png")},
+        pid, reason=ctx.reason, files={"artifact": (PNG_NAME, unique_png(), "image/png")},
         query={"filename": PNG_NAME, "title": title})
     lowered = {k.lower(): v for k, v in result.headers.items()}
     mid = lowered.get("x-entity-id")

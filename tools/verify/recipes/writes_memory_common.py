@@ -50,10 +50,14 @@ def memory_body(description_id: str, title: str, description: str) -> dict:
                                     "descriptions": [{"value": description}]}]}
 
 
-def persona_name_body(persona_id: str, given: str) -> dict:
+def persona_name_body(persona_id: str, given: str, identifiers: Any = None) -> dict:
     """updateMemoryPersona: the persona by id with a new name (parts, as beta requires
-    for a person's names). No example in the spec."""
-    return {"persons": [{"id": persona_id, "names": [build_name(given, SURNAME)]}]}
+    for a person's names), keeping its identifiers (the tree link) when given. No
+    example in the spec."""
+    person: dict = {"id": persona_id, "names": [build_name(given, SURNAME)]}
+    if identifiers:
+        person["identifiers"] = identifiers
+    return {"persons": [person]}
 
 
 # ------------------------------------------------------------------ memory
@@ -235,8 +239,20 @@ def read_persona(ctx: VerifyContext, mid: str, persona_id: str) -> Persona:
 
 def poll_persona(ctx: VerifyContext, mid: str, persona_id: str,
                  done: Callable[[Persona], bool], what: str) -> Persona:
-    return poll(ctx, lambda: read_persona(ctx, mid, persona_id), done, what,
-                result_of=lambda _p: None)
+    """Read a persona until ``done``; a failure shows the names it last read (the
+    persona read keeps no ApiResult)."""
+    last: list[Persona] = []
+
+    def fetch() -> Persona:
+        last[:] = [read_persona(ctx, mid, persona_id)]
+        return last[0]
+
+    try:
+        return poll(ctx, fetch, done, what, result_of=lambda _p: None)
+    except AssertionError as e:
+        names = sorted(last[0].names) if last else []
+        raise AssertionError(f"{e}; the persona last read with names {names} and "
+                             f"identifiers {last[0].identifiers if last else ''}") from None
 
 
 def persona_link_body(memory_url: str, base_url: str, pid: str) -> dict:

@@ -12,7 +12,9 @@ id 400 ("Unable to read collection", API recon), not 404: the read errors and th
 user's folder list (``/sources/collections``) no longer names it.
 """
 import base64
+import struct
 import uuid
+import zlib
 
 from familysearch._urls import join_path
 from familysearch.client import FSClient
@@ -38,6 +40,23 @@ PNG = base64.b64decode(  # a 1x1 PNG, as deep.py uploads
 PNG_NAME = "zzspike.png"
 
 
+def unique_png() -> bytes:
+    """A valid 1x1 PNG whose bytes differ on every call (a fresh random ``tEXt`` chunk).
+
+    Beta rejects an upload whose content it already holds (HTTP 409 "Unable to upload
+    artifact", P5 live run 1), so no two fixture uploads may share bytes.
+    """
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
+
+    header = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+    pixel = zlib.compress(b"\x00" + bytes(uuid.uuid4().bytes[:3]))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", pixel)
+            + chunk(b"tEXt", b"Comment\x00ZZSPIKE" + uuid.uuid4().hex.encode())
+            + chunk(b"IEND", b""))
+
+
 def collection_body(title: str, *, udcid: str | None = None) -> dict:
     """A user-defined collection (a source folder); with ``udcid`` it updates that one."""
     collection: dict = {"title": title}
@@ -57,10 +76,16 @@ def comments_body(text: str) -> dict:
     return {"discussions": [{"comments": [{"text": text}]}]}
 
 
-def portrait_body(memory_url: str, mid: str) -> dict:
-    """A portrait list naming one memory's description (a SourceDescription list, the
-    spec's schema for updatePersonPortraits). Not proven on beta before P5."""
-    return {"sourceDescriptions": [{"id": mid, "about": memory_url}]}
+RECTANGLE_REGION = "http://gedcomx.org/RectangleRegion"
+
+
+def portrait_body(memory_url: str, pid: str) -> dict:
+    """A portrait: a person with a media reference to the memory carrying a GEDCOM X
+    RectangleRegion (beta's 400: "To create a portrait, provide a person with a media
+    reference that contains a Gedcomx RectangleRegion for the tag and ..."; the full
+    message and the qualifier's value format are unverified, the whole image is used)."""
+    return {"persons": [{"id": pid, "media": [{"description": memory_url, "qualifiers": [
+        {"name": RECTANGLE_REGION, "value": "0.0,0.0,1.0,1.0"}]}]}]}
 
 
 def created_header_id(headers) -> str | None:
@@ -151,12 +176,12 @@ class FixtureSet:
         if not (isinstance(title, str) and title.startswith("ZZSPIKE")):
             raise ValueError("a fixture memory's title must start with ZZSPIKE")
         if person is None:
-            mid = self._memories.upload(PNG, filename=PNG_NAME, content_type="image/png",
+            mid = self._memories.upload(unique_png(), filename=PNG_NAME, content_type="image/png",
                                         title=title, reason=self._reason)
         else:
             self._own_persons(person)
             mid = self._memories.upload_to_person(
-                person, PNG, filename=PNG_NAME, content_type="image/png", title=title,
+                person, unique_png(), filename=PNG_NAME, content_type="image/png", title=title,
                 reason=self._reason)
         self.track("memory", mid)
         return mid
@@ -190,7 +215,7 @@ class FixtureSet:
         selection goes with the person)."""
         self._own_persons(pid)
         url = join_path(join_path(self._collection("persons"), pid), "portraits")
-        self._client.post(url, json=portrait_body(self.memory_url(mid), mid),
+        self._client.post(url, json=portrait_body(self.memory_url(mid), pid),
                           reason=self._reason)
 
     def collection(self, title: str) -> str:

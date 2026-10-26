@@ -8,7 +8,6 @@ Family Tree writes: 60. Verified: 39. Not verified: 21.
 
 | Operation | Reason unverified | Unblocked by |
 |---|---|---|
-| deletePersonMemoriesPersonaReference | claimed by recipe writes.memories.reference_delete; awaiting its live run on beta | P5 |
 | deletePersonPortrait | claimed by recipe writes.memories.portrait_delete; awaiting its live run on beta | P5 |
 | updatePersonPortraits | claimed by recipe writes.memories.portraits_update; awaiting its live run on beta | P5 |
 | deletePersonNotAMatch | matches, merges and change history are the P6 tier: P3 excludes mergePerson, match resolution and not-a-match by plan | P6 |
@@ -29,6 +28,7 @@ Family Tree writes: 60. Verified: 39. Not verified: 21.
 | updatePreferredParentRelationship | changes the signed-in account's state (preferred relationships, publishing), which P3 excludes by plan: the P8 tier | P8 |
 | updatePreferredSpouseRelationship | changes the signed-in account's state (preferred relationships, publishing), which P3 excludes by plan: the P8 tier | P8 |
 | updatePublished | changes the signed-in account's state (preferred relationships, publishing), which P3 excludes by plan: the P8 tier | P8 |
+| deletePersonMemoriesPersonaReference | the erid is the entity id of the person's memory reference, but P5 live run 1 answered HTTP 400 'entityId must not be empty or null' for the persona id {memory id}-{n} (the id in the person-memory upload's Location), and no read the recipes use shows another id for the reference; without an id beta accepts, no request can remove one reference | P9 |
 
 ## Verified writes by recipe
 

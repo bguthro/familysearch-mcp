@@ -4,6 +4,7 @@
 test_verify_recipes_reads.py); ``WriteTree`` (below) is a stateful tree whose writes
 change what later reads answer, for the write recipes.
 """
+import hashlib
 import json
 import re
 import zlib
@@ -455,6 +456,8 @@ UID = "cis.user.MZZZ-USR1"
 AGENT = "AZZZ-AGT1"
 DEFAULT_FOLDER = "UDZZ-DEF"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+DUPLICATE = (409, {}, json.dumps({"errors": [{"code": 409, "label": "Conflict", "message":
+             "Failure in upstream call: Unable to upload artifact. (upstream 409)"}]}))
 # The envelope each note owner's notes are posted and answered in (the read world's).
 NOTE_ENVELOPES = {"person": "persons", "couple": "relationships",
                   "cap": "childAndParentsRelationships"}
@@ -631,6 +634,7 @@ class WriteTree:
         self.persons: dict[str, dict] = {}
         self.descriptions: dict[str, dict] = {}
         self.memories: dict[str, dict] = {}
+        self.uploaded: set[str] = set()  # sha256 of every artifact ever uploaded
         self.relationships: dict[str, dict] = {}
         self._fooled = False  # a one-shot lie was told
         # A restored relationship still reads 410 (and is unlisted) for this many
@@ -827,6 +831,11 @@ class WriteTree:
         assert b'name="artifact"' in request.body and PNG_SIGNATURE in request.body
         assert b"Content-Type: image/png" in request.body
         query = {k: v[0] for k, v in parse_qs(urlsplit(request.url).query).items()}
+        digest = hashlib.sha256(request.body.split(PNG_SIGNATURE, 1)[1].split(b"\r\n--")[0]
+                                ).hexdigest()
+        if digest in self.uploaded:  # beta: a duplicate artifact is a 409
+            return None
+        self.uploaded.add(digest)
         mid = self._id("memory")
         description = query.get("description")
         if self.mode == "memory_create_no_description":
@@ -850,6 +859,8 @@ class WriteTree:
             mid = self._id("memory")
             return 201, {"X-ENTITY-ID": mid}, ""
         mid = self._store_memory(request)
+        if mid is None:
+            return DUPLICATE
         if self.mode == "memory_create_attached":
             pid = next(iter(self.persons), None)
             if pid:
@@ -860,6 +871,8 @@ class WriteTree:
 
     def upload_memory(self, request, pid):
         mid = self._store_memory(request)
+        if mid is None:
+            return DUPLICATE
         persona_id = f"{mid}-1"
         if self.mode != "memory_not_attached":
             before = self._pmids(pid)
@@ -879,10 +892,15 @@ class WriteTree:
         return self._json(200, {"sourceDescriptions": [self.memory_json(mid)]})
 
     def set_portraits(self, request, pid):
-        posted = json.loads(request.body)["sourceDescriptions"]
-        assert len(posted) == 1
-        mid = posted[0]["id"]
-        assert posted[0]["about"] == f"{MEMORIES}/{mid}"
+        [person] = json.loads(request.body).get("persons") or [{}]
+        media = person.get("media") or []
+        regions = [q for m in media for q in m.get("qualifiers") or []
+                   if q.get("name") == "http://gedcomx.org/RectangleRegion"]
+        if person.get("id") != pid or len(media) != 1 or not regions:
+            return 400, {}, json.dumps({"errors": [{"code": 400, "message":
+                "To create a portrait, provide a person with a media reference that "
+                "contains a Gedcomx RectangleRegion for the tag"}]})
+        mid = media[0]["description"].rsplit("/", 1)[-1]
         if mid not in self.memories or self.memories[mid]["deleted"]:
             return 404, {}, ""
         target = pid

@@ -816,9 +816,11 @@ def test_portrait_uploads_a_titled_memory_to_the_child_and_selects_it(beta):
     assert world.names["portrait_title"] in unquote(stored["query"]).replace("+", " ")
     [(child, body)] = beta.portraits.items()
     assert child == world.ids["child"]
-    [description] = body["sourceDescriptions"]
-    assert description["id"] == mid and description["about"].endswith(
+    [person] = body["persons"]
+    [media] = person["media"]
+    assert person["id"] == child and media["description"].endswith(
         "/platform/memories/memories/" + mid)
+    assert media["qualifiers"][0]["name"] == "http://gedcomx.org/RectangleRegion"
     assert "memory" not in world.ids  # the portrait group does not build the memory group
     assert fixtures.tracked("memory") == [mid]
     assert fixtures.teardown() == [] and beta.live == {}
