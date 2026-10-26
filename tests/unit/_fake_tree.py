@@ -499,13 +499,15 @@ class WriteTree:
     many reads of a person's sources / memories still answer the state before the
     last change of them (beta's person -> source lag); ``reference_lag`` the same for
     ``/tree/source-references`` after a relationship reference changed;
-    ``resource_sources=False`` leaves ``sources`` out of a relationship's resource.
+    ``resource_sources=False`` leaves ``sources`` out of a relationship's resource;
+    ``owner_entity_id`` answers a reference create with the relationship's id in
+    ``X-ENTITY-ID`` (the Location still names the reference).
     ``calls`` lists
     ``(method, path)`` for every request.
     """
 
     def __init__(self, mode=None, *, source_lag=0, memory_lag=0, restore_lag=0,
-                 reference_lag=0, resource_sources=True):
+                 reference_lag=0, resource_sources=True, owner_entity_id=False):
         if mode is not None and mode not in WRITE_LIES:
             raise ValueError(f"unknown lie {mode!r}")
         self.mode = mode
@@ -520,6 +522,7 @@ class WriteTree:
         self._restoring: dict[str, int] = {}
         self.calls: list[tuple[str, str]] = []
         self.resource_sources = resource_sources  # a relationship's resource lists them
+        self.owner_entity_id = owner_entity_id
         self.lag = {"sources": source_lag, "memories": memory_lag,
                     "references": reference_lag}
         self._pending: dict[tuple[str, str], int] = {}  # (what, pid) -> stale reads left
@@ -1104,7 +1107,7 @@ class WriteTree:
         self._changed("references", sdid, before)
         base = COUPLES if kind == "couple" else CAPS
         return 201, {"Location": f"{base}/{rid}/source-references/{srid}",
-                     "X-ENTITY-ID": srid}, ""
+                     "X-ENTITY-ID": rid if self.owner_entity_id else srid}, ""
 
     def delete_rel_reference(self, rid, srid):
         r = self.relationships[rid]

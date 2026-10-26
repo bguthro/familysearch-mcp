@@ -172,6 +172,9 @@ NOT_ATTEMPTED: dict[str, tuple[str, str]] = {
 
 def _write_reason(op: str, recipe_of: dict[str, str]) -> tuple[str, str]:
     if op in WRITE_DEFERRED:
+        if op not in WRITE_DEFERRED_TIERS:
+            raise SystemExit(f"error: deferred write {op} has no tier in "
+                             "WRITE_DEFERRED_TIERS")
         return WRITE_DEFERRED[op], WRITE_DEFERRED_TIERS[op]
     if op in recipe_of:
         return (f"claimed by recipe {recipe_of[op]}; awaiting its live run on beta",

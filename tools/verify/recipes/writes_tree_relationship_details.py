@@ -63,13 +63,34 @@ def _cited(ctx: VerifyContext, kind: str, rid: str, sid: str,
                  found.result)
 
 
-def _reference_id(result: ApiResult) -> str | None:
-    """The created reference's id: X-ENTITY-ID, else the Location's last segment."""
+def _reference_id(ctx: VerifyContext, result: ApiResult, after: Cited) -> str:
+    """The created reference's id: the one the read-backs name for it, else the
+    Location's ``/source-references/{srid}`` (the spec: the Location names the created
+    reference), else X-ENTITY-ID (which on beta has named the owner, not the part).
+
+    The create's headers go into ``ctx.notes`` (a 201 has no body to describe).
+    """
     lowered = {k.lower(): v for k, v in result.headers.items()}
-    if lowered.get("x-entity-id"):
-        return lowered["x-entity-id"]
+    ctx.notes.append(f"source reference create answered {result.status} "
+                     f"Location={lowered.get('location')!r} "
+                     f"X-ENTITY-ID={lowered.get('x-entity-id')!r}")
     location = urlsplit(lowered.get("location") or "").path.rstrip("/")
-    return location.rsplit("/", 1)[-1] if "/source-references/" in location else None
+    from_location = (location.rsplit("/", 1)[-1] if "/source-references/" in location
+                     else None)
+    if len(after.srids) == 1:
+        srid = next(iter(after.srids))
+        if from_location and from_location != srid:
+            ctx.notes.append(f"the Location names reference {from_location}, the "
+                             f"read-backs {srid}: deleting {srid}")
+        return srid
+    if after.srids:
+        raise AssertionError(f"expected one reference to the source, the read-backs name "
+                             f"{sorted(after.srids)}; {describe(after.result)}")
+    srid = from_location or lowered.get("x-entity-id")
+    if not srid:
+        raise AssertionError(f"no reference id: the read-backs name none and the create "
+                             f"answered no Location or X-ENTITY-ID; {describe(after.result)}")
+    return srid
 
 
 def _source_references(ctx: VerifyContext, kind: str, rid: str, read, create, delete) -> None:
@@ -93,15 +114,7 @@ def _source_references(ctx: VerifyContext, kind: str, rid: str, read, create, de
                      lambda c: c.listed, f"the {what} {rid} citing source {sid}")
         ctx.expect_changed(before.listed, after.listed,
                            f"whether the {what} {rid} cites source {sid}")
-        named = _reference_id(result)
-        if named and after.srids and named not in after.srids:
-            raise AssertionError(f"the create named reference {named}, but the read-backs "
-                                 f"name {sorted(after.srids)}; {describe(after.result)}")
-        srids = {named} if named else set(after.srids)
-        if len(srids) != 1:
-            raise AssertionError(f"expected one reference of {rid} to {sid}, found "
-                                 f"{sorted(srids)}; {describe(after.result)}")
-        created[sid] = (srids.pop(), after)
+        created[sid] = (_reference_id(ctx, result, after), after)
     srid, before = created[drop]
     keep_before = _cited(ctx, kind, rid, keep, read)
     delete(srid)

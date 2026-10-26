@@ -165,6 +165,35 @@ def test_source_references_read_back_from_readsourcereferences_alone(name, reg_p
 
 @responses.activate
 @pytest.mark.parametrize("name", REFERENCES)
+@pytest.mark.parametrize("resource_sources", [True, False])
+def test_source_references_delete_the_reference_read_back_not_the_entity_id(
+        name, resource_sources, reg_path, slept):
+    # Should X-ENTITY-ID name the relationship, the srid still comes from the read-backs.
+    result, tree, _ctx = run(name, reg_path, owner_entity_id=True,
+                             resource_sources=resource_sources)
+    assert result["passed"], result["problems"]
+    [delete] = [c.request.url for c in responses.calls if c.request.method == "DELETE"
+                and "/source-references/" in c.request.url]
+    assert delete.split("?")[0].endswith("/source-references/SRWZ-001")
+    assert any("Location=" in n and "X-ENTITY-ID=" in n for n in result["notes"])
+    assert tree.live() == []
+
+
+@responses.activate
+@pytest.mark.parametrize("name", REFERENCES)
+def test_source_references_fall_back_to_the_location_without_read_back_ids(
+        name, reg_path, slept, monkeypatch):
+    # Citations and resource name no reference ids: the Location's srid is deleted.
+    monkeypatch.setattr(wc, "_reference_sdid", lambda ref: "not-the-description")
+    result, _tree, _ctx = run(name, reg_path, owner_entity_id=True)
+    assert result["passed"], result["problems"]
+    [delete] = [c.request.url for c in responses.calls if c.request.method == "DELETE"
+                and "/source-references/" in c.request.url]
+    assert delete.split("?")[0].endswith("/source-references/SRWZ-001")
+
+
+@responses.activate
+@pytest.mark.parametrize("name", REFERENCES)
 def test_source_references_read_back_from_the_resource_alone(name, reg_path, slept,
                                                              monkeypatch):
     # Should readSourceReferences list persons only, the relationship's resource carries it.
