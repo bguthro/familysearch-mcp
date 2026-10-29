@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -21,7 +22,7 @@ MAX_BYTES = 15_000_000
 UPLOAD_EXTS = frozenset({".pdf", ".jpg", ".jpeg", ".png"})
 
 Kind = Literal["upload-document", "add-source", "skip"]
-State = Literal["planned", "already-present", "skipped"]
+State = Literal["planned", "likely-covered", "already-present", "skipped"]
 
 
 @dataclass(frozen=True)
@@ -65,7 +66,7 @@ def action_key(fs_id: str, kind: str, discriminator: str) -> str:
 
 def compute_plan_hash(people: Sequence[PersonPlan]) -> str:
     planned = sorted(
-        (asdict(a) for p in people for a in p.actions if a.state == "planned"),
+        (asdict(a) for p in people for a in p.actions if a.state in ("planned", "likely-covered")),
         key=lambda d: d["key"],
     )
     blob = json.dumps(planned, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
@@ -98,12 +99,13 @@ def build_plan(
     reader,
     ledger_keys: frozenset[str] = frozenset(),
     max_bytes: int = MAX_BYTES,
+    force_upload: frozenset[str] = frozenset(),
 ) -> Plan:
-    out = [_plan_person(p, links, approved, reader, ledger_keys, max_bytes) for p in people]
+    out = [_plan_person(p, links, approved, reader, ledger_keys, max_bytes, force_upload) for p in people]
     return Plan(tuple(out), compute_plan_hash(out))
 
 
-def _plan_person(person, links, approved, reader, ledger_keys, max_bytes) -> PersonPlan:
+def _plan_person(person, links, approved, reader, ledger_keys, max_bytes, force_upload=frozenset()) -> PersonPlan:
     pkey = f"{person.line}/{person.folder}"
     status = record_state_and_status(person)[0]
     if status == "living":
@@ -158,6 +160,11 @@ def _plan_person(person, links, approved, reader, ledger_keys, max_bytes) -> Per
                 act = _with(act, state="already-present", reason="memory with this title exists")
             else:
                 act = _with(act, reason=reason)
+                covering = _covering_source(act.file or "", refs)
+                forced = f"{person.line}/{person.folder}/{act.file}" in force_upload
+                if covering and not forced:
+                    act = _with(act, state="likely-covered",
+                                reason=f"FamilySearch already has source: {covering[:80]}")
             actions.append(act)
         elif tag == "cite":
             if act.url in seen_url:
@@ -174,6 +181,36 @@ def _plan_person(person, links, approved, reader, ledger_keys, max_bytes) -> Per
     planned = any(a.state == "planned" for a in actions)
     return PersonPlan(person.line, person.folder, fs_id,
                       "planned" if planned else "nothing-to-do", tuple(actions), "")
+
+
+# (file-name words, source-title words); first word of a pair set must appear in each side
+_KINDS = (
+    (("census",), ("census",)),
+    (("draft",), ("draft",)),
+    (("death",), ("death",)),
+    (("birth",), ("birth",)),
+    (("marriage",), ("marriage",)),
+    (("naturalization", "naturalisation"), ("naturalization", "naturalisation")),
+    (("passenger", "manifest"), ("passenger", "manifest")),
+    (("household examination",), ("household examination",)),
+    (("baptism", "christening"), ("baptism", "christening")),
+    (("obituary", "obit"), ("obituary",)),
+)
+_YEAR = re.compile(r"(?<!\d)(1[5-9]\d\d|20\d\d)(?!\d)")
+
+
+def _covering_source(filename: str, refs) -> str | None:
+    """Title of an existing FS source that likely covers this document, else None."""
+    name = _norm(Path(filename).stem)
+    years = set(_YEAR.findall(name))
+    for file_words, title_words in _KINDS:
+        if not any(re.search(rf"\b{re.escape(w)}", name) for w in file_words):
+            continue
+        for r in refs:
+            t = _norm(r.title)
+            if any(w in t for w in title_words) and (not years or years & set(_YEAR.findall(t))):
+                return r.title
+    return None
 
 
 def _with(a: Action, **kw) -> Action:

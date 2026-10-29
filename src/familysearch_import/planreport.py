@@ -35,7 +35,18 @@ def load_approvals(path: Path) -> dict[str, str]:
         isinstance(k, str) and "/" in k and isinstance(v, str) and v for k, v in links.items()
     ):
         raise ValueError(f'approvals file must be {{"approved_links": {{"<line>/<folder>": "<FS id>"}}}}: {path}')
+    force = data.get("force_upload", [])
+    if not isinstance(force, list) or not all(isinstance(f, str) and f.count("/") >= 2 for f in force):
+        raise ValueError(f'"force_upload" must be a list of "<line>/<folder>/<filename>" strings: {path}')
     return dict(links)
+
+
+def load_force_upload(path: Path) -> frozenset[str]:
+    path = Path(path)
+    if not path.exists():
+        return frozenset()
+    load_approvals(path)  # validates shape
+    return frozenset(json.loads(path.read_text(encoding="utf-8")).get("force_upload", []))
 
 
 def load_ledger_keys(path: Path) -> frozenset[str]:
@@ -82,7 +93,7 @@ def render_plan_report(plan: Plan) -> str:
              "Nothing has been written to FamilySearch.", "", "## Totals", ""]
     lines.append(f"- people: {len(plan.people)} ("
                  + ", ".join(f"{n} {s}" for s, n in sorted(person_status.items())) + ")")
-    for state in ("planned", "already-present", "skipped"):
+    for state in ("planned", "likely-covered", "already-present", "skipped"):
         parts = [f"{n} {k}" for (s, k), n in sorted(kinds.items()) if s == state]
         lines.append(f"- {state}: {sum(n for (s, _), n in kinds.items() if s == state)}"
                      + (f" ({', '.join(parts)})" if parts else ""))

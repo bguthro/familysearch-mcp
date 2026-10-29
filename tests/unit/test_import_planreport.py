@@ -148,3 +148,26 @@ def test_cli_limit(tmp_path, monkeypatch):
     assert run(root, "--limit", "1") == 0
     data = json.loads((root / "_import" / "Plan.json").read_text())
     assert len(data["people"]) == 1
+
+
+def test_force_upload_validation(tmp_path):
+    from familysearch_import.planreport import load_force_upload
+
+    p = tmp_path / "approvals.json"
+    assert load_force_upload(p) == frozenset()
+    p.write_text(json.dumps({"approved_links": {}, "force_upload": ["L/F/a.pdf"]}))
+    assert load_force_upload(p) == frozenset({"L/F/a.pdf"})
+    for bad in ('{"approved_links": {}, "force_upload": "L/F/a.pdf"}', '{"approved_links": {}, "force_upload": ["a.pdf"]}'):
+        p.write_text(bad)
+        with pytest.raises(ValueError):
+            load_approvals(p)
+
+
+def test_report_totals_show_likely_covered_separately():
+    def act(key, state):
+        return Action(key, "upload-document", "L", "F", "ABCD-123", key + ".pdf", key, None, state, "r", "s")
+
+    pp = PersonPlan("L", "F", "ABCD-123", "planned",
+                    (act("a", "planned"), act("b", "likely-covered"), act("c", "already-present")), "")
+    text = render_plan_report(Plan((pp,), "h" * 64))
+    assert "- planned: 1" in text and "- likely-covered: 1" in text and "- already-present: 1" in text

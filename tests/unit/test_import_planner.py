@@ -201,3 +201,60 @@ def test_plan_hash_stable_and_content_sensitive(tmp_path):
 def test_reader_only_used_through_read_methods(tmp_path):
     _, _, reader = one(tmp_path, {"a.pdf": b"a"})
     assert {c[0] for c in reader.calls} <= {"person", "memories", "sources"}
+
+
+# ---- likely-covered heuristic ----
+
+def covered(tmp_path, fname, titles, force=frozenset()):
+    reader = FakeReader(sources=[SourceRef(t, None) for t in titles])
+    _, pp, _ = one(tmp_path, {fname: b"a"}, reader=reader, force_upload=force)
+    return pp.actions[0], pp
+
+
+def test_census_same_year_is_likely_covered(tmp_path):
+    a, pp = covered(tmp_path, "Census 1900.pdf", ['"United States, Census, 1900"'])
+    assert a.state == "likely-covered"
+    assert a.reason == 'FamilySearch already has source: "United States, Census, 1900"'
+    assert pp.status == "nothing-to-do"
+
+
+def test_different_year_stays_planned(tmp_path):
+    a, _ = covered(tmp_path, "Census 1910.pdf", ['"United States, Census, 1900"'])
+    assert a.state == "planned"
+
+
+def test_no_year_in_file_matches_on_kind(tmp_path):
+    a, _ = covered(tmp_path, "World War I Draft Registration.pdf", ["World War I Draft Registration Cards"])
+    assert a.state == "likely-covered"
+    a, _ = covered(tmp_path / "b", "Passenger manifest.jpg", ["Passenger Lists, 1900"])
+    assert a.state == "likely-covered"
+    a, _ = covered(tmp_path / "c", "Household Examination Books.pdf", ["Household Examination Books, 1850"])
+    assert a.state == "likely-covered"
+
+
+def test_unreliable_kinds_stay_planned(tmp_path):
+    a, _ = covered(tmp_path, "Photo 1900.jpg", ["Photo 1900 census"])
+    assert a.state == "planned"
+    a, _ = covered(tmp_path / "b", "Letter.pdf", ["Letter"])
+    assert a.state == "planned"
+
+
+def test_kind_must_match(tmp_path):
+    a, _ = covered(tmp_path, "Birth 1900.pdf", ['"United States, Census, 1900"'])
+    assert a.state == "planned"
+
+
+def test_reason_title_truncated_to_80(tmp_path):
+    a, _ = covered(tmp_path, "Census 1900.pdf", ["Census 1900 " + "x" * 200])
+    assert a.reason == "FamilySearch already has source: " + ("Census 1900 " + "x" * 200)[:80]
+
+
+def test_force_upload_returns_to_planned(tmp_path):
+    a, pp = covered(tmp_path, "Census 1900.pdf", ["Census 1900"], force=frozenset({KEY + "/Census 1900.pdf"}))
+    assert a.state == "planned" and pp.status == "planned"
+
+
+def test_hash_covers_likely_covered(tmp_path):
+    p1, _, _ = one(tmp_path / "a", {"Census 1900.pdf": b"a"}, reader=FakeReader(sources=[SourceRef("Census 1900", None)]))
+    p2, _, _ = one(tmp_path / "b", {"Census 1900.pdf": b"b"}, reader=FakeReader(sources=[SourceRef("Census 1900", None)]))
+    assert p1.plan_hash != p2.plan_hash

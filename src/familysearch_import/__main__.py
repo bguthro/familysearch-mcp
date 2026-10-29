@@ -70,7 +70,7 @@ def _plan(args, repo: Path) -> int:
     from familysearch.errors import FSError
     from .planner import build_plan
     from .planreport import (
-        load_approvals, load_ledger_keys, load_links, plan_json, render_plan_report,
+        load_approvals, load_force_upload, load_ledger_keys, load_links, plan_json, render_plan_report,
     )
 
     import_dir = args.archive / "_import"
@@ -88,7 +88,8 @@ def _plan(args, repo: Path) -> int:
     if args.limit is not None:
         people = people[: max(args.limit, 0)]
     try:
-        plan = build_plan(people, links, approvals, _make_reader(args.env), ledger)
+        force = load_force_upload(import_dir / "approvals.json")
+        plan = build_plan(people, links, approvals, _make_reader(args.env), ledger, force_upload=force)
     except FSError as e:
         return _err(str(e))
     import_dir.mkdir(parents=True, exist_ok=True)
