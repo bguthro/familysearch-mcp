@@ -13,10 +13,21 @@ from .scan import IdCandidate, Person, mine_candidates, nfc
 
 FsStatus = Literal["ok", "redirected", "deleted", "not-found", "error"]
 Compare = Literal["confirmed", "probable", "mismatch"]
-Verdict = Literal["confirmed", "probable", "conflict", "unlinked", "needs-search"]
+Verdict = Literal["confirmed", "probable", "conflict", "unlinked", "linked-differs", "needs-search"]
 
 _KIND_RANK = {"webloc": 0, "note": 1, "filename": 2}
-_FILLER = {"unknown", "living", "private"}
+_TITLES = {"rev", "reverend", "elder", "dr", "sr", "jr", "mr", "mrs", "capt", "col", "gen", "hon"}
+_FILLER = {"unknown", "living", "private"} | _TITLES
+_NICKNAMES = (
+    {"bess", "bessie", "elizabeth", "betsy", "betty"},
+    {"will", "william", "bill"},
+    {"jack", "john"},
+    {"jim", "james"},
+    {"peggy", "margaret"},
+    {"kate", "katherine", "catherine"},
+    {"winnie", "winifred"},
+)
+_QUOTED_RE = re.compile(r'["“]([^"”]*)["”]')
 FUZZY = 0.8
 
 
@@ -72,8 +83,9 @@ class _Name:
 
 
 def _parse_name(name: str) -> _Name:
-    outside = re.sub(r"\([^)]*\)", " ", name)
-    alts = tuple(t for part in re.findall(r"\(([^)]*)\)", name) for t in _tokens(part))
+    outside = _QUOTED_RE.sub(" ", re.sub(r"\([^)]*\)", " ", name))
+    parts = re.findall(r"\(([^)]*)\)", name) + _QUOTED_RE.findall(name)
+    alts = tuple(t for part in parts for t in _tokens(part))
     pairs = [(o, _fold(o)) for o in re.split(r"[^\w]+", nfc(outside)) if o]
     # drop initials, roman numerals and filler words
     pairs = [(o, f) for o, f in pairs if len(f) > 1 and f not in _ROMAN and f not in _FILLER]
@@ -109,7 +121,9 @@ def _name_quality(person_name: str, fs_name: str) -> int:
     a, b = _parse_name(person_name), _parse_name(fs_name)
     if not a.given or not b.given:
         return 0
-    given_ok = _close(a.given, b.given, a.alts)
+    given_ok = _close(a.given, b.given, a.alts) or any(
+        x in g and b.given in g for g in _NICKNAMES for x in (a.given, *a.alts)
+    )
     if a.surname is None or b.surname is None:
         if not given_ok:
             return 0
@@ -194,4 +208,6 @@ def resolve_links(person: Person, lookups: Mapping[str, FsPerson]) -> LinkResult
         return LinkResult(person, candidates, "probable", probable[0])
     if errored:
         return LinkResult(person, candidates, "unlinked", None)
+    if any(c.kind == "webloc" and o == "mismatch" for c, _, o in candidates):
+        return LinkResult(person, candidates, "linked-differs", None)
     return LinkResult(person, candidates, "needs-search", None)

@@ -10,12 +10,13 @@ from .linking import FsPerson, LinkResult, differences, resolve_links
 from .record import record_state_and_status
 from .scan import IdCandidate, Person, mine_candidates
 
-VERDICTS = ("confirmed", "probable", "conflict", "unlinked", "needs-search")
+VERDICTS = ("confirmed", "probable", "conflict", "unlinked", "linked-differs", "needs-search")
 _TITLES = {
     "confirmed": "Confirmed (name and dates agree)",
     "probable": "Probable (a year differs by 1-2, or no years to compare)",
     "conflict": "Conflict (two different confirmed ids; nothing chosen)",
     "unlinked": "Unverified (lookup failed; not treated as missing)",
+    "linked-differs": "Linked by you; FamilySearch record differs (please review)",
     "needs-search": "Needs search (no usable id found)",
 }
 
@@ -47,7 +48,7 @@ def build_link_results(
             if pid not in cache:
                 cache[pid] = lookup(pid)
         r = resolve_links(p, {i: cache[i] for i in ids})
-        if r.verdict == "needs-search":
+        if r.verdict in ("needs-search", "linked-differs"):
             try:
                 known = set()
                 for cand, f, _ in r.candidates:
@@ -105,6 +106,8 @@ def render_link_report(results: Sequence[LinkResult], counts: Counter | dict) ->
                 label = outcome
                 if cand.kind == "webloc" and outcome == "mismatch":
                     label = "linked by you, FamilySearch record differs"
+                elif outcome == "not-found":
+                    label = "not a person id on FamilySearch (may be a record id, or deleted)"
                 note = f"{cand.id}: {label}; found in {_where(r, cand)}"
                 if fs.status in ("ok", "redirected"):
                     note += f"; FamilySearch: {_fs_text(fs)}"
@@ -113,7 +116,7 @@ def render_link_report(results: Sequence[LinkResult], counts: Counter | dict) ->
                 out.append(f"  - {note}")
                 if fs.status in ("ok", "redirected"):
                     out += [f"    - {d}" for d in differences(r.person, fs)]
-            if v == "needs-search":
+            if v in ("needs-search", "linked-differs"):
                 if r.search_error:
                     out.append("  - search failed (not the same as no match)")
                 elif not r.search:

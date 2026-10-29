@@ -166,6 +166,35 @@ def test_death_year_may_differ_birth_may_not(tmp_path):
     assert differences(p, fs(b=1850)) == ("birth 1844 vs 1850",)
 
 
+def test_titles_suffixes_quotes_and_nicknames(tmp_path):
+    assert name_matches("Rev Nehemiah Porter", "Reverend Nehemiah Porter")
+    assert name_matches("Jacob Manning Sr.", "Jacob Manning")
+    assert name_matches("Elder John Chipman", "John Chipman")
+    assert name_matches("Dr. Mrs. Capt Col Gen Hon Pat Example Jr", "Pat Example")
+    assert name_matches('Robert "Bob" Example', "Bob Example")
+    assert name_matches("Robert (Bob) Example", "Bob Example")
+    for a, b in [("Bess", "Elizabeth"), ("Betsy", "Betty"), ("Will", "William"), ("Bill", "Will"),
+                 ("Jack", "John"), ("Jim", "James"), ("Peggy", "Margaret"), ("Kate", "Katherine"),
+                 ("Kate", "Catherine"), ("Winnie", "Winifred"), ("Bessie", "Bess")]:
+        assert name_matches(f"{a} Example", f"{b} Example"), (a, b)
+    assert not name_matches("Bess Example", "John Example")
+    p = person(tmp_path, "1844-1915 Bess Example")
+    assert compare(p, fs(name="Elizabeth Example")) == "probable"
+
+
+def test_linked_differs_verdict(tmp_path):
+    p = person(tmp_path)
+    (p.path / "FS.webloc").write_bytes(
+        plistlib.dumps({"URL": "https://www.familysearch.org/tree/person/details/ABCD-123"})
+    )
+    (p2,) = scan_archive(tmp_path / "a")
+    r = resolve_links(p2, {"ABCD-123": fs(name="Someone Else")})
+    assert (r.verdict, r.chosen_id) == ("linked-differs", None)
+    # a mismatching note id is not "linked by you"
+    p3 = person(tmp_path / "n", files={"n.md": "ID ABCD-123"})
+    assert resolve_links(p3, {"ABCD-123": fs(name="Someone Else")}).verdict == "needs-search"
+
+
 def test_alt_name_match(tmp_path):
     p = person(tmp_path, "1844-1915 Mary Smith (Jones)")
     assert compare(p, fs(name="Mary Jones")) == "confirmed"

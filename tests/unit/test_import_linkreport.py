@@ -73,6 +73,13 @@ def test_build_results_deceased_only_and_verdicts(tmp_path):
     assert (counts["deceased"], counts["living"], counts["unknown"]) == (4, 1, 1)
 
 
+def test_not_found_label(tmp_path):
+    people = scan_archive(make_archive(tmp_path))
+    results = build_link_results(people, lambda i: fs(i, status="not-found"), lambda p: [])
+    md = render_link_report(results, {})
+    assert "not a person id on FamilySearch (may be a record id, or deleted)" in md
+
+
 def test_search_failure_is_flagged_not_empty(tmp_path):
     people = scan_archive(make_archive(tmp_path))
 
@@ -186,9 +193,12 @@ def test_webloc_mismatch_label_differences_and_search_dedupe(tmp_path):
     other = fs("NEWW-222", "Pat Example", 1844, 1915)
     results = build_link_results(people, lambda i: wrong, lambda p: [wrong, other])
     (r,) = results
-    assert r.verdict == "needs-search"
+    assert r.verdict == "linked-differs"
     assert [s.id for s in r.search] == ["NEWW-222"]
     md = render_link_report(results, {})
+    assert "Linked by you; FamilySearch record differs (please review)" in md
+    assert md.index("Linked by you; FamilySearch") < md.index("search candidate NEWW-222")
+    assert links_json(results)["summary"]["linked-differs"] == 1
     assert "ZZZZ-111: linked by you, FamilySearch record differs" in md
     assert "birth 1844 vs 1850" in md
     assert "search candidate NEWW-222" in md

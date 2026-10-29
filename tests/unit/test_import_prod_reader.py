@@ -204,6 +204,14 @@ def test_search_candidates_filters_ranks_and_limits(tmp_path):
     assert params["q.birthLikeDate"] == "1844"
 
 
+def test_search_query_uses_normalized_name(tmp_path):
+    p = a_person(tmp_path, "1844-1915 Rev Stella H Eschliman Jr")
+    fs, client, _ = make(search_routes([]))
+    fs.search_candidates(p)
+    params = client.calls[-1][2]
+    assert params["q.givenName"] == "stella" and params["q.surname"] == "eschliman"
+
+
 def test_search_refuses_living(tmp_path):
     living = a_person(tmp_path, "1980 Kim Example")
     fs, client, _ = make({})

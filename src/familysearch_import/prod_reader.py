@@ -17,7 +17,7 @@ from familysearch.search import Search
 from familysearch.tree import TreeReader
 
 from .classify import living_status
-from .linking import FsPerson, compare, _tokens
+from .linking import FsPerson, compare, _parse_name
 from .scan import Person
 
 READ_METHODS = frozenset({"GET", "HEAD"})
@@ -181,10 +181,10 @@ class ReadOnlyFS:
     ) -> list[FsPerson]:
         if living_status(person, status) != "deceased":
             raise ValueError("search is only allowed for deceased people")
-        main = _tokens(_strip_parens(person.display_name))
-        if len(main) < 2:
+        parsed = _parse_name(person.display_name)
+        if not parsed.given or not parsed.surname:
             return []
-        given, surname = " ".join(main[:-1]), main[-1]
+        given, surname = parsed.given, parsed.surname
         birth = str(person.birth) if person.birth else None
         entries = self._call(
             lambda: self._search.tree_search(given=given, surname=surname, birth_date=birth)
