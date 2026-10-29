@@ -12,7 +12,7 @@ tree is created private and hidden. The create's status and headers go into ``ct
 from __future__ import annotations
 
 from ..core import Recipe, VerifyContext
-from ..fixtures import user_object_body
+from ..fixtures import create_user_tree, user_object_body
 from .user_tree_common import NO_SUCH_USER_OBJECT, read_group, read_user_tree
 from .writes_common import (GONE, created_id, describe_box, expect_same, redacted,
                             status_of, token)
@@ -44,10 +44,19 @@ def _create(kind: str):
     def run(ctx: VerifyContext) -> None:
         name = token(spec["tag"])
         unknown = _status(ctx, kind, NO_SUCH_USER_OBJECT)
-        extra = {"private": True, "hidden": True} if kind == "user_tree" else {}
-        result = _api(ctx, kind, "create")(
-            reason=ctx.reason, body=user_object_body(kind, name, description="ZZSPIKE fixture",
-                                                      **extra))
+        create = _api(ctx, kind, "create")
+        gid = None
+        if kind == "user_tree":
+            # Live: beta refuses a tree without exactly one group ("A user tree must be
+            # associated with one and only one group"): a fixture group first.
+            gid = ctx.fixtures.user_object("group", name + "G")
+            result, shape, refusals = create_user_tree(
+                lambda body: create(reason=ctx.reason, body=body), name, gid,
+                private=True, hidden=True)
+            ctx.notes.append(f"tree create group field {shape}; refused before: {refusals}")
+        else:
+            result = create(reason=ctx.reason, body=user_object_body(
+                kind, name, description="ZZSPIKE fixture"))
         lowered = {k.lower(): v for k, v in result.headers.items()}
         ctx.notes.append(f"{spec['label']} create answered {result.status} "
                          f"Location={lowered.get('location')!r} "
@@ -63,11 +72,16 @@ def _create(kind: str):
         if back.name != name:
             raise AssertionError(f"{spec['label']} {oid} reads back named {back.name!r}, not "
                                  f"{name!r}; {describe_box(back.result)}")
+        if gid and gid not in back.data:
+            raise AssertionError(f"tree {oid} reads back without its group {gid}; "
+                                 f"{describe_box(back.result)}")
     run.__doc__ = f"""Create a ZZSPIKE {spec['label']} with create{'Group' if kind == 'group' else 'Tree'}; read it by id.
 
     The id is the create's X-ENTITY-ID / Location, tracked at once. Negative control:
     the read's status for an id that does not exist (an error) against the new id's
-    (200). The read must name the id with the marker name.
+    (200). The read must name the id with the marker name. A tree is created for a fixture
+    group (tried in turn as groups[id], groupId, group{{id}}, groups[resourceId]; refusals
+    go into the notes) and must read back naming that group.
     """
     return run
 

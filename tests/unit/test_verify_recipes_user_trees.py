@@ -89,19 +89,47 @@ def test_recipe_passes_records_and_never_touches_the_current_tree(name, reg_path
 def test_create_sends_a_private_hidden_tree_and_a_plain_group(reg_path):
     run("writes.usertree.tree_create", reg_path)
     run("writes.usertree.group_create", reg_path)
-    posts = [json.loads(c.request.body) for c in responses.calls if c.request.method == "POST"]
-    [tree] = posts[0]["trees"]
-    assert tree["private"] is True and tree["hidden"] is True and tree["name"].startswith("ZZSPIKE")
-    [group] = posts[1]["groups"]
+    posts = [(c.request.url.split("/platform/")[1], json.loads(c.request.body))
+             for c in responses.calls if c.request.method == "POST"]
+    tree = [b for p, b in posts if p == "trees"][-1]["trees"][0]
+    assert tree["private"] is True and tree["hidden"] is True
+    assert tree["name"].startswith("ZZSPIKE") and tree["groupId"]
+    group = [b for p, b in posts if p == "groups"][-1]["groups"][0]
     assert set(group) == {"name", "description"}
 
 
 @responses.activate
-def test_a_tree_is_deleted_only_by_its_own_id(reg_path):
+def test_a_tree_is_created_for_its_own_group_trying_the_group_fields_in_turn(reg_path):
+    result, fake, ctx = run("writes.usertree.tree_create", reg_path)
+    assert result["passed"], result["problems"]
+    posts = [(c.request.url.split("/platform/")[1], json.loads(c.request.body))
+             for c in responses.calls if c.request.method == "POST"]
+    assert [p for p, _ in posts] == ["groups", "trees", "trees"]  # groupId is the 2nd shape
+    assert "groups" in posts[1][1]["trees"][0]
+    assert posts[2][1]["trees"][0]["groupId"].startswith("UG")
+    assert any("refused before" in n and "groups[id]" in n and "one and only one group" in n
+               for n in result["notes"])
+    # the tree is deleted before its group
+    assert [p for m, p in fake.calls if m == "DELETE"] == [
+        "/platform/trees/UT002-ZZZ", "/platform/groups/UG001-ZZZ"]
+
+
+@responses.activate
+def test_a_fixture_tree_gets_its_own_group_and_both_are_torn_down(reg_path):
+    result, fake, ctx = run("writes.usertree.tree_update", reg_path)
+    assert result["passed"], result["problems"]
+    assert len(fake.objects["groups"]) == 2 and len(fake.objects["trees"]) == 2
+    assert fake.live() == []
+
+
+@responses.activate
+def test_a_tree_is_deleted_by_its_own_id_and_its_group_only_at_teardown(reg_path):
     result, fake, ctx = run("writes.usertree.tree_delete", reg_path)
     assert result["passed"], result["problems"]
     deletes = [p for m, p in fake.calls if m == "DELETE"]
-    assert deletes == ["/platform/trees/UT001-ZZZ", "/platform/trees/UT002-ZZZ"]
+    assert deletes[0].startswith("/platform/trees/")  # the recipe's own delete first
+    assert sum("/trees/" in d for d in deletes) == 2 and sum("/groups/" in d for d in deletes) == 2
+    assert fake.live() == []
 
 
 LIES = [
@@ -114,6 +142,7 @@ LIES = [
     ("writes.usertree.group_update", "update_collateral", "the other group"),
     ("writes.usertree.tree_update", "update_drops_description", "other fields"),
     ("writes.usertree.tree_update", "update_collateral", "the other user tree"),
+    ("writes.usertree.tree_create", "drop_group", "without its group"),
     ("writes.usertree.group_delete", "delete_noop", "did not change"),
     ("writes.usertree.tree_delete", "delete_collateral", "410"),
 ]

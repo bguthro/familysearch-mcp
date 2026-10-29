@@ -32,7 +32,7 @@ from .teardown import gone_after, verified_delete
 # teardown order: a collection after its member descriptions, so it is empty; the private
 # (Genealogies) persons and sources before the tree that holds them
 KINDS = ("child_and_parents", "couple", "source", "collection", "memory", "person",
-         "genealogies_person", "genealogies_source", "genealogies_tree", "group", "user_tree")
+         "genealogies_person", "genealogies_source", "genealogies_tree", "user_tree", "group")
 COLLECTIONS_PATH = "/platform/sources/collections"
 GENEALOGIES_PATH = "/platform/genealogies"
 # A private object's delete may show late: (attempts, seconds between) of the gone-check.
@@ -57,6 +57,33 @@ def user_object_body(kind: str, name: str, *, oid: str | None = None,
         item["description"] = description
     item.update(extra)
     return {USER_TREE_ENVELOPES[kind]: [item]}
+
+
+# Live: "A user tree must be associated with one and only one group". The spec names no
+# group field of the Tree, so these are tried in turn (a 400 created nothing).
+TREE_GROUP_SHAPES = (
+    ("groups[id]", lambda gid: {"groups": [{"id": gid}]}),
+    ("groupId", lambda gid: {"groupId": gid}),
+    ("group{id}", lambda gid: {"group": {"id": gid}}),
+    ("groups[resourceId]", lambda gid: {"groups": [{"resourceId": gid}]}),
+)
+
+
+def create_user_tree(call, name: str, gid: str, **extra):
+    """Post a user tree for group ``gid`` with each group-field shape until one is not
+    refused 400. ``call(body)`` posts one. Returns ``(result, shape, refusals)`` with the
+    refused shapes' status and message, for the notes; the last 400 propagates."""
+    refusals: list[str] = []
+    for i, (label, group) in enumerate(TREE_GROUP_SHAPES):
+        body = user_object_body("user_tree", name, description="ZZSPIKE fixture",
+                                **extra, **group(gid))
+        try:
+            return call(body), label, refusals
+        except FSHTTPError as e:
+            if e.status != 400 or i == len(TREE_GROUP_SHAPES) - 1:
+                raise
+            refusals.append(f"{label}: HTTP 400 {(e.body or '')[:160]!r}")
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 # An unknown collection id: beta answered 400 (API recon), so 400 joins 404/410 here,
@@ -534,17 +561,24 @@ class FixtureSet:
     def user_object(self, kind: str, name: str) -> str:
         """Create a ZZSPIKE group or user tree with the raw client and track it at once.
 
-        A user tree is created private and hidden. The current tree is never touched.
+        A user tree is created private and hidden, for a group of its own (beta: one and
+        only one) made and tracked first; teardown deletes the tree, then the group. The
+        current tree is never touched.
         """
         if kind not in USER_TREE_KINDS:
             raise ValueError(f"unknown user tree object {kind!r}")
         if not (isinstance(name, str) and name.startswith("ZZSPIKE")):
             raise ValueError("a fixture group or tree name must start with ZZSPIKE")
-        extra = {"private": True, "hidden": True} if kind == "user_tree" else {}
-        resp = self._client.post(
-            join_path(self._client.base_url + "/platform", USER_TREE_KINDS[kind]),
-            json=user_object_body(kind, name, description="ZZSPIKE fixture", **extra),
-            reason=self._reason)
+        url = join_path(self._client.base_url + "/platform", USER_TREE_KINDS[kind])
+        if kind == "user_tree":
+            gid = self.user_object("group", name + "G")
+            resp, _shape, _refusals = create_user_tree(
+                lambda body: self._client.post(url, json=body, reason=self._reason), name,
+                gid, private=True, hidden=True)
+        else:
+            resp = self._client.post(
+                url, json=user_object_body(kind, name, description="ZZSPIKE fixture"),
+                reason=self._reason)
         oid = created_header_id(resp.headers)
         if not oid:
             raise FSError(f"{kind} created but no id was returned")

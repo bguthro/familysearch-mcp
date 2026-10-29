@@ -33,16 +33,19 @@ LIES = (
     "update_drops_description",
     "delete_noop",
     "delete_collateral",   # a delete also deletes the other object
+    "drop_group",          # a tree reads back without its group
 )
+NEED_GROUP = "A user tree must be associated with one and only one group"
 ENVELOPE = {"groups": "group", "trees": "tree"}
 
 
 class FakeUserTree:
-    def __init__(self, mode=None, *, unknown_status=400):
+    def __init__(self, mode=None, *, unknown_status=400, group_field="groupId"):
         if mode is not None and mode not in LIES:
             raise ValueError(f"unknown lie {mode!r}")
         self.mode = mode
         self.unknown_status = unknown_status
+        self.group_field = group_field  # the one field of a tree that names its group
         self.objects = {"groups": {}, "trees": {}}
         self.current = "GLOBAL"
         self.current_posts: list = []
@@ -69,6 +72,8 @@ class FakeUserTree:
         name = "ZZSPIKE other" if self.mode == "read_other" else o["name"]
         entry = {"id": oid, "name": name, **{k: v for k, v in o.items()
                                              if k not in ("name", "deleted")}}
+        if self.mode == "drop_group":
+            entry.pop(self.group_field, None)
         return {kind: [entry]}
 
     def collection(self, request, kind):
@@ -80,6 +85,12 @@ class FakeUserTree:
             return self._json(200, {kind: [self._entry(kind, i)[kind][0] for i in live]})
         item = json.loads(request.body)[kind][0]
         assert item["name"].startswith("ZZSPIKE")
+        if kind == "trees":
+            gid = item.get(self.group_field)
+            gid = gid if isinstance(gid, str) else None
+            live = self.objects["groups"].get(gid)
+            if not live or live["deleted"]:
+                return 400, {}, NEED_GROUP
         oid = self._new_id(kind)
         if self.mode != "ignore_create":
             rest = {k: v for k, v in item.items() if k != "name"}
