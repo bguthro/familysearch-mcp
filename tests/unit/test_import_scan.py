@@ -133,3 +133,51 @@ def test_symlinked_dirs_not_followed(tmp_path):
     people = scan_archive(root)
     assert [p.folder for p in people] == ["1800-1870 Pat Example"]
     assert [f.name for f in people[0].files] == ["real.pdf"]
+
+
+def _person_with(tmp_path, files):
+    d = tmp_path / "a" / "L" / "1800-1870 Pat Example"
+    d.mkdir(parents=True)
+    for name, content in files.items():
+        f = d / name
+        f.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(content, bytes):
+            f.write_bytes(content)
+        else:
+            f.write_text(content, encoding="utf-8")
+    (p,) = scan_archive(tmp_path / "a")
+    return p
+
+
+def test_mine_candidates_all_sources(tmp_path):
+    from familysearch_import.scan import IdCandidate, mine_candidates
+
+    p = _person_with(tmp_path, {
+        "FS.webloc": plistlib.dumps({"URL": "https://www.familysearch.org/tree/person/details/ABCD-123"}),
+        "ResearchSummary.md": "FamilySearch ID: WXYZ-9AB\nSee https://ancestors.familysearch.org/en/KKKK-1MN/pat-1800-1870\n",
+        "notes.txt": "tree https://www.familysearch.org/tree/person/details/QQQQ-4R5 end",
+        "Pat_LMNO-2P3_census.pdf": "x",
+        "sub/other.md": "ID ABCD-123 again and ABCD-123 twice",
+    })
+    got = mine_candidates(p)
+    assert {c.id for c in got} == {"ABCD-123", "WXYZ-9AB", "KKKK-1MN", "QQQQ-4R5", "LMNO-2P3"}
+    assert IdCandidate("ABCD-123", "FS.webloc", "webloc") in got
+    assert IdCandidate("WXYZ-9AB", "ResearchSummary.md", "note") in got
+    assert IdCandidate("KKKK-1MN", "ResearchSummary.md", "note") in got
+    assert IdCandidate("QQQQ-4R5", "notes.txt", "note") in got
+    assert IdCandidate("LMNO-2P3", "Pat_LMNO-2P3_census.pdf", "filename") in got
+    abcd = [c for c in got if c.id == "ABCD-123"]
+    assert sorted(c.source for c in abcd) == ["FS.webloc", str(Path("sub") / "other.md")]
+    assert len(got) == len(set(got))
+    assert all(not Path(c.source).is_absolute() for c in got)
+
+
+def test_mine_candidates_rejects_false_positives_and_questionable(tmp_path):
+    from familysearch_import.scan import mine_candidates
+
+    p = _person_with(tmp_path, {
+        "ResearchSummary.md": "TEST-2024 and 2024-1234 and ABCD-EFG and DATE-ABCD and ABCD-12345 and ABCD-123-456",
+        "questionable/q.md": "ID ZZZZ-1AA",
+        "good.md": "ok",
+    })
+    assert mine_candidates(p) == ()

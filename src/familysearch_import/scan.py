@@ -8,6 +8,7 @@ import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlparse
 
 _ID = r"[A-Z0-9]{4}-[A-Z0-9]{3,4}"
@@ -36,6 +37,74 @@ class Person:
     files: tuple[Path, ...]
     familysearch_ids: tuple[str, ...]
     book_excluded: frozenset[str]
+
+
+_ID_TEXT_RE = re.compile(rf"(?<![A-Za-z0-9-])({_ID})(?![A-Za-z0-9])(?!-[A-Za-z0-9])")
+_URL_TRAIL = ".,;:)]}>\"'"
+
+
+@dataclass(frozen=True)
+class IdCandidate:
+    id: str
+    source: str  # file name relative to the person folder
+    kind: Literal["webloc", "note", "filename"]
+
+
+def _plausible_id(s: str) -> bool:
+    head, tail = s.split("-")
+    if not any(c.isdigit() for c in s):
+        return False
+    if head.isdigit() and tail.isdigit():
+        return False  # numeric pairs / date ranges
+    if head.isalpha() and tail.isdigit() and len(tail) == 4:
+        return False  # words like TEST-2024
+    return True
+
+
+def _ids_in_text(text: str) -> list[str]:
+    found: list[str] = []
+    for m in _URL_RE.finditer(text):
+        pid = familysearch_person_id(m.group(0).rstrip(_URL_TRAIL))
+        if pid and _plausible_id(pid):
+            found.append(pid)
+    for m in _ID_TEXT_RE.finditer(text):
+        if _plausible_id(m.group(1)):
+            found.append(m.group(1))
+    return found
+
+
+def mine_candidates(person: Person) -> tuple[IdCandidate, ...]:
+    out: list[IdCandidate] = []
+    seen: set[IdCandidate] = set()
+
+    def add(c: IdCandidate) -> None:
+        if c not in seen:
+            seen.add(c)
+            out.append(c)
+
+    for f in person.files:
+        try:
+            rel = str(f.relative_to(person.path))
+        except ValueError:
+            rel = f.name
+        rel = nfc(rel)
+        suffix = f.suffix.lower()
+        if suffix == ".webloc":
+            url = read_webloc_url(f)
+            pid = familysearch_person_id(url) if url else None
+            if pid:
+                add(IdCandidate(pid, rel, "webloc"))
+        elif suffix in (".md", ".txt"):
+            try:
+                text = f.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                text = ""
+            for pid in _ids_in_text(text):
+                add(IdCandidate(pid, rel, "note"))
+        for m in _ID_TEXT_RE.finditer(nfc(f.name)):
+            if _plausible_id(m.group(1)):
+                add(IdCandidate(m.group(1), rel, "filename"))
+    return tuple(out)
 
 
 def parse_folder_name(name: str) -> tuple[int | None, int | None, str] | None:
