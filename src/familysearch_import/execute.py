@@ -55,6 +55,7 @@ class PlanFile:
     plan_hash: str
     actions: tuple[Action, ...]  # every action in the file, any state
     path: Path
+    verified: bool = False  # set only by verify_plan_for_execution
 
     def planned(self) -> tuple[Action, ...]:
         return tuple(a for a in self.actions if a.state == "planned")
@@ -159,7 +160,7 @@ def verify_plan_for_execution(archive: Path, plan_path: Path, confirm_hash: str)
     for a in actions:
         if a.state == "planned":
             _validate_runnable(a)
-    return PlanFile(stored, actions, plan_path)
+    return PlanFile(stored, actions, plan_path, verified=True)
 
 
 # ---------------------------------------------------------------------- run gates
@@ -234,10 +235,15 @@ class Ledger:
                 out.append(rec)
         return out
 
-    def executed_keys(self) -> frozenset[str]:
+    @staticmethod
+    def _env_ok(rec: dict, env: str | None) -> bool:
+        # A line with no env is treated as matching every env (conservative).
+        return env is None or rec.get("env") in (None, env)
+
+    def executed_keys(self, env: str | None = None) -> frozenset[str]:
         return frozenset(r["key"] for r in self.records()
                          if r.get("type") == "result" and r.get("status") == "created"
-                         and isinstance(r.get("key"), str))
+                         and isinstance(r.get("key"), str) and self._env_ok(r, env))
 
     def intent(self, *, action: Action, env: str, plan_hash: str) -> str:
         """Append an intent line (flushed to disk) BEFORE the write; returns its intent id."""
@@ -272,10 +278,11 @@ class Ledger:
             "env": env, "memory_id": memory_id, "source_description_id": source_description_id,
         })
 
-    def unresolved_intents(self) -> list[dict]:
+    def unresolved_intents(self, env: str | None = None) -> list[dict]:
         recs = self.records()
         done = {r.get("intent_id") for r in recs if r.get("type") == "result"}
-        return [r for r in recs if r.get("type") == "intent" and r.get("intent_id") not in done]
+        return [r for r in recs if r.get("type") == "intent" and r.get("intent_id") not in done
+                and self._env_ok(r, env)]
 
 
 # --------------------------------------------------------------------------- lock
@@ -326,3 +333,285 @@ class RunLock:
                 self.path.unlink()
             except OSError:
                 pass
+
+
+# ------------------------------------------------------------------------- engine
+
+CONTENT_TYPES = {".pdf": "application/pdf", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                 ".png": "image/png"}
+
+
+@dataclass
+class ExecServices:
+    """Everything the engine may touch. ``reader`` is read-only; writes only via memories/sources.
+
+    reader:   get_fs_person(id), get_memory_titles(id), get_source_refs(id)
+    memories: upload_to_person(person_id, data, *, filename, content_type, title, reason) -> id;
+              delete(memory_id, *, reason)
+    sources:  create_description(about_url, title, citation, *, reason) -> id;
+              attach_to_person(person_id, source_description_id, *, reason);
+              delete(source_description_id, *, reason)
+    """
+    reader: object
+    memories: object
+    sources: object
+    archive: Path
+    env: str
+
+
+@dataclass
+class Outcome:
+    key: str
+    kind: str
+    person: str  # "<line>/<folder>"
+    status: str  # created|would-create|skipped|failed|failed-readback|reconciled-created|reconciled-absent
+    reason: str
+
+
+@dataclass
+class RunSummary:
+    execute: bool
+    outcomes: list[Outcome]
+    stopped: bool = False
+    stop_reason: str = ""
+    truncated: bool = False  # --max-actions reached; not a failure
+
+    def count(self, status: str) -> int:
+        return sum(1 for o in self.outcomes if o.status == status)
+
+
+class _Stop(Exception):
+    """Internal: stop the run (fail closed)."""
+
+
+def _norm(s: str | None) -> str:
+    from .planner import _norm as n
+    return n(s)
+
+
+def _http_status(e: Exception) -> str:
+    st = getattr(e, "status", None)
+    return f"{type(e).__name__}" + (f" HTTP {st}" if isinstance(st, int) else "")
+
+
+class _Archive:
+    def __init__(self, root: Path):
+        self.root = root
+        self._lines: dict[str, list] = {}
+
+    def person(self, line: str, folder: str):
+        from .scan import nfc, scan_archive
+        if line not in self._lines:
+            self._lines[line] = scan_archive(self.root, [line])
+        for p in self._lines[line]:
+            if p.line == nfc(line) and p.folder == nfc(folder):
+                return p
+        return None
+
+
+def _find_file(person, rel: str):
+    from .planner import _rel
+    from .scan import nfc
+    for f in person.files:
+        if _rel(person, f) == nfc(rel):
+            return f
+    return None
+
+
+def _present_in(reader, a: Action) -> tuple[bool, int]:
+    """(already on FamilySearch, current count). Read failures propagate as ReadFailed."""
+    if a.kind == "upload-document":
+        titles = reader.get_memory_titles(a.fs_id)
+        return _norm(a.title) in {_norm(t) for t in titles}, len(titles)
+    refs = reader.get_source_refs(a.fs_id)
+    hit = any((a.url and r.url == a.url) or (r.title and _norm(r.title) == _norm(a.title)) for r in refs)
+    return hit, len(refs)
+
+
+def _reconcile(plan_actions: dict[str, Action], services: ExecServices, ledger: Ledger,
+               execute: bool, out: list[Outcome], executed: set[str]) -> None:
+    """Resolve intents with no result: read FamilySearch; never re-upload blindly."""
+    for rec in ledger.unresolved_intents(services.env):
+        key, fs_id = rec.get("key"), rec.get("fs_id")
+        probe = Action(key or "", rec.get("kind") or "", "", "", fs_id or "", rec.get("file"),
+                       rec.get("title"), rec.get("url"), "planned", "", rec.get("sha256"))
+        if not (isinstance(key, str) and _ID_RE.match(fs_id or "")) \
+                or probe.kind not in ("upload-document", "add-source"):
+            raise _Stop("an unresolved ledger intent is malformed; resolve it manually")
+        present, _ = _present_in(services.reader, probe)  # ReadFailed -> stop in caller
+        who = f"{probe.kind}"
+        if present:
+            if execute:
+                ledger.result(intent_id=rec["intent_id"], key=key, status="created",
+                              reason="created (reconciled)", kind=probe.kind, fs_id=fs_id,
+                              env=services.env, title=probe.title, url=probe.url, reconciled=True)
+            executed.add(key)
+            out.append(Outcome(key, who, "", "reconciled-created",
+                               "interrupted run: object found on FamilySearch"))
+        else:
+            if execute:
+                ledger.result(intent_id=rec["intent_id"], key=key, status="skipped",
+                              reason="interrupted before write; absent on FamilySearch",
+                              kind=probe.kind, fs_id=fs_id, env=services.env,
+                              title=probe.title, url=probe.url)
+            out.append(Outcome(key, who, "", "reconciled-absent",
+                               "interrupted run: object absent, eligible again"))
+
+
+def run_plan(plan: PlanFile, services: ExecServices, ledger: Ledger, *, only: Sequence[str] = (),
+             max_actions: int = DEFAULT_MAX_ACTIONS, execute: bool = False,
+             allow_production: bool = False) -> RunSummary:
+    # Gates first: nothing below runs (no reads, no ledger lines) if any refuses.
+    check_run_gates(services.env, allow_production, only, max_actions)
+    if not isinstance(plan, PlanFile) or not plan.verified:
+        raise GateError("plan was not verified by verify_plan_for_execution")
+    if execute and not (ledger.path.parent / "execute.lock").is_file():
+        raise GateError("execute requires the run lock to be held")
+    scope = parse_only(only)
+    planned = plan.planned()
+    for a in planned:
+        _validate_runnable(a)
+
+    out: list[Outcome] = []
+    summary = RunSummary(execute, out)
+    executed = set(ledger.executed_keys(services.env))
+    seen_titles: set[tuple[str, str, str]] = set()
+    archive = _Archive(Path(services.archive))
+    writes = 0
+
+    def skip(a: Action, reason: str) -> None:
+        out.append(Outcome(a.key, a.kind, f"{a.person_line}/{a.person_folder}", "skipped", reason))
+
+    try:
+        from .prod_reader import ReadFailed
+        try:
+            _reconcile({a.key: a for a in planned}, services, ledger, execute, out, executed)
+        except ReadFailed as e:
+            raise _Stop(f"cannot reconcile interrupted run: {type(e).__name__}") from e
+
+        for a in planned:
+            who = f"{a.person_line}/{a.person_folder}"
+            if scope and who not in scope:
+                continue
+            if a.key in executed:
+                skip(a, "already executed (ledger or this run)")
+                continue
+            if writes >= max_actions:
+                summary.truncated = True
+                break
+            person = archive.person(a.person_line, a.person_folder)
+            if person is None:
+                skip(a, "person folder not found in archive")
+                continue
+            from .record import record_state_and_status
+            status, rec_state = record_state_and_status(person)
+            if rec_state == "invalid":  # a record exists but cannot be trusted: fail closed
+                skip(a, "ImportRecord.json is unreadable or invalid")
+                continue
+            if status != "deceased":
+                skip(a, "archive status is no longer deceased")
+                continue
+            data = b""
+            if a.kind == "upload-document":
+                f = _find_file(person, a.file or "")
+                if f is None:
+                    skip(a, "file no longer in archive")
+                    continue
+                try:
+                    data = f.read_bytes()
+                except OSError:
+                    skip(a, "file unreadable")
+                    continue
+                import hashlib
+                if hashlib.sha256(data).hexdigest() != a.sha256:
+                    skip(a, "file changed since planning")
+                    continue
+                ctype = CONTENT_TYPES.get(f.suffix.lower())
+                if ctype is None:
+                    skip(a, "unsupported file type")
+                    continue
+            # --- fresh FamilySearch reads
+            try:
+                fs = services.reader.get_fs_person(a.fs_id)
+            except ReadFailed as e:
+                raise _Stop(f"person read failed: {type(e).__name__}") from e
+            if fs.status in ("redirected", "not-found", "deleted"):
+                skip(a, f"person on FamilySearch is {fs.status}")
+                continue
+            if fs.status != "ok":
+                raise _Stop(f"person read error for {who}")
+            if getattr(fs, "id", None) != a.fs_id:
+                skip(a, "person id no longer matches the plan")
+                continue
+            if fs.living is not False:
+                skip(a, "person is living or living status unknown on FamilySearch")
+                continue
+            tkey = (a.fs_id, a.kind, _norm(a.title if a.kind == "upload-document" else (a.url or a.title)))
+            try:
+                present, before = _present_in(services.reader, a)
+            except ReadFailed as e:
+                raise _Stop(f"existing-object read failed: {type(e).__name__}") from e
+            if present or tkey in seen_titles:
+                skip(a, "already present on FamilySearch" if present else "duplicate within this run")
+                continue
+            if not execute:
+                seen_titles.add(tkey)
+                writes += 1
+                out.append(Outcome(a.key, a.kind, who, "would-create", "dry run"))
+                continue
+            _write_one(a, who, data, ctype if a.kind == "upload-document" else "", before,
+                       plan, services, ledger, out)
+            executed.add(a.key)
+            seen_titles.add(tkey)
+            writes += 1
+    except _Stop as e:
+        summary.stopped, summary.stop_reason = True, str(e)
+    if out and out[-1].status in ("failed", "failed-readback"):
+        summary.stopped = True
+        summary.stop_reason = summary.stop_reason or out[-1].reason
+    return summary
+
+
+def _write_one(a: Action, who: str, data: bytes, ctype: str, before: int, plan: PlanFile,
+               services: ExecServices, ledger: Ledger, out: list[Outcome]) -> None:
+    """One write: intent, write, read-back, result. Any failure records it and stops the run."""
+    from .prod_reader import ReadFailed
+    intent_id = ledger.intent(action=a, env=services.env, plan_hash=plan.plan_hash)
+    common = dict(intent_id=intent_id, key=a.key, kind=a.kind, fs_id=a.fs_id, env=services.env,
+                  title=a.title, url=a.url)
+    mem_id = sd_id = None
+
+    def fail(status: str, reason: str) -> None:
+        ledger.result(status=status, reason=reason, memory_id=mem_id,
+                      source_description_id=sd_id, **common)
+        out.append(Outcome(a.key, a.kind, who, status, reason))
+        raise _Stop(reason)
+
+    try:
+        if a.kind == "upload-document":
+            mem_id = services.memories.upload_to_person(
+                a.fs_id, data, filename=Path(a.file or "").name, content_type=ctype,
+                title=a.title, reason=REASON)
+            if not isinstance(mem_id, str) or not mem_id:
+                mem_id = None
+                fail("failed-readback", "upload returned no memory id")
+        else:
+            sd_id = services.sources.create_description(a.url, a.title, a.title, reason=REASON)
+            if not isinstance(sd_id, str) or not sd_id:
+                sd_id = None
+                fail("failed-readback", "create returned no source description id")
+            services.sources.attach_to_person(a.fs_id, sd_id, reason=REASON)
+    except _Stop:
+        raise
+    except Exception as e:  # any write error: record and stop; never retry blindly
+        fail("failed", f"write error: {_http_status(e)}")
+
+    try:
+        present, after = _present_in(services.reader, a)
+    except ReadFailed as e:
+        fail("failed-readback", f"read-back failed: {type(e).__name__}")
+    if not present or after != before + 1:
+        fail("failed-readback", f"read-back mismatch (before {before}, after {after}, present {present})")
+    ledger.result(status="created", reason="created", memory_id=mem_id,
+                  source_description_id=sd_id, **common)
+    out.append(Outcome(a.key, a.kind, who, "created", "created"))
