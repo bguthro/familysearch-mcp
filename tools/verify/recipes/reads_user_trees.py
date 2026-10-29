@@ -1,7 +1,6 @@
-"""Read recipes for the User Tree API (Task C): a group and a user tree, by id.
+"""Read recipes for the User Tree API (Task C): a group, by id.
 
-The ``ugroup`` / ``utree`` world groups are a ZZSPIKE group and a private, hidden ZZSPIKE
-user tree made by ``FixtureSet.user_object`` (the account has none: ``GET /groups`` answers
+The ``ugroup`` world group is a ZZSPIKE group made by ``FixtureSet.user_object`` (the account has none: ``GET /groups`` answers
 204). Each read sends only the id and anchors on the fixture's name. The not-found control
 is a well-formed unknown id. The list reads and the tree's person/change/match feeds are in
 ``DEFERRED`` with reasons; the account's current tree is never read for content nor set.
@@ -13,6 +12,8 @@ from ..reads import ReadCase, json_path, reads_recipe
 from .user_tree_common import NO_SUCH_USER_OBJECT
 
 DEFERRED: dict[str, str] = {
+    "readTree": (
+        "no user tree can be created, so none exists to read: beta refuses 17 tried request shapes: groupAccess forms -> 400 'Failed to read request'; others -> 'A user tree must be associated with one and only one group'; the Group/Tree body schema is undocumented (2026-10-29 live run)"),
     "getGroups": (
         "takes no path or query parameter, so no not-found control can be built (every "
         "request lists the signed-in user's groups); the account has none (204) and the "
@@ -53,10 +54,4 @@ GROUP = reads_recipe("reads.usertree.group", (
              missing={"groupid": NO_SUCH_USER_OBJECT},
              expect=_expect("groups", "ugroup", "ugroup_name"),
              anchors=(lambda w: w.names["ugroup_name"],), needs=("ugroup",)),))
-TREE = reads_recipe("reads.usertree.tree", (
-    ReadCase(op="readTree", path_args=lambda w: {"tid": w.ids["utree"]},
-             missing={"tid": NO_SUCH_USER_OBJECT},
-             expect=_expect("trees", "utree", "utree_name"),
-             anchors=(lambda w: w.names["utree_name"],), needs=("utree",)),))
-
-READS_USER_TREES = (GROUP, TREE)
+READS_USER_TREES = (GROUP,)

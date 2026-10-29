@@ -32,7 +32,7 @@ from .teardown import gone_after, verified_delete
 # teardown order: a collection after its member descriptions, so it is empty; the private
 # (Genealogies) persons and sources before the tree that holds them
 KINDS = ("child_and_parents", "couple", "source", "collection", "memory", "person",
-         "genealogies_person", "genealogies_source", "genealogies_tree", "user_tree", "group")
+         "genealogies_person", "genealogies_source", "genealogies_tree", "group")
 COLLECTIONS_PATH = "/platform/sources/collections"
 GENEALOGIES_PATH = "/platform/genealogies"
 # A private object's delete may show late: (attempts, seconds between) of the gone-check.
@@ -40,9 +40,9 @@ GENEALOGIES_GONE_POLLS = (5, 3.0)
 # fixture kind -> the collection segment of its resource under /genealogies
 GENEALOGIES_KINDS = {"genealogies_person": "persons", "genealogies_source": "sources",
                      "genealogies_tree": "trees"}
-# User Tree API (Task C): groups and user trees, one resource each under /platform.
-USER_TREE_KINDS = {"group": "groups", "user_tree": "trees"}
-USER_TREE_ENVELOPES = {"group": "groups", "user_tree": "trees"}
+# User Tree API (Task C): groups under /platform (user trees are deferred: createTree is refused).
+USER_TREE_KINDS = {"group": "groups"}
+USER_TREE_ENVELOPES = {"group": "groups"}
 
 
 def user_object_body(kind: str, name: str, *, oid: str | None = None,
@@ -57,58 +57,6 @@ def user_object_body(kind: str, name: str, *, oid: str | None = None,
         item["description"] = description
     item.update(extra)
     return {USER_TREE_ENVELOPES[kind]: [item]}
-
-
-# Live: "A user tree must be associated with one and only one group". The updateTree spec
-# says its modifiable fields include ``ownerAccess`` and ``groupAccess``, so the group
-# association most likely lives there; the four plain group fields (refused on the live
-# run) come last. Each shape is (label, fields for group ``gid``, bare): a bare shape is
-# posted without the private/hidden flags. A 400 created nothing, so each is safe to try.
-_READ = "READ"
-TREE_GROUP_SHAPES = (
-    ("groupAccess[{groupId,access}]",
-     lambda g: {"groupAccess": [{"groupId": g, "access": _READ}]}, False),
-    ("groupAccess{groupId}", lambda g: {"groupAccess": {"groupId": g}}, False),
-    ("groupAccess{id}", lambda g: {"groupAccess": {"id": g}}, False),
-    ("groupAccess{group:{resourceId}}",
-     lambda g: {"groupAccess": {"group": {"resourceId": g}}}, False),
-    ("groupAccess[{group:{resourceId},access}]",
-     lambda g: {"groupAccess": [{"group": {"resourceId": g}, "access": _READ}]}, False),
-    ("groupAccess=gid", lambda g: {"groupAccess": g}, False),
-    ("ownerAccess=gid", lambda g: {"ownerAccess": g}, False),
-    ("ownerAccess{groupId}", lambda g: {"ownerAccess": {"groupId": g}}, False),
-    ("ownerAccess=WRITE+groupAccess[{groupId,access}]",
-     lambda g: {"ownerAccess": "WRITE", "groupAccess": [{"groupId": g, "access": _READ}]},
-     False),
-    ("bare groupAccess[{groupId,access}]",
-     lambda g: {"groupAccess": [{"groupId": g, "access": _READ}]}, True),
-    ("bare groupAccess{groupId}", lambda g: {"groupAccess": {"groupId": g}}, True),
-    ("bare groupAccess=gid", lambda g: {"groupAccess": g}, True),
-    ("bare name only", lambda g: {}, True),
-    ("groups[id]", lambda g: {"groups": [{"id": g}]}, False),
-    ("groupId", lambda g: {"groupId": g}, False),
-    ("group{id}", lambda g: {"group": {"id": g}}, False),
-    ("groups[resourceId]", lambda g: {"groups": [{"resourceId": g}]}, False),
-)
-
-
-def create_user_tree(call, name: str, gid: str, **extra):
-    """Post a user tree for group ``gid`` with each group-field shape until one is not
-    refused 400. ``call(body)`` posts one; ``extra`` (private, hidden) is left out of the
-    bare shapes. Returns ``(result, shape, refusals)`` with every refused shape's status
-    and message, for the notes; the last 400 propagates (with the refusals in its text)."""
-    refusals: list[str] = []
-    for i, (label, group, bare) in enumerate(TREE_GROUP_SHAPES):
-        body = user_object_body("user_tree", name, description="ZZSPIKE fixture",
-                                **({} if bare else extra), **group(gid))
-        try:
-            return call(body), label, refusals
-        except FSHTTPError as e:
-            refusals.append(f"{label}: HTTP {e.status} {(e.body or '')[:120]!r}")
-            if e.status != 400 or i == len(TREE_GROUP_SHAPES) - 1:
-                raise FSHTTPError(e.status, e.body or "", f"{e}; every shape tried: "
-                                  + " | ".join(refusals)) from None
-    raise AssertionError("unreachable")  # pragma: no cover
 
 
 # An unknown collection id: beta answered 400 (API recon), so 400 joins 404/410 here,
@@ -595,15 +543,9 @@ class FixtureSet:
         if not (isinstance(name, str) and name.startswith("ZZSPIKE")):
             raise ValueError("a fixture group or tree name must start with ZZSPIKE")
         url = join_path(self._client.base_url + "/platform", USER_TREE_KINDS[kind])
-        if kind == "user_tree":
-            gid = self.user_object("group", name + "G")
-            resp, _shape, _refusals = create_user_tree(
-                lambda body: self._client.post(url, json=body, reason=self._reason), name,
-                gid, private=True, hidden=True)
-        else:
-            resp = self._client.post(
-                url, json=user_object_body(kind, name, description="ZZSPIKE fixture"),
-                reason=self._reason)
+        resp = self._client.post(
+            url, json=user_object_body(kind, name, description="ZZSPIKE fixture"),
+            reason=self._reason)
         oid = created_header_id(resp.headers)
         if not oid:
             raise FSError(f"{kind} created but no id was returned")

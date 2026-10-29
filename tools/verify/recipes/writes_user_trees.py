@@ -1,25 +1,23 @@
-"""User Tree writes (Task C): create, update and delete a group and a user tree.
+"""User Tree writes (Task C): create, update and delete a group (user trees are deferred).
 
 One recipe per write, each claiming only the write it calls through ``ctx.api``. A group
 or tree is a ZZSPIKE fixture this run created and tracked (the create's own id, or
 ``FixtureSet.user_object``), deleted by strict teardown. Read-backs are by id
-(readGroup, readTree: verified by the ``reads.usertree.*`` cases), never the lists. The
+(readGroup: verified by ``reads.usertree.group``), never the lists. The
 account's current tree is not touched: nothing here posts to ``/trees/current``.
 
-The bodies are guesses (``{"groups": [{"name"}]}`` / ``{"trees": [{"name", ...}]}``); a
-tree is created private and hidden. The create's status and headers go into ``ctx.notes``.
+The group body (``{"groups": [{"name", "description"}]}``) was right on beta. The create's status and headers go into ``ctx.notes``.
 """
 from __future__ import annotations
 
 from ..core import Recipe, VerifyContext
-from ..fixtures import create_user_tree, user_object_body
-from .user_tree_common import NO_SUCH_USER_OBJECT, read_group, read_user_tree
+from ..fixtures import user_object_body
+from .user_tree_common import NO_SUCH_USER_OBJECT, read_group
 from .writes_common import (GONE, created_id, describe_box, expect_same, redacted,
                             status_of, token)
 
 KINDS = {
     "group": dict(envelope="groups", read=read_group, label="group", tag="g"),
-    "user_tree": dict(envelope="trees", read=read_user_tree, label="user tree", tag="u"),
 }
 
 
@@ -44,19 +42,8 @@ def _create(kind: str):
     def run(ctx: VerifyContext) -> None:
         name = token(spec["tag"])
         unknown = _status(ctx, kind, NO_SUCH_USER_OBJECT)
-        create = _api(ctx, kind, "create")
-        gid = None
-        if kind == "user_tree":
-            # Live: beta refuses a tree without exactly one group ("A user tree must be
-            # associated with one and only one group"): a fixture group first.
-            gid = ctx.fixtures.user_object("group", name + "G")
-            result, shape, refusals = create_user_tree(
-                lambda body: create(reason=ctx.reason, body=body), name, gid,
-                private=True, hidden=True)
-            ctx.notes.append(f"tree create group field {shape}; refused before: {refusals}")
-        else:
-            result = create(reason=ctx.reason, body=user_object_body(
-                kind, name, description="ZZSPIKE fixture"))
+        result = _api(ctx, kind, "create")(
+            reason=ctx.reason, body=user_object_body(kind, name, description="ZZSPIKE fixture"))
         lowered = {k.lower(): v for k, v in result.headers.items()}
         ctx.notes.append(f"{spec['label']} create answered {result.status} "
                          f"Location={lowered.get('location')!r} "
@@ -72,17 +59,11 @@ def _create(kind: str):
         if back.name != name:
             raise AssertionError(f"{spec['label']} {oid} reads back named {back.name!r}, not "
                                  f"{name!r}; {describe_box(back.result)}")
-        if gid and gid not in back.data:
-            raise AssertionError(f"tree {oid} reads back without its group {gid}; "
-                                 f"{describe_box(back.result)}")
     run.__doc__ = f"""Create a ZZSPIKE {spec['label']} with create{'Group' if kind == 'group' else 'Tree'}; read it by id.
 
     The id is the create's X-ENTITY-ID / Location, tracked at once. Negative control:
     the read's status for an id that does not exist (an error) against the new id's
-    (200). The read must name the id with the marker name. A tree is created for a fixture
-    group (the Tree's groupAccess/ownerAccess forms first, then groups[id], groupId and the
-    like, one at a time while beta answers 400; every refusal goes into the notes, or into
-    the failure when none is accepted) and must read back naming that group.
+    (200). The read must name the id with the marker name.
     """
     return run
 
@@ -153,12 +134,6 @@ WRITES_USER_TREES = (
     Recipe("writes.usertree.group_create", ("createGroup",), "state-change", _create("group")),
     Recipe("writes.usertree.group_update", ("updateGroup",), "state-change", _update("group")),
     Recipe("writes.usertree.group_delete", ("deleteGroup",), "state-change", _delete("group")),
-    Recipe("writes.usertree.tree_create", ("createTree",), "state-change",
-           _create("user_tree")),
-    Recipe("writes.usertree.tree_update", ("updateTree",), "state-change",
-           _update("user_tree")),
-    Recipe("writes.usertree.tree_delete", ("deleteTree",), "state-change",
-           _delete("user_tree")),
 )
 
 # setCurrentTree is account state (the current tree is GLOBAL and must never change). A
@@ -172,3 +147,11 @@ DEFERRED = {
         "restore failing would leave the account pointing at a tree teardown deletes; not "
         "attempted pending Ben's ruling"),
 }
+
+_TREE_EVIDENCE = (
+    "beta refuses 17 tried request shapes: groupAccess forms -> 400 'Failed to read "
+    "request'; others -> 'A user tree must be associated with one and only one group'; the "
+    "Group/Tree body schema is undocumented (2026-10-29 live run)")
+DEFERRED.update({op: f"a user tree cannot be created, so there is none to {verb}: "
+                 + _TREE_EVIDENCE for op, verb in (("createTree", "create"), ("updateTree",
+                 "update"), ("deleteTree", "delete"))})

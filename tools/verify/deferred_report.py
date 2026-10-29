@@ -66,7 +66,7 @@ TIERS: dict[str, str] = {
     "readGenealogiesSourceDescription": "P7", "readGenealogiesTrees": "P7",
     "readGenealogiesNote": "P7", "readGenealogiesPersonMatches": "P7",
     "readGenealogiesBulkMatch": "P7",
-    "readGroup": "P7", "readTree": "P7", "getGroups": "P7", "readCurrentTree": "P7",
+    "readGroup": "P7", "readTree": "P9", "getGroups": "P7", "readCurrentTree": "P7",
     "readUserTreePersons": "P7", "readTreeChanges": "P7", "readTreeMatches": "P7",
 }
 
@@ -155,7 +155,7 @@ AWAITING_TIERS.update({op: "P7" for op in (
     "restoreGenealogiesPerson", "deleteGenealogiesConclusion",
     "createGenealogiesSourceDescription", "updateGenealogiesSourceDescription",
     "deleteGenealogiesSourceDescription",
-    "createGroup", "updateGroup", "deleteGroup", "createTree", "updateTree", "deleteTree")})
+    "createGroup", "updateGroup", "deleteGroup")})
 
 
 def awaiting_tier(op: str) -> str:
@@ -173,7 +173,8 @@ WRITE_DEFERRED_TIERS: dict[str, str] = {
     "updateMemoryArtifact": "P9", "deleteMemoryArtifactCoverage": "P9",
     "deletePersonMemoriesPersonaReference": "P9",
     "updateGenealogiesRelationship": "P9", "deleteGenealogiesRelationship": "P9",
-    "setCurrentTree": "P8"}
+    "setCurrentTree": "P8", "createTree": "P9", "updateTree": "P9",
+    "deleteTree": "P9"}
 
 _MATCHES = ("matches, merges and change history are the P6 tier: P3 excludes "
             "match resolution and not-a-match by plan (mergePerson is never run: see the "

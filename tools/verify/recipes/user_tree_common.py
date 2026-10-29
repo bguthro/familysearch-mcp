@@ -59,7 +59,3 @@ def user_object(result: ApiResult, envelope: str, oid: str) -> UserObject:
 
 def read_group(ctx: VerifyContext, gid: str) -> UserObject:
     return user_object(ctx.api.read_group(gid), "groups", gid)
-
-
-def read_user_tree(ctx: VerifyContext, tid: str) -> UserObject:
-    return user_object(ctx.api.read_tree(tid), "trees", tid)

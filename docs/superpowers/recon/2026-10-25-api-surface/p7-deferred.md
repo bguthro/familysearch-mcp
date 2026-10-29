@@ -8,12 +8,12 @@ Genealogies and User Tree writes: 20. Verified: 14. Not verified: 6.
 
 | Operation | Reason unverified | Unblocked by |
 |---|---|---|
-| createTree | claimed by recipe writes.usertree.tree_create; awaiting its live run on beta | P7 |
-| deleteTree | claimed by recipe writes.usertree.tree_delete; awaiting its live run on beta | P7 |
-| updateTree | claimed by recipe writes.usertree.tree_update; awaiting its live run on beta | P7 |
 | setCurrentTree | changes the signed-in account's current tree (GLOBAL), which no recipe may do unless the restore is fail-safe: a capture-and-restore through a ZZSPIKE user tree whose restore failing would leave the account pointing at a tree teardown deletes; not attempted pending Ben's ruling | P8 |
+| createTree | a user tree cannot be created, so there is none to create: beta refuses 17 tried request shapes: groupAccess forms -> 400 'Failed to read request'; others -> 'A user tree must be associated with one and only one group'; the Group/Tree body schema is undocumented (2026-10-29 live run) | P9 |
 | deleteGenealogiesRelationship | a tree update that plants two persons and a Couple creates the persons but the Couple never appears under readGenealogiesPerson.relationships on beta, and no other Genealogies operation creates a relationship, so there is no relationship to delete or read back (2026-10-29 live run) | P9 |
+| deleteTree | a user tree cannot be created, so there is none to delete: beta refuses 17 tried request shapes: groupAccess forms -> 400 'Failed to read request'; others -> 'A user tree must be associated with one and only one group'; the Group/Tree body schema is undocumented (2026-10-29 live run) | P9 |
 | updateGenealogiesRelationship | a tree update that plants two persons and a Couple creates the persons but the Couple never appears under readGenealogiesPerson.relationships on beta, and no other Genealogies operation creates a relationship, so there is no relationship to update or read back (2026-10-29 live run) | P9 |
+| updateTree | a user tree cannot be created, so there is none to update: beta refuses 17 tried request shapes: groupAccess forms -> 400 'Failed to read request'; others -> 'A user tree must be associated with one and only one group'; the Group/Tree body schema is undocumented (2026-10-29 live run) | P9 |
 
 ## Verified writes by recipe
 

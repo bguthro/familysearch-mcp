@@ -127,7 +127,8 @@ Rules:
   `deleteUserDefinedCollection`), the P5 portrait writes (`updatePersonPortraits`,
   `deletePersonPortrait`) and the P5 Memories writes (`createMemories`, `updateMemory`,
   `deleteMemory`, `createMemoryComments`, `deleteMemoryComment`, `createMemoryPersona`,
-  `updateMemoryPersona`, `deleteMemoryPersona`); see Verification status) runs on beta as is; any other write needs `allow_unverified`.
+  `updateMemoryPersona`, `deleteMemoryPersona`, the P7 Genealogies private-tree writes and the
+group writes); see Verification status) runs on beta as is; any other write needs `allow_unverified`.
 - `allow_unverified` and `confirm_destructive` (deletes and other destructive operations)
   are Ben's explicit decisions; the assistant never sets them on its own.
 - The 5 unverifiable operations (and the 2 excluded OAuth ones) can never run, even with
@@ -264,10 +265,12 @@ completion gate.
 
 ### Verification status
 
-As of the P5 memories verification (2026-10-26), `python -m tools.spec.coverage`
-reports 205 operations: 113 `verified` (all on **beta only**), 85 `unverified`, 5
-`unverifiable` and 2 `excluded`. Of the 107 reads, 64 are verified and 43 are deferred;
-of the 60 Family Tree writes, 41 are verified and 8 of the 10 Memories writes. Those numbers change as recipes are run:
+As of the P7 private-tree verification (2026-10-29), `python -m tools.spec.coverage`
+reports 205 operations: 133 `verified` (all on **beta only**), 65 `unverified`, 5
+`unverifiable` and 2 `excluded`. Of the 107 reads, 70 are verified and 37 are deferred
+(including `performPersonMatchesByExample`, the match-by-example read, now verified);
+of the writes, 41 Family Tree, 8 Memories, 11 Genealogies (private tree) and 3 group
+writes are verified (63 in all). Those numbers change as recipes are run:
 regenerate them with `python -m tools.spec.coverage` rather than trusting this paragraph.
 
 The 41 verified Family Tree writes are the pilot's `createPerson`, `deletePerson` and
@@ -290,7 +293,16 @@ The 8 verified Memories writes (of the 10; counted apart from the 41) are `creat
 `createMemoryPersona`, `updateMemoryPersona` and `deleteMemoryPersona`. Because all of these
 are verified they can run on production, but only with
 `allow_production=True` (plus `confirm_destructive=True` for the destructive ones),
-even though they were proven on beta only. Every other generated write is still
+even though they were proven on beta only. The same holds for the 11 verified Genealogies
+(private tree) writes (`createGenealogiesTree`, `updateGenealogiesTree`,
+`deleteGenealogiesTree`, `createGenealogiesPerson`, `updateGenealogiesPerson`,
+`deleteGenealogiesConclusion`, `deleteGenealogiesPerson`, `restoreGenealogiesPerson`,
+`createGenealogiesSourceDescription`, `updateGenealogiesSourceDescription`,
+`deleteGenealogiesSourceDescription`) and the 3 group writes (`createGroup`,
+`updateGroup`, `deleteGroup`). Not verified: the two Genealogies relationship writes
+(a Couple planted by a tree update never reads back), the user tree writes
+(`createTree`, `updateTree`, `deleteTree`: beta refuses every tried body) and
+`setCurrentTree` (account state, never run). Every other generated write is still
 unverified and locked: it needs `allow_unverified=True` and runs on beta only. The
 other verified operations are reads, which always run. Each unverified Family Tree
 write, with its reason and the tier that unblocks it (recipes awaiting their live run
