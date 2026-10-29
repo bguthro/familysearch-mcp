@@ -57,12 +57,22 @@
   },
   "createGenealogiesPerson": {
    "generated": {
-    "status": "unverified"
+    "commit": "f7e763591d61e891b28b4a001548493a9b7db899",
+    "evidence": "state-change",
+    "fingerprint": "54b6c297a348410d6e2aba2da01ddab4f3047d22f1473962fbb445c6672a5f7f",
+    "recipe": "writes.genealogies.person_create",
+    "status": "verified",
+    "verified_on": "2026-10-29"
    }
   },
   "createGenealogiesSourceDescription": {
    "generated": {
-    "status": "unverified"
+    "commit": "f7e763591d61e891b28b4a001548493a9b7db899",
+    "evidence": "state-change",
+    "fingerprint": "f0a5fa1222fb0fcf836415eba8ed5fddd4b1430ed887a2c126791a1106781445",
+    "recipe": "writes.genealogies.source_create",
+    "status": "verified",
+    "verified_on": "2026-10-29"
    }
   },
   "createGenealogiesTree": {
@@ -898,7 +908,12 @@
   },
   "readGenealogiesPersons": {
    "generated": {
-    "status": "unverified"
+    "commit": "f7e763591d61e891b28b4a001548493a9b7db899",
+    "evidence": "read-content",
+    "fingerprint": "45ab24f89dd203580899ba461bf288e5193d6c499a7354368a13777b1bd900ff",
+    "recipe": "reads.genealogies.persons",
+    "status": "verified",
+    "verified_on": "2026-10-29"
    }
   },
   "readGenealogiesSourceDescription": {
@@ -1591,7 +1606,12 @@
   },
   "updateGenealogiesTree": {
    "generated": {
-    "status": "unverified"
+    "commit": "f7e763591d61e891b28b4a001548493a9b7db899",
+    "evidence": "state-change",
+    "fingerprint": "0998c15836a0f7a1e299f07d784402c389a871f123c15a48421afb45fac74dcd",
+    "recipe": "writes.genealogies.tree_update",
+    "status": "verified",
+    "verified_on": "2026-10-29"
    }
   },
   "updateGroup": {
