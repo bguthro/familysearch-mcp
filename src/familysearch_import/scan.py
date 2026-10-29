@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 _ID = r"[A-Z0-9]{4}-[A-Z0-9]{3,4}"
 _FOLDER_RE = re.compile(r"^(\d{4}|\?)(?:\s*-\s*(\d{4}|\?))?\s+(\S.*)$")
-_TREE_PATH_RE = re.compile(rf"^/tree/person/(?:details/|[a-z]+/)?({_ID})(?:/|$)")
+_TREE_PATH_RE = re.compile(rf"^(?:/[a-z]{{2}}(?:-[A-Za-z]+)?)?/tree/person/(?:details/|[a-z]+/)?({_ID})(?:/|$)")
 _ANCESTORS_PATH_RE = re.compile(rf"^/[a-z]{{2}}(?:-[A-Za-z]+)?/({_ID})(?:/|$)")
 _STRING_RE = re.compile(r"<string>\s*([^<]+?)\s*</string>")
 _URL_RE = re.compile(r"https?://[^\s<>\"']+")
@@ -206,6 +206,11 @@ def unparsed_folders(root: Path, lines: Sequence[str] | None = None) -> list[tup
     out = []
     for line_dir in _line_dirs(Path(root), lines):
         for d in _listdir(line_dir, None) or []:
-            if _isdir(d) and not _ignored_dir(d.name) and parse_folder_name(d.name) is None:
+            if (
+                _isdir(d)
+                and not _ignored_dir(d.name)
+                and not d.name.startswith("0000_")
+                and parse_folder_name(d.name) is None
+            ):
                 out.append((nfc(line_dir.name), nfc(d.name)))
     return out

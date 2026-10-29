@@ -32,7 +32,7 @@ def make(tmp_path: Path) -> Path:
     live.mkdir()
     (live / "birth certificate.pdf").write_bytes(b"x")
     (live / "obituary.pdf").write_bytes(b"x")
-    unk = line / "1700-? Unknown Example"
+    unk = line / "?-? Unknown Example"
     unk.mkdir()
     (unk / "x.pdf").write_bytes(b"x")
     # birth 1850 without death year -> unknown, (born <1900)
@@ -57,7 +57,7 @@ def test_report_numbers(tmp_path):
     assert "With exactly one id: 1" in text
     assert "Without an id: 3" in text
     assert "Line A / No Dates Folder" in text
-    assert "Line A / 1700-? Unknown Example" in text
+    assert "Line A / ?-? Unknown Example" in text
     assert "Dead Example" in text
     # totals: include census+x.pdf(unknown skipped)+will ; living 2 skipped, unknown 1 skipped
     assert "Totals: include 2, cite-only 0, skip 5" in text
@@ -110,7 +110,7 @@ def test_cli_drafts(tmp_path, capsys):
     assert main(["drafts", "--archive", str(root), "--line", "Line A"]) == 0
     line = root / "Line A"
     assert (line / "1844-1915 Dead Example" / "ImportRecord.draft.json").is_file()
-    assert not (line / "1700-? Unknown Example" / "ImportRecord.draft.json").exists()
+    assert not (line / "?-? Unknown Example" / "ImportRecord.draft.json").exists()
     assert not (line / "1960 Livingston Zzliving" / "ImportRecord.draft.json").exists()
     assert not (line / "1950 Marked Deceased" / "ImportRecord.draft.json").exists()
     # second run writes nothing new and does not fail

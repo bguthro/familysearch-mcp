@@ -48,8 +48,9 @@ def living_status(
         return record_status  # type: ignore[return-value]
     if person.death is not None:
         return "deceased"
-    if person.birth is not None and person.birth >= 1900:
-        return "living"
+    if person.birth is not None:
+        # Born before 1900 with no death year cannot be alive; Ben's rule marks 1900+ as living.
+        return "living" if person.birth >= 1900 else "deceased"
     return "unknown"
 
 

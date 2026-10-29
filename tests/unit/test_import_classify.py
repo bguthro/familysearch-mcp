@@ -16,7 +16,7 @@ def person(birth=1850, death=1920):
         (1850, 1920, None, "deceased"),
         (1950, None, None, "living"),
         (1900, None, None, "living"),
-        (1899, None, None, "unknown"),
+        (1899, None, None, "deceased"),
         (None, None, None, "unknown"),
         (1950, None, "deceased", "deceased"),
         (1850, 1920, "living", "living"),

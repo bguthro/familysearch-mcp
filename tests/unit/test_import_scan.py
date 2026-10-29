@@ -34,6 +34,8 @@ def test_parse_folder_name_nfc():
     "url,expected",
     [
         ("https://www.familysearch.org/tree/person/details/ABCD-123", "ABCD-123"),
+        ("https://www.familysearch.org/en/tree/person/details/ABCD-123", "ABCD-123"),
+        ("https://www.familysearch.org/en/tree/person/sources/ABCD-123", "ABCD-123"),
         ("https://ancestors.familysearch.org/en/ABCD-123/pat-example-1800-1870", "ABCD-123"),
         ("https://www.familysearch.org/search/record/results?q=x", None),
         ("https://www.familysearch.org/memories/gallery", None),
