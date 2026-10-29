@@ -23,9 +23,9 @@ def test_private_fixtures_touch_only_tracked_trees_and_never_the_shared_tree():
     fake = FakeGenealogies().serve()
     fx = fixtures()
     with pytest.raises(ValueError, match="tracked trees"):
-        fx.genealogies_person("GZTR-777")
+        fx.genealogies_person("2:2:2:GZTR-777")
     with pytest.raises(ValueError, match="tracked trees"):
-        fx.genealogies_source("GZTR-777", "ZZSPIKEx")
+        fx.genealogies_source("2:2:2:GZTR-777", "ZZSPIKEx")
     with pytest.raises(ValueError, match="start with ZZSPIKE"):
         fx.genealogies_tree("My tree")
     tid = fx.genealogies_tree("ZZSPIKEtree")

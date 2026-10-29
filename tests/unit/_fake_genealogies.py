@@ -1,21 +1,20 @@
 """A stateful fake of beta's Genealogies (private tree) API, for the P7 recipe tests.
 
-Shapes are the recipes' guesses (nothing is proven live yet): a tree is a GEDCOM X
-``collections`` entry (``id``, ``title``); persons, sources and relationships follow the
-Family Tree shapes (``persons`` with ``living``, names, facts, gender; ``sourceDescriptions``).
-What is modelled from the recon: every id must carry the prefix (here ``GZ``): any other
-id answers 400 ``Invalid prefix for genealogies: (id)``, and a tree id shorter than four
-characters answers 500 ``Range [0, 4) out of bounds for length 1``; a well-formed unknown
-id answers 404; lists answer 204 when empty; a deleted person answers 410.
+Shapes are the recipes' guesses except what live runs showed: a tree is created with a
+``sourceDescriptions`` title (the ``collections`` body is refused 400), its id comes back as
+``2:2:2:<id>`` (that prefix is required: any other id answers 400 ``Invalid prefix for
+genealogies``; a tree id shorter than four characters answers 500 ``Range [0, 4) out of
+bounds``), and ``GET /trees`` answers a list of PUBLIC collections (the Pedigree Resource
+File), never the user's own trees. Persons, sources and relationships follow the Family Tree
+shapes (guesses). A well-formed unknown id answers 404, other lists answer 204 when empty,
+a deleted person answers 410. Paths in ``calls`` and ``bodies`` are unquoted.
 
-``mode`` is None (honest) or one lie (``LIES``), each caught by the recipe named beside
-it. ``sd_trees`` is not a lie: the fake accepts a tree create only in the
-``sourceDescriptions`` shape, to exercise the recipes' fallback. ``calls`` lists
-``(method, path)``; ``live()`` the objects created and not deleted.
+``mode`` is None (honest) or one lie (``LIES``), each caught by the recipe named beside it.
+``calls`` lists ``(method, path)``; ``live()`` the objects created and not deleted.
 """
 import json
 import re
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 import responses
 
@@ -25,7 +24,13 @@ BETA = Environment.BETA.base_url
 G = BETA + "/platform/genealogies"
 FS_JSON = "application/x-fs-v1+json"
 GX = "http://gedcomx.org/"
-PREFIX = "GZ"
+PREFIX = "2:2:2:"  # live: a tree id came back as 2:2:2:MMMF-S73
+
+
+def P(url):
+    """The unquoted path of a request URL (ids carry colons, sent percent-encoded)."""
+    return unquote(urlsplit(url).path)
+
 
 LIES = (
     # reads
@@ -59,11 +64,10 @@ LIES = (
 
 
 class FakeGenealogies:
-    def __init__(self, mode=None, *, sd_trees=False, entity_id=False):
+    def __init__(self, mode=None, *, entity_id=False):
         if mode is not None and mode not in LIES:
             raise ValueError(f"unknown lie {mode!r}")
         self.mode = mode
-        self.sd_trees = sd_trees
         self.entity_id = entity_id  # creates answer X-ENTITY-ID as well as Location
         self.trees: dict[str, dict] = {}
         self.persons: dict[str, dict] = {}
@@ -79,10 +83,10 @@ class FakeGenealogies:
         self._seq[kind] += 1
         n = self._seq[kind]
         tag = {"tree": "TR", "person": "PE", "source": "SD", "rel": "RL", "concl": "CC"}[kind]
-        return f"{PREFIX}{tag}-{n:03d}"
+        return f"{PREFIX}GZ{tag}-{n:03d}"
 
     def _record(self, request):
-        path = urlsplit(request.url).path
+        path = P(request.url)
         self.calls.append((request.method, path))
         body = None
         if request.body:
@@ -119,7 +123,7 @@ class FakeGenealogies:
     # ------------------------------------------------------------ trees
 
     def tree_json(self, tid):
-        return {"id": tid, "title": self.trees[tid]["title"]}
+        return {"id": tid, "titles": [{"value": self.trees[tid]["title"]}]}
 
     def _live_trees(self):
         return {t: r for t, r in self.trees.items() if not r["deleted"]}
@@ -127,18 +131,12 @@ class FakeGenealogies:
     def trees_root(self, request):
         body = self._record(request)
         if request.method == "GET":
-            live = self._live_trees()
-            if not live:
-                return 204, {}, ""
-            return self._json(200, {"collections": [self.tree_json(t) for t in live]})
-        if self.sd_trees:
-            if not (isinstance(body, dict) and body.get("sourceDescriptions")):
-                return 400, {}, "A source description is required"
-            title = body["sourceDescriptions"][0]["titles"][0]["value"]
-        else:
-            if not (isinstance(body, dict) and body.get("collections")):
-                return 400, {}, "A collection is required"
-            title = body["collections"][0]["title"]
+            return self._json(200, {"sourceDescriptions": [{
+                "id": "1", "about": "https://beta.familysearch.org/service/gen/llsc/collection/1",
+                "titles": [{"value": "Pedigree Resource File"}]}]})
+        if not (isinstance(body, dict) and body.get("sourceDescriptions")):
+            return 400, {}, "A source description is required"
+        title = body["sourceDescriptions"][0]["titles"][0]["value"]
         assert title.startswith("ZZSPIKE")
         tid = self._id("tree")
         if self.mode != "ignore_tree_create":
@@ -148,11 +146,11 @@ class FakeGenealogies:
 
     def tree_route(self, request):
         body = self._record(request)
-        path = urlsplit(request.url).path
+        path = P(request.url)
         tid = path.rsplit("/", 1)[-1]
         if self.mode == "catch_all" and request.method == "GET":
             first = next(iter(self.trees))
-            return self._json(200, {"collections": [self.tree_json(first)]})
+            return self._json(200, {"sourceDescriptions": [self.tree_json(first)]})
         bad = self._bad_id(tid, tree=True)
         if bad:
             return bad
@@ -163,9 +161,9 @@ class FakeGenealogies:
             return 410, {}, ""
         if request.method == "GET":
             if self.mode == "read_other":
-                return self._json(200, {"collections": [{"id": tid,
-                                                          "title": "ZZSPIKE other"}]})
-            return self._json(200, {"collections": [self.tree_json(tid)]})
+                return self._json(200, {"sourceDescriptions": [{
+                    "id": tid, "titles": [{"value": "ZZSPIKE other"}]}]})
+            return self._json(200, {"sourceDescriptions": [self.tree_json(tid)]})
         if request.method == "DELETE":
             if self.mode == "tree_delete_noop":
                 return 204, {}, ""
@@ -261,7 +259,7 @@ class FakeGenealogies:
 
     def person_route(self, request):
         body = self._record(request)
-        path = urlsplit(request.url).path
+        path = P(request.url)
         rest = path.split("/genealogies/persons/", 1)[1].split("/")
         pid = rest[0]
         bad = self._bad_id(pid)
@@ -372,7 +370,7 @@ class FakeGenealogies:
 
     def source_route(self, request):
         body = self._record(request)
-        sdid = urlsplit(request.url).path.rsplit("/", 1)[-1]
+        sdid = P(request.url).rsplit("/", 1)[-1]
         bad = self._bad_id(sdid)
         if bad:
             return bad
@@ -417,11 +415,11 @@ class FakeGenealogies:
             responses.add_callback(method, rx(r"/sources/[^/?]+"), callback=self.source_route)
         responses.add_callback(
             responses.GET, rx(r"/trees/[^/?]+/persons"),
-            callback=lambda r: self.persons_in_tree(r, urlsplit(r.url).path.split("/")[-2]))
+            callback=lambda r: self.persons_in_tree(r, P(r.url).split("/")[-2]))
         responses.add_callback(
             responses.POST, rx(r"/trees/[^/?]+/persons"),
-            callback=lambda r: self.persons_in_tree(r, urlsplit(r.url).path.split("/")[-2]))
+            callback=lambda r: self.persons_in_tree(r, P(r.url).split("/")[-2]))
         responses.add_callback(
             responses.POST, rx(r"/trees/[^/?]+/sources"),
-            callback=lambda r: self.sources_in_tree(r, urlsplit(r.url).path.split("/")[-2]))
+            callback=lambda r: self.sources_in_tree(r, P(r.url).split("/")[-2]))
         return self

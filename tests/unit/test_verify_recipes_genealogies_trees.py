@@ -8,6 +8,7 @@ teardown still removes everything. The read case runs with the real fixture ``Wo
 """
 import json
 import shutil
+from urllib.parse import unquote
 
 import pytest
 import responses
@@ -106,27 +107,27 @@ def test_recipe_passes_records_and_leaves_nothing(name, reg_path, slept):
             "verified_on": "2026-10-26"}
 
 
+def untq(urls):
+    return [unquote(u.split("?")[0]) for u in urls]
+
+
 @responses.activate
-def test_create_posts_a_collection_title_and_notes_the_answer(reg_path, slept):
+def test_create_posts_a_source_description_title_only_and_notes_the_answer(reg_path, slept):
     result, fake, ctx = run("writes.genealogies.tree_create", reg_path)
     assert result["passed"], result["problems"]
-    [post] = requests_to("POST", G + "/trees")
-    [coll] = json.loads(post.body)["collections"]
-    assert coll["title"].startswith("ZZSPIKET")
-    assert any("collections body" in n and "Location=" in n for n in result["notes"])
-    assert [d.url.split("?")[0] for d in requests_to("DELETE", G + "/trees/")] == [
-        G + "/trees/GZTR-001"]
+    [post] = requests_to("POST", G + "/trees")  # one attempt: no collections body
+    [desc] = json.loads(post.body)["sourceDescriptions"]
+    assert desc["titles"][0]["value"].startswith("ZZSPIKET")
+    assert any("sourceDescriptions body" in n and "Location=" in n for n in result["notes"])
+    assert untq(d.url for d in requests_to("DELETE", G + "/trees/")) == [
+        G + "/trees/2:2:2:GZTR-001"]
 
 
 @responses.activate
-def test_create_falls_back_to_the_source_description_shape(reg_path, slept):
-    result, fake, ctx = run("writes.genealogies.tree_create", reg_path, sd_trees=True)
-    assert result["passed"], result["problems"]
-    shapes = [list(json.loads(c.request.body)) for c in responses.calls
-              if c.request.method == "POST" and c.request.url.endswith("/genealogies/trees")]
-    assert shapes[:2] == [["collections"], ["sourceDescriptions"]]
-    assert any("sourceDescriptions body" in n for n in result["notes"])
-    assert fake.live() == []
+def test_create_never_lists_the_trees(reg_path, slept):
+    run("writes.genealogies.tree_create", reg_path)
+    assert not [c for c in responses.calls if c.request.method == "GET"
+                and c.request.url.split("?")[0].endswith("/genealogies/trees")]
 
 
 @responses.activate
@@ -139,7 +140,7 @@ def test_create_takes_the_id_from_x_entity_id_too(reg_path, slept):
 def test_update_adds_a_living_person_to_the_first_tree_only(reg_path, slept):
     result, fake, ctx = run("writes.genealogies.tree_update", reg_path)
     assert result["passed"], result["problems"]
-    [post] = requests_to("POST", G + "/trees/GZTR-001")
+    [post] = requests_to("POST", G + "/trees/2%3A2%3A2%3AGZTR-001")
     [person] = json.loads(post.body)["persons"]
     assert person["living"] is True and person["id"] == "zz1"
     assert person["names"][0]["nameForms"][0]["fullText"].startswith("ZZSPIKEN")
@@ -150,8 +151,8 @@ def test_update_adds_a_living_person_to_the_first_tree_only(reg_path, slept):
 def test_delete_deletes_the_first_tree_and_teardown_skips_it(reg_path, slept):
     result, fake, ctx = run("writes.genealogies.tree_delete", reg_path)
     assert result["passed"], result["problems"]
-    deletes = [d.url.split("?")[0] for d in requests_to("DELETE", G + "/trees/")]
-    assert deletes == [G + "/trees/GZTR-001", G + "/trees/GZTR-002"]
+    deletes = untq(d.url for d in requests_to("DELETE", G + "/trees/"))
+    assert deletes == [G + "/trees/2:2:2:GZTR-001", G + "/trees/2:2:2:GZTR-002"]
 
 
 @responses.activate
@@ -168,12 +169,12 @@ def test_update_and_delete_write_only_tracked_trees(reg_path, slept, monkeypatch
 # ---------------------------------------------------------------- lies
 
 LIES = [
-    ("writes.genealogies.tree_create", "ignore_tree_create", "not seen after"),
+    ("writes.genealogies.tree_create", "ignore_tree_create", "404"),
     ("writes.genealogies.tree_create", "wrong_tree_title", "titled"),
     ("writes.genealogies.tree_update", "tree_update_noop", "not seen after"),
     ("writes.genealogies.tree_update", "tree_update_other", "not seen after"),
-    ("writes.genealogies.tree_delete", "tree_delete_noop", "not seen after"),
-    ("writes.genealogies.tree_delete", "tree_delete_collateral", "no longer listed"),
+    ("writes.genealogies.tree_delete", "tree_delete_noop", "did not change"),
+    ("writes.genealogies.tree_delete", "tree_delete_collateral", "410"),
 ]
 
 

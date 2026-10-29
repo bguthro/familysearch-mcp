@@ -86,7 +86,7 @@ def test_recipe_passes_records_and_leaves_nothing(name, reg_path, slept):
 def test_the_couple_is_planted_by_a_tree_update_with_a_male_person1(reg_path, slept):
     result, fake, ctx = run("writes.genealogies.relationship_update", reg_path)
     assert result["passed"], result["problems"]
-    [(_, _, body)] = [b for b in fake.bodies if b[0] == "POST" and b[1].endswith("/trees/GZTR-001")]
+    [(_, _, body)] = [b for b in fake.bodies if b[0] == "POST" and b[1].endswith("/trees/2:2:2:GZTR-001")]
     assert [p["living"] for p in body["persons"]] == [True, True]
     rel = body["relationships"][0]
     assert rel["person1"]["resourceId"] == "m1" and rel["person2"]["resourceId"] == "f1"

@@ -116,9 +116,10 @@ def folder_titles(body) -> dict[str, str | None]:
 # ------------------------------------------------------------------ private trees
 # The Genealogies API (/genealogies/**) is the one place a LIVING fictional person may be
 # written: the shared Family Tree never gets one. Every helper below posts only under a
-# tree this run created and tracked. The tree bodies are unproven guesses (a GEDCOM X
-# collection, else a source description, which the list read's spec text cites).
-TREE_SHAPES = ("collections", "sourceDescriptions")
+# tree this run created and tracked. A tree is created with a source description title
+# (live: 201, id ``2:2:2:<id>`` in Location and X-ENTITY-ID); a ``collections`` title was
+# not the working body.
+TREE_SHAPES = ("sourceDescriptions",)
 FACT_COUPLE = "http://gedcomx.org/Couple"
 
 
@@ -178,6 +179,12 @@ def tree_entries(body) -> dict[str, dict]:
             if isinstance(entry, dict) and entry.get("id"):
                 found[str(entry["id"])] = entry
     return found
+
+
+def same_id(a: str, b: str) -> bool:
+    """Ids equal, or equal after the ``2:2:2:`` style prefix (live ids carry one in the
+    Location; whether a body repeats it is unknown)."""
+    return a == b or a.rsplit(":", 1)[-1] == b.rsplit(":", 1)[-1]
 
 
 def entry_title(entry: dict) -> str | None:
@@ -417,37 +424,21 @@ class FixtureSet:
         if tid not in self._tracked["genealogies_tree"]:
             raise ValueError("private tree fixtures live only in this run's tracked trees")
 
-    def genealogies_trees(self) -> dict[str, dict]:
-        """The signed-in user's private trees: id -> entry. 204 means none."""
-        resp = self._client.get(self.genealogies_url("trees"))
-        if resp.status_code == 204 or not resp.text.strip():
-            return {}
-        return tree_entries(resp.json())
-
     def genealogies_tree(self, title: str) -> str:
         """Create a ZZSPIKE private tree with the raw client and track it at once.
 
-        The body shape is not proven (``create_tree`` tries each); the id is the
-        create's X-ENTITY-ID / Entity-Id / Location, else the one new tree titled so.
+        The id is the create's X-ENTITY-ID / Entity-Id / Location.
         """
         if not (isinstance(title, str) and title.startswith("ZZSPIKE")):
             raise ValueError("a fixture tree's title must start with ZZSPIKE")
-        before = self.genealogies_trees()
         resp, _shape = create_tree(
             lambda body: self._client.post(self.genealogies_url("trees"), json=body,
                                            reason=self._reason), title)
         tid = created_header_id(resp.headers)
-        if tid:
-            self.track("genealogies_tree", tid)
-            return tid
-        new = [t for t, e in self.genealogies_trees().items()
-               if t not in before and title in (entry_title(e) or json.dumps(e))]
-        for found in new:
-            self.track("genealogies_tree", found)
-        if len(new) != 1:
-            raise FSError(f"tree create answered no id and {len(new)} new trees are "
-                          f"titled {title}")
-        return new[0]
+        if not tid:
+            raise FSError("tree created but no id was returned")
+        self.track("genealogies_tree", tid)
+        return tid
 
     def genealogies_person(self, tid: str, given: str = "Test", gender: str = "Male", *,
                            facts: list[dict] | None = None, surname: str | None = None,

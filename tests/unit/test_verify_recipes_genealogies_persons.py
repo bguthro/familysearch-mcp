@@ -88,7 +88,7 @@ def test_create_posts_a_living_person_under_the_tree_only(reg_path, slept):
     assert result["passed"], result["problems"]
     posts = [c.request for c in responses.calls if c.request.method == "POST"
              and c.request.url.endswith("/persons")]
-    assert [p.url.split("/platform/")[1] for p in posts] == ["genealogies/trees/GZTR-001/persons"]
+    assert [p.url.split("/platform/")[1] for p in posts] == ["genealogies/trees/2%3A2%3A2%3AGZTR-001/persons"]
     [person] = json.loads(posts[0].body)["persons"]
     assert person["living"] is True
     assert not any("/platform/tree/" in c.request.url for c in responses.calls)
@@ -99,8 +99,8 @@ def test_update_posts_to_the_first_person_by_conclusion_id(reg_path, slept):
     result, fake, ctx = run("writes.genealogies.person_update", reg_path)
     assert result["passed"], result["problems"]
     posts = [(p, b) for m, p, b in fake.bodies if m == "POST" and "/persons/" in p]
-    assert [p for p, _ in posts] == [f"/platform/genealogies/persons/GZPE-001"] * 2
-    assert posts[0][1]["persons"][0]["names"][0]["id"].startswith("GZCC")
+    assert [p for p, _ in posts] == ["/platform/genealogies/persons/2:2:2:GZPE-001"] * 2
+    assert posts[0][1]["persons"][0]["names"][0]["id"].startswith("2:2:2:GZCC")
 
 
 @responses.activate
@@ -108,7 +108,7 @@ def test_delete_restore_restores_with_a_bare_post(reg_path, slept):
     result, fake, ctx = run("writes.genealogies.person_delete_restore", reg_path)
     assert result["passed"], result["problems"]
     restores = [(m, p) for m, p in fake.calls if p.endswith("/restore")]
-    assert restores == [("POST", "/platform/genealogies/persons/GZPE-001/restore")]
+    assert restores == [("POST", "/platform/genealogies/persons/2:2:2:GZPE-001/restore")]
 
 
 @responses.activate

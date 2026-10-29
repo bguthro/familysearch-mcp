@@ -4,13 +4,11 @@ One recipe per write, each claiming only the write it calls through ``ctx.api``.
 tree and person written is a ZZSPIKE fixture this run created and tracked the moment its
 id was known (``FixtureSet.genealogies_tree`` with the raw client, or the create's own
 answer), so strict teardown deletes it: persons, then sources, then the tree. The account's
-current tree and any tree it already had are never touched: each recipe reads the user's
-tree list (readGenealogiesTrees, unclaimed: it takes no parameter, so no not-found control
-exists) before and after and the new entries are only the intended ones.
+current tree and any tree it already had are never touched. A tree is only ever read by id: readGenealogiesTrees answers a list of PUBLIC collections (live),
+not the user's trees, so no recipe uses it.
 
-The request bodies are unproven. A tree is created with a GEDCOM X ``collections`` title
-(else, if beta refuses that 400, a ``sourceDescriptions`` title: ``create_tree`` tries both,
-and the create's status, Location and X-ENTITY-ID go into ``ctx.notes``). The spec says
+A tree is created with a ``sourceDescriptions`` title (live: 201, id ``2:2:2:<id>``; the
+create's status and headers go into ``ctx.notes``). The spec says
 updateGenealogiesTree "updates a genealogies tree with persons and/or relationships": it
 does not rename, it adds, so it is proven by adding a LIVING person and reading the tree's
 persons back. Ids are only ever used as the server returns them.
@@ -19,7 +17,7 @@ from __future__ import annotations
 
 from ..core import Recipe, VerifyContext
 from ..fixtures import create_tree, living_person_body, new_persons
-from .genealogies_common import persons, read_person, read_tree, trees
+from .genealogies_common import NO_SUCH_GENEALOGIES, persons, read_person, read_tree
 from .writes_common import (GONE, created_id, describe_box, expect_same, redacted, status_of,
                             token)
 from .writes_common import poll as _poll
@@ -46,54 +44,28 @@ def _header_note(result) -> str:
 
 @redacted
 def tree_create(ctx: VerifyContext) -> None:
-    """Create a ZZSPIKE private tree with createGenealogiesTree; read it back.
+    """Create a ZZSPIKE private tree with createGenealogiesTree; read it back by id.
 
-    The body is a ``collections`` title (else a ``sourceDescriptions`` one if beta
-    refuses that 400); the id is the create's X-ENTITY-ID / Entity-Id / Location, tracked
-    at once, else the one new tree bearing the marker (every such tree tracked).
-    Negative control: the new id among the user's trees (readGenealogiesTrees), before
-    (absent) and after (polled). The list must name it with the marker title and show no
-    other new tree (a stray bearing our marker is tracked for teardown and fails the
-    recipe; a foreign one fails it but is left alone), and readGenealogiesTree must
-    answer the title.
+    The body is a ``sourceDescriptions`` title (the one beta took live); the id is the
+    create's X-ENTITY-ID / Entity-Id / Location (``2:2:2:<id>``), tracked at once, and the
+    create must answer one. Negative control: readGenealogiesTree's status for an id that
+    does not exist (an error) against the new id's (200). The read must name the id with
+    the marker title. (GET /genealogies/trees lists public collections, not the user's
+    trees, so it proves nothing about the create.)
     """
     title = token("t")
-    before = trees(ctx)
-    if any(title in t for t in before.items.values()):
-        raise AssertionError(f"a tree is titled {title} before the create")
+    unknown = status_of(lambda: ctx.api.read_genealogies_tree(NO_SUCH_GENEALOGIES))
     result, shape = create_tree(
         lambda body: ctx.api.create_genealogies_tree(reason=ctx.reason, body=body), title)
     ctx.notes.append(f"tree create ({shape} body) {_header_note(result)}")
     tid = created_id(result, "tree")
-    if tid:
-        ctx.fixtures.track("genealogies_tree", tid)
-    after = poll(ctx, lambda: trees(ctx),
-                 lambda t: (tid in t.items) if tid else any(
-                     title in v for k, v in t.items.items() if k not in before.items),
-                 f"readGenealogiesTrees: the tree {tid or 'titled ' + title}")
-    new = [k for k in after.items if k not in before.items]
-    ours = [k for k in new if title in after.items[k]]
     if not tid:
-        for found in ours:
-            ctx.fixtures.track("genealogies_tree", found)
-        if len(ours) != 1:
-            raise AssertionError(f"the create answered no id and {len(ours)} new trees are "
-                                 f"titled {title}; {describe_box(after.result)}")
-        tid = ours[0]
-        ctx.notes.append(f"tree create answered no id: {tid} is the one new tree titled {title}")
-    stray = sorted(set(new) - {tid})
-    for found in stray:
-        if found in ours:
-            ctx.fixtures.track("genealogies_tree", found)
-    if stray:
-        raise AssertionError(f"new tree(s) {stray} appeared besides {tid}; "
-                             f"{describe_box(after.result)}")
-    ctx.expect_changed(tid in before.items, tid in after.items,
-                       f"presence of tree {tid} among the user's trees")
-    if title not in after.items[tid]:
-        raise AssertionError(f"tree {tid} is listed as {after.items[tid]!r}, not titled "
-                             f"{title!r}; {describe_box(after.result)}")
+        raise AssertionError(f"the create answered no X-ENTITY-ID, Entity-Id or Location; "
+                             f"{describe_box(result)}")
+    ctx.fixtures.track("genealogies_tree", tid)
     tree = read_tree(ctx, tid)
+    ctx.expect_changed(unknown, tree.result.status,
+                       f"readability of tree {tid} (vs an unknown id)")
     if title not in tree.shown:
         raise AssertionError(f"tree {tid} reads back {tree.shown!r}, not titled {title!r}; "
                              f"{describe_box(tree.result)}")
@@ -151,28 +123,21 @@ def tree_delete(ctx: VerifyContext) -> None:
     """Delete a fixture tree with deleteGenealogiesTree; read it back gone.
 
     Two empty ZZSPIKE trees; only the first is deleted (an empty tree, so a cascade to
-    persons cannot hide the proof). Negative control: its id among the user's trees
-    (readGenealogiesTrees), before (present) and after (absent, polled);
-    readGenealogiesTree must then answer 404/410. Only then is it marked deleted. Sibling:
-    the other tree is still listed and reads back as it was.
+    persons cannot hide the proof). Negative control: readGenealogiesTree's status for it,
+    before (200) and after (404/410); only then is it marked deleted. Sibling: the other
+    tree still reads back as it was.
     """
     tid = ctx.fixtures.genealogies_tree(token("t"))
     sibling = ctx.fixtures.genealogies_tree(token("s"))
     _own(ctx, tid)
-    read_tree(ctx, tid)
-    s0, l0 = read_tree(ctx, sibling), trees(ctx)
+    before = read_tree(ctx, tid).result.status
+    s0 = read_tree(ctx, sibling)
     ctx.api.delete_genealogies_tree(tid, reason=ctx.reason)
-    l1 = poll(ctx, lambda: trees(ctx), lambda t: tid not in t.items,
-              f"readGenealogiesTrees: tree {tid} gone")
-    ctx.expect_changed(tid in l0.items, tid in l1.items,
-                       f"presence of tree {tid} among the user's trees")
     after = status_of(lambda: ctx.api.read_genealogies_tree(tid))
+    ctx.expect_changed(before, after, f"readability of tree {tid}")
     if after not in GONE:
         raise AssertionError(f"deleted tree {tid} reads back {after}, not 404/410")
     ctx.fixtures.mark_deleted("genealogies_tree", tid)
-    if sibling not in l1.items:
-        raise AssertionError(f"the other tree {sibling} is no longer listed; "
-                             f"{describe_box(l1.result)}")
     expect_same(s0, read_tree(ctx, sibling), f"the other tree {sibling}")
 
 

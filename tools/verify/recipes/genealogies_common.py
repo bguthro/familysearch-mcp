@@ -5,9 +5,7 @@ envelope (it looks for GEDCOM X ``collections`` / ``sourceDescriptions`` / ``per
 fails with the response skeleton (``describe_box``: links and attribution dropped, account
 ids redacted) when what it needs is absent, so a live failure shows the real shape.
 
-The reads used here without being claimed by a write recipe: readGenealogiesTrees (the
-list read-back; it takes no parameter, so no not-found control exists and it is deferred
-like readSourceFolders), readGenealogiesTree, readGenealogiesPersons, readGenealogiesPerson
+The reads used here without being claimed by a write recipe: readGenealogiesTree, readGenealogiesPersons, readGenealogiesPerson
 and readGenealogiesSourceDescription (verified by the ``reads.genealogies.*`` cases).
 Ids are used exactly as the server returns them: no recipe builds or assumes a prefix.
 """
@@ -20,14 +18,14 @@ from typing import Any
 from familysearch.api._runtime import ApiResult
 
 from ..core import VerifyContext
-from ..fixtures import entry_title, tree_entries
+from ..fixtures import entry_title, same_id, tree_entries
 from .writes_common import (Listing, PersonView, Relationship, _relationship, describe_box,
                             person_view)
 
-# Well-formed in length (the recon: a one-character tree id is a 500), but without the
-# genealogies prefix: the server answers 400 "Invalid prefix for genealogies". It should
-# become a well-formed prefixed unknown id once a live run shows the real prefix.
-NO_SUCH_GENEALOGIES = "ZZZZ-ZZZ"
+# A well-formed unknown id: live, created ids came back as ``2:2:2:<id>`` (the prefix the
+# recon's 400 "Invalid prefix for genealogies" asked for). Recipes never build a prefix;
+# only this static control id carries it.
+NO_SUCH_GENEALOGIES = "2:2:2:ZZZZ-ZZZ"
 
 
 def shown(entry: dict) -> str:
@@ -42,20 +40,13 @@ class TreeView:
     result: ApiResult = field(compare=False, repr=False)
 
 
-def trees(ctx: VerifyContext) -> Listing:
-    """readGenealogiesTrees: the user's private trees, id -> shown title. 204: none."""
-    result = ctx.api.read_genealogies_trees()
-    if result.status == 204 or not (result.text or "").strip():
-        return Listing({}, result)
-    return Listing({tid: shown(e) for tid, e in tree_entries(result.body).items()}, result)
-
-
 def read_tree(ctx: VerifyContext, tid: str) -> TreeView:
     result = ctx.api.read_genealogies_tree(tid)
     entries = tree_entries(result.body)
-    if tid not in entries:
+    found = [e for i, e in entries.items() if same_id(i, tid)]
+    if len(found) != 1:
         raise AssertionError(f"the read of tree {tid} does not hold it; {describe_box(result)}")
-    return TreeView(tid, shown(entries[tid]), result)
+    return TreeView(tid, shown(found[0]), result)
 
 
 def _name_of(person: dict) -> str:

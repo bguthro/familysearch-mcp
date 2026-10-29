@@ -1,25 +1,26 @@
 """Read recipes for the Genealogies (private tree) API: the fixture tree, its person and source.
 
 The ``gtree`` world group is a ZZSPIKE private tree made by the recipe itself (the
-account has none: ``GET /genealogies/trees`` answers 204), ``gperson`` a LIVING fictional
+account has none), ``gperson`` a LIVING fictional
 person in it, ``gsource`` a source description in it. Each read sends only the id and
 anchors on the fixture's name or title. The unknown-id control uses ``NO_SUCH_GENEALOGIES``
-(no prefix: the recon showed beta answering 400 "Invalid prefix for genealogies" to such
-an id, a 500 only for one shorter than four characters).
+(the live id form, ``2:2:2:<id>``, unknown).
 
 Each read is its own recipe, because every shape here is unproven on beta.
 """
 from __future__ import annotations
 
-from ..fixtures import entry_title, tree_entries
+from ..fixtures import entry_title, same_id, tree_entries
 from ..reads import ReadCase, json_path, reads_recipe
 from .genealogies_common import NO_SUCH_GENEALOGIES
 
 DEFERRED: dict[str, str] = {
     "readGenealogiesTrees": (
-        "takes no path or query parameter, so no not-found control can be built (every "
-        "request lists the signed-in user's own trees); the Genealogies write recipes "
-        "use it, unclaimed, to list the trees"),
+        "answers a list of PUBLIC collections (live: 200 with a sourceDescriptions entry "
+        "'Pedigree Resource File', id 1), not the user's own trees, even after a tree was "
+        "created (before any tree existed it answered 204): no fixture value can anchor "
+        "it; it also takes no parameter, so no not-found control can be built. The tree "
+        "recipes read a tree by id (readGenealogiesTree) instead"),
     "readGenealogiesNote": (
         "no Genealogies operation creates a note (the create/update operations take trees, "
         "persons, sources and relationships; the spec has no notes sub-resource, unlike the "
@@ -48,10 +49,11 @@ def _expect_tree(result, world):
     """``collections`` (or the like) holds the fixture tree, by id, under its own title."""
     tid, want = world.ids["gtree"], world.names["gtree_title"]
     entries = tree_entries(result.body)
-    assert tid in entries, f"the answer does not hold tree {tid}: {sorted(entries)}"
-    title = entry_title(entries[tid])
+    found = [e for i, e in entries.items() if same_id(i, tid)]
+    assert len(found) == 1, f"the answer does not hold tree {tid}: {sorted(entries)}"
+    title = entry_title(found[0])
     assert title is None or title == want, f"tree {tid} is titled {title!r}, not {want!r}"
-    assert want in str(entries[tid]), f"tree {tid} does not carry its title {want!r}"
+    assert want in str(found[0]), f"tree {tid} does not carry its title {want!r}"
 
 
 TREE_CASES = (
