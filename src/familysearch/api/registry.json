@@ -67,7 +67,12 @@
   },
   "createGenealogiesTree": {
    "generated": {
-    "status": "unverified"
+    "commit": "b53bfa4f02cb108977110af8f6aab81c21ec43ff",
+    "evidence": "state-change",
+    "fingerprint": "e797ec715609e4670b104280aded2f58ce4f364d790085d5ce2f507a4fd66086",
+    "recipe": "writes.genealogies.tree_create",
+    "status": "verified",
+    "verified_on": "2026-10-29"
    }
   },
   "createGroup": {
@@ -315,12 +320,22 @@
   },
   "deleteGenealogiesConclusion": {
    "generated": {
-    "status": "unverified"
+    "commit": "b53bfa4f02cb108977110af8f6aab81c21ec43ff",
+    "evidence": "state-change",
+    "fingerprint": "47ee37921be6a90d8c71b81482ac449f03b38360dc0f0d2c72a37eb798d37023",
+    "recipe": "writes.genealogies.person_conclusions",
+    "status": "verified",
+    "verified_on": "2026-10-29"
    }
   },
   "deleteGenealogiesPerson": {
    "generated": {
-    "status": "unverified"
+    "commit": "b53bfa4f02cb108977110af8f6aab81c21ec43ff",
+    "evidence": "state-change",
+    "fingerprint": "9a7b7a3683accc7fc64c393c026759e5a273d1b55440670e02f29646aed91653",
+    "recipe": "writes.genealogies.person_delete_restore",
+    "status": "verified",
+    "verified_on": "2026-10-29"
    }
   },
   "deleteGenealogiesRelationship": {
@@ -330,12 +345,22 @@
   },
   "deleteGenealogiesSourceDescription": {
    "generated": {
-    "status": "unverified"
+    "commit": "b53bfa4f02cb108977110af8f6aab81c21ec43ff",
+    "evidence": "state-change",
+    "fingerprint": "07f991e35af0b90342952b684011343cab1b09fa71d5b9bf6504e075ee3a77fd",
+    "recipe": "writes.genealogies.source_delete",
+    "status": "verified",
+    "verified_on": "2026-10-29"
    }
   },
   "deleteGenealogiesTree": {
    "generated": {
-    "status": "unverified"
+    "commit": "b53bfa4f02cb108977110af8f6aab81c21ec43ff",
+    "evidence": "state-change",
+    "fingerprint": "70feb0dec920fb6a39e577298f9af05aa02e132807c078e6d107a1bc2be784b7",
+    "recipe": "writes.genealogies.tree_delete",
+    "status": "verified",
+    "verified_on": "2026-10-29"
    }
   },
   "deleteGroup": {
@@ -858,7 +883,12 @@
   },
   "readGenealogiesPerson": {
    "generated": {
-    "status": "unverified"
+    "commit": "b53bfa4f02cb108977110af8f6aab81c21ec43ff",
+    "evidence": "read-content",
+    "fingerprint": "2f22b6ddaa483cc20ee373ec98ed70473096bc6c879c96a92080252acd9a0b97",
+    "recipe": "reads.genealogies.person",
+    "status": "verified",
+    "verified_on": "2026-10-29"
    }
   },
   "readGenealogiesPersonMatches": {
@@ -873,12 +903,22 @@
   },
   "readGenealogiesSourceDescription": {
    "generated": {
-    "status": "unverified"
+    "commit": "b53bfa4f02cb108977110af8f6aab81c21ec43ff",
+    "evidence": "read-content",
+    "fingerprint": "7b2e871a3fdb1e36c146f8f45f7aa9ffc347709e56ac1c82b947259423fd754e",
+    "recipe": "reads.genealogies.source",
+    "status": "verified",
+    "verified_on": "2026-10-29"
    }
   },
   "readGenealogiesTree": {
    "generated": {
-    "status": "unverified"
+    "commit": "b53bfa4f02cb108977110af8f6aab81c21ec43ff",
+    "evidence": "read-content",
+    "fingerprint": "4e9fcbcee22a118f1976801af6fae859d2f005b36e560c3f6ffbb67b53e25509",
+    "recipe": "reads.genealogies.tree",
+    "status": "verified",
+    "verified_on": "2026-10-29"
    }
   },
   "readGenealogiesTrees": {
@@ -1397,7 +1437,12 @@
   },
   "restoreGenealogiesPerson": {
    "generated": {
-    "status": "unverified"
+    "commit": "b53bfa4f02cb108977110af8f6aab81c21ec43ff",
+    "evidence": "state-change",
+    "fingerprint": "58ea1d1154058406dbf2df44c110c6dc7f1051f07a7d450b078bf8b4bd49c303",
+    "recipe": "writes.genealogies.person_delete_restore",
+    "status": "verified",
+    "verified_on": "2026-10-29"
    }
   },
   "restorePerson": {
@@ -1521,7 +1566,12 @@
   },
   "updateGenealogiesPerson": {
    "generated": {
-    "status": "unverified"
+    "commit": "b53bfa4f02cb108977110af8f6aab81c21ec43ff",
+    "evidence": "state-change",
+    "fingerprint": "6c0755b108ceb5a873d9633906dd2a0ff0c6e505d2775f15cc526b9c9e66ca78",
+    "recipe": "writes.genealogies.person_update",
+    "status": "verified",
+    "verified_on": "2026-10-29"
    }
   },
   "updateGenealogiesRelationship": {
@@ -1531,7 +1581,12 @@
   },
   "updateGenealogiesSourceDescription": {
    "generated": {
-    "status": "unverified"
+    "commit": "b53bfa4f02cb108977110af8f6aab81c21ec43ff",
+    "evidence": "state-change",
+    "fingerprint": "3bc28191171a69b9030a852728cd9f18e0842acf4dc8064c40343d086c9e782e",
+    "recipe": "writes.genealogies.source_update",
+    "status": "verified",
+    "verified_on": "2026-10-29"
    }
   },
   "updateGenealogiesTree": {
