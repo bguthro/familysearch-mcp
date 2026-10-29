@@ -37,8 +37,6 @@ DEFERRED: dict[str, str] = {
         "Genealogies persons, and a fictional ZZSPIKE person has none (204); recon got 400 "
         "'Unable to fetch match resolutions' for ids of the wrong prefix, and no real match "
         "can be made for a fixture"),
-    # Pending the person and source cases of the next P7 tasks (removed when they land).
-    "readGenealogiesSourceDescription": "awaiting the Genealogies source recipes (P7 Task B3)",
 }
 
 
@@ -90,4 +88,19 @@ PERSON = reads_recipe("reads.genealogies.person", (
              missing={"pid": NO_SUCH_GENEALOGIES}, expect=_expect_person, anchors=_NAME,
              needs=("gperson",)),))
 
-READS_GENEALOGIES = (TREE, PERSONS, PERSON)
+def _expect_source(result, world):
+    sdid, want = world.ids["gsource"], world.names["gsource_title"]
+    found = [d for d in json_path(result.body, "sourceDescriptions")
+             if isinstance(d, dict) and d.get("id") == sdid]
+    assert len(found) == 1, f"sourceDescriptions does not hold {sdid} once"
+    titles = [t.get("value") for t in found[0].get("titles") or [] if isinstance(t, dict)]
+    assert titles == [want], f"description {sdid} is titled {titles!r}, not {want!r}"
+
+
+SOURCE = reads_recipe("reads.genealogies.source", (
+    ReadCase(op="readGenealogiesSourceDescription",
+             path_args=lambda w: {"sdid": w.ids["gsource"]},
+             missing={"sdid": NO_SUCH_GENEALOGIES}, expect=_expect_source,
+             anchors=(lambda w: w.names["gsource_title"],), needs=("gsource",)),))
+
+READS_GENEALOGIES = (TREE, PERSONS, PERSON, SOURCE)

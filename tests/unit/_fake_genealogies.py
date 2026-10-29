@@ -53,7 +53,7 @@ LIES = (
     "ignore_source_create", "ignore_source_update", "source_update_creates",
     "source_update_collateral", "source_delete_noop",
     # relationships
-    "ignore_relationship_update", "relationship_update_collateral",
+    "ignore_relationship_update", "relationship_update_collateral",  # an update adds a stray extra fact
     "relationship_delete_noop", "relationship_delete_persons",
 )
 
@@ -341,7 +341,7 @@ class FakeGenealogies:
             return 204, {}, ""
         facts = (body["relationships"][0]).get("facts") or []
         if self.mode == "relationship_update_collateral":
-            rel["facts"] = []
+            rel["facts"].append(self._named({"type": GX + "Divorce"}))
         for fact in facts:
             rel["facts"].append(self._named(fact))
         return 204, {}, ""

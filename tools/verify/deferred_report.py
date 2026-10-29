@@ -1,5 +1,5 @@
 """The deferred reports: which reads (P2), Family Tree writes (P3) and Memories writes
-(P5) are verified and why the rest are not.
+(P5) and Genealogies writes (P7) are verified and why the rest are not.
 
 ``python -m tools.verify.deferred_report`` writes
 docs/superpowers/recon/2026-10-25-api-surface/p2-deferred.md, p3-deferred.md and
@@ -133,6 +133,8 @@ P3_REPORT_PATH = REPORT_PATH.with_name("p3-deferred.md")
 P3_AREA = "Family Tree Endpoints"
 P5_REPORT_PATH = REPORT_PATH.with_name("p5-deferred.md")
 P5_AREA = "Memories Endpoints"
+P7_REPORT_PATH = REPORT_PATH.with_name("p7-deferred.md")
+P7_AREA = "Genealogies Endpoints"
 AWAITING_TIER = "P3"
 # Claimed writes of a later tier, awaiting their live run in that tier.
 AWAITING_TIERS: dict[str, str] = {op: "P4" for op in (
@@ -144,6 +146,13 @@ AWAITING_TIERS.update({op: "P5" for op in (
     "deleteMemoryComment", "createMemoryPersona", "updateMemoryPersona",
     "deleteMemoryPersona", "updatePersonPortraits",
     "deletePersonPortrait")})
+AWAITING_TIERS.update({op: "P7" for op in (
+    "createGenealogiesTree", "updateGenealogiesTree", "deleteGenealogiesTree",
+    "createGenealogiesPerson", "updateGenealogiesPerson", "deleteGenealogiesPerson",
+    "restoreGenealogiesPerson", "deleteGenealogiesConclusion",
+    "updateGenealogiesRelationship", "deleteGenealogiesRelationship",
+    "createGenealogiesSourceDescription", "updateGenealogiesSourceDescription",
+    "deleteGenealogiesSourceDescription")})
 
 
 def awaiting_tier(op: str) -> str:
@@ -264,6 +273,11 @@ def build_p5_report() -> str:
                           "Memories writes", "")
 
 
+def build_p7_report() -> str:
+    return _writes_report(P7_AREA, "# P7 write verification: deferred Genealogies writes",
+                          "Genealogies writes", "")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m tools.verify.deferred_report")
     parser.add_argument("--check", action="store_true",
@@ -273,9 +287,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="the P3 Family Tree writes report")
     parser.add_argument("--p5-path", type=Path, default=P5_REPORT_PATH,
                         help="the P5 Memories writes report")
+    parser.add_argument("--p7-path", type=Path, default=P7_REPORT_PATH,
+                        help="the P7 Genealogies writes report")
     args = parser.parse_args(argv)
     reports = ((args.path, build_report()), (args.p3_path, build_p3_report()),
-               (args.p5_path, build_p5_report()))
+               (args.p5_path, build_p5_report()), (args.p7_path, build_p7_report()))
     if args.check:
         stale = [p for p, text in reports
                  if (p.read_text() if p.exists() else None) != text]

@@ -30,7 +30,7 @@ Reads: 107. Verified: 65. Deferred: 42.
 | readGenealogiesPerson | Genealogies Endpoints | claimed by recipe reads.genealogies.person; awaiting its live run on beta | P7 |
 | readGenealogiesPersonMatches | Genealogies Endpoints | a fictional ZZSPIKE person has no record matches: the Family Tree analogue (readTreePersonMatches) answered 204 for every available person (P6 evidence), a 204 carries no anchor the request did not send, and the spec restricts the operation in production to certified applications; no fixture can produce content to verify | P7 |
 | readGenealogiesPersons | Genealogies Endpoints | claimed by recipe reads.genealogies.persons; awaiting its live run on beta | P7 |
-| readGenealogiesSourceDescription | Genealogies Endpoints | awaiting the Genealogies source recipes (P7 Task B3) | P7 |
+| readGenealogiesSourceDescription | Genealogies Endpoints | claimed by recipe reads.genealogies.source; awaiting its live run on beta | P7 |
 | readGenealogiesTree | Genealogies Endpoints | claimed by recipe reads.genealogies.tree; awaiting its live run on beta | P7 |
 | readGenealogiesTrees | Genealogies Endpoints | takes no path or query parameter, so no not-found control can be built (every request lists the signed-in user's own trees); the Genealogies write recipes use it, unclaimed, to list the trees | P7 |
 | readUserMemories | Memories Endpoints | needs the signed-in user's real id: with uid=current beta answered 400 'Failure in upstream call: Unable to read artifacts belonging to this user' (Task 5 live run 2), and the sealed world does not and must not hold an account id (ruling I-4), so path args cannot name the user | P5 |
