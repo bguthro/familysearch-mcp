@@ -245,3 +245,18 @@ def test_module_has_no_write_calls():
     src = inspect.getsource(prod_reader)
     for forbidden in ("TreeWriter", ".post(", ".delete(", ".put("):
         assert forbidden not in src
+
+
+def test_status_get_sends_browser_user_agent(monkeypatch):
+    from familysearch.client import DEFAULT_USER_AGENT
+
+    seen = {}
+
+    def fake_get(url, **kw):
+        seen.update(url=url, **kw)
+        return Resp(200)
+
+    monkeypatch.setattr(prod_reader.requests, "get", fake_get)
+    assert prod_reader._status_get("https://www.familysearch.org", "tok") == 200
+    assert seen["headers"]["User-Agent"] == DEFAULT_USER_AGENT
+    assert seen["url"].endswith("/platform/users/current")

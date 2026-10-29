@@ -170,3 +170,26 @@ def test_cli_fs_error_returns_2(tmp_path, monkeypatch):
     root = make_archive(tmp_path)
     assert cli.main(["links", "--archive", str(root), "--env", "production"]) == 2
     assert not (root / "_import").exists()
+
+
+def test_webloc_mismatch_label_differences_and_search_dedupe(tmp_path):
+    import plistlib
+
+    root = tmp_path / "arch"
+    d = root / "L" / "1844-1915 Pat Example"
+    d.mkdir(parents=True)
+    (d / "FS.webloc").write_bytes(
+        plistlib.dumps({"URL": "https://www.familysearch.org/tree/person/details/ZZZZ-111"})
+    )
+    people = scan_archive(root)
+    wrong = fs("ZZZZ-111", "Pat Exampel", 1850, 1915)
+    other = fs("NEWW-222", "Pat Example", 1844, 1915)
+    results = build_link_results(people, lambda i: wrong, lambda p: [wrong, other])
+    (r,) = results
+    assert r.verdict == "needs-search"
+    assert [s.id for s in r.search] == ["NEWW-222"]
+    md = render_link_report(results, {})
+    assert "ZZZZ-111: linked by you, FamilySearch record differs" in md
+    assert "birth 1844 vs 1850" in md
+    assert "search candidate NEWW-222" in md
+    assert "search candidate ZZZZ-111" not in md

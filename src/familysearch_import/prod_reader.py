@@ -10,7 +10,7 @@ from typing import Any
 import requests
 
 from familysearch.auth import Environment, extract_brave_token
-from familysearch.client import FSClient
+from familysearch.client import DEFAULT_USER_AGENT, FSClient
 from familysearch.discovery import Discovery
 from familysearch.errors import FSError, FSHTTPError
 from familysearch.search import Search
@@ -222,7 +222,11 @@ def _entry_person(entry: Any) -> FsPerson | None:
 def _status_get(base_url: str, token: str) -> int:
     resp = requests.get(
         base_url + "/platform/users/current",
-        headers={"Authorization": f"Bearer {token}", "Accept": "application/x-fs-v1+json"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/x-fs-v1+json",
+            "User-Agent": DEFAULT_USER_AGENT,  # FamilySearch's edge answers 403 without a browser UA
+        },
         timeout=30,
         allow_redirects=False,
     )

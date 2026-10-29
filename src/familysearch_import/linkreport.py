@@ -6,7 +6,7 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import replace
 
-from .linking import FsPerson, LinkResult, resolve_links
+from .linking import FsPerson, LinkResult, differences, resolve_links
 from .record import record_state_and_status
 from .scan import IdCandidate, Person, mine_candidates
 
@@ -49,7 +49,12 @@ def build_link_results(
         r = resolve_links(p, {i: cache[i] for i in ids})
         if r.verdict == "needs-search":
             try:
-                r = replace(r, search=tuple(search(p)))
+                known = set()
+                for cand, f, _ in r.candidates:
+                    known |= {cand.id, f.id, f.survivor_id}
+                known.discard(None)
+                found = [s for s in search(p) if s.id not in known and s.survivor_id not in known]
+                r = replace(r, search=tuple(found))
             except Exception:  # a failed search is reported, never read as "no match"
                 r = replace(r, search_error=True)
         results.append(r)
@@ -97,12 +102,17 @@ def render_link_report(results: Sequence[LinkResult], counts: Counter | dict) ->
                 if key in seen:
                     continue
                 seen.add(key)
-                note = f"{cand.id}: {outcome}; found in {_where(r, cand)}"
+                label = outcome
+                if cand.kind == "webloc" and outcome == "mismatch":
+                    label = "linked by you, FamilySearch record differs"
+                note = f"{cand.id}: {label}; found in {_where(r, cand)}"
                 if fs.status in ("ok", "redirected"):
                     note += f"; FamilySearch: {_fs_text(fs)}"
                 if fs.status == "redirected":
                     note += f"; merged into {fs.survivor_id or 'unknown'}"
                 out.append(f"  - {note}")
+                if fs.status in ("ok", "redirected"):
+                    out += [f"    - {d}" for d in differences(r.person, fs)]
             if v == "needs-search":
                 if r.search_error:
                     out.append("  - search failed (not the same as no match)")

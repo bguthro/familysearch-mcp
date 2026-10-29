@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import difflib
 import re
 import unicodedata
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -16,6 +17,7 @@ Verdict = Literal["confirmed", "probable", "conflict", "unlinked", "needs-search
 
 _KIND_RANK = {"webloc": 0, "note": 1, "filename": 2}
 _FILLER = {"unknown", "living", "private"}
+FUZZY = 0.8
 
 
 @dataclass(frozen=True)
@@ -42,10 +44,13 @@ class LinkResult:
     search_error: bool = False
 
 
-def _tokens(text: str) -> list[str]:
+def _fold(text: str) -> str:
     s = unicodedata.normalize("NFKD", nfc(text)).casefold()
-    s = "".join(c for c in s if not unicodedata.combining(c))
-    return [t for t in re.split(r"[^a-z0-9]+", s) if t and t not in _FILLER]
+    return "".join(c for c in s if not unicodedata.combining(c))
+
+
+def _tokens(text: str) -> list[str]:
+    return [t for t in re.split(r"[^a-z0-9]+", _fold(text)) if t and t not in _FILLER]
 
 
 def _split_parens(name: str) -> tuple[list[str], list[str]]:
@@ -54,17 +59,85 @@ def _split_parens(name: str) -> tuple[list[str], list[str]]:
     return _tokens(outside), [t for part in inside for t in _tokens(part)]
 
 
-def name_matches(archive_name: str, fs_name: str) -> bool:
-    main, alt = _split_parens(archive_name)
-    fs = _tokens(fs_name.replace("(", " ").replace(")", " "))
-    if not main or not fs:
+_ROMAN = {"i", "ii", "iii"}
+
+
+@dataclass(frozen=True)
+class _Name:
+    given: str | None
+    surname: str | None
+    alts: tuple[str, ...]  # folded tokens from parenthesised alternate names
+    shown_given: str
+    shown_surname: str
+
+
+def _parse_name(name: str) -> _Name:
+    outside = re.sub(r"\([^)]*\)", " ", name)
+    alts = tuple(t for part in re.findall(r"\(([^)]*)\)", name) for t in _tokens(part))
+    pairs = [(o, _fold(o)) for o in re.split(r"[^\w]+", nfc(outside)) if o]
+    # drop initials, roman numerals and filler words
+    pairs = [(o, f) for o, f in pairs if len(f) > 1 and f not in _ROMAN and f not in _FILLER]
+    if not pairs:
+        return _Name(None, None, alts, "", "")
+    g, gf = pairs[0]
+    if len(pairs) == 1:
+        return _Name(gf, None, alts, g, "")
+    s, sf = pairs[-1]
+    return _Name(gf, sf, alts, g, s)
+
+
+def _canon(s: str) -> str:
+    """Collapse common spelling-variant patterns (Aeschlimann ~ Eschliman)."""
+    s = s.replace("sch", "sh").replace("ae", "e").replace("ou", "o")
+    s = re.sub(r"(.)\1", r"\1", s)  # doubled letters
+    return re.sub(r"[xst]$", "", s)
+
+
+def _sim(a: str, b: str) -> float:
+    raw = difflib.SequenceMatcher(None, a, b).ratio()
+    return max(raw, difflib.SequenceMatcher(None, _canon(a), _canon(b)).ratio())
+
+
+def _close(a: str | None, b: str | None, extra: Sequence[str] = ()) -> bool:
+    if not a or not b:
         return False
-    fs_set, main_set = set(fs), set(main)
-    if main_set <= fs_set:
-        return True
-    if len(fs) >= 2 and fs_set <= main_set | set(alt):
-        return True
-    return len(main) >= 2 and len(fs) >= 2 and main[0] == fs[0] and main[-1] == fs[-1]
+    return any(_sim(b, x) >= FUZZY for x in (a, *extra))
+
+
+def _name_quality(person_name: str, fs_name: str) -> int:
+    """0 incompatible, 1 compatible with spelling variation, 2 same names."""
+    a, b = _parse_name(person_name), _parse_name(fs_name)
+    if not a.given or not b.given:
+        return 0
+    given_ok = _close(a.given, b.given, a.alts)
+    if a.surname is None or b.surname is None:
+        if not given_ok:
+            return 0
+        return 2 if a.given == b.given or b.given in a.alts else 1
+    surname_ok = _close(a.surname, b.surname, a.alts)
+    if not (given_ok and surname_ok):
+        return 0
+    exact = (a.given == b.given or b.given in a.alts) and (a.surname == b.surname or b.surname in a.alts)
+    return 2 if exact else 1
+
+
+def name_matches(archive_name: str, fs_name: str) -> bool:
+    return _name_quality(archive_name, fs_name) > 0
+
+
+def differences(person: Person, fs: FsPerson) -> tuple[str, ...]:
+    """Short human-readable differences between the archive person and a FamilySearch person."""
+    out: list[str] = []
+    a, b = _parse_name(person.display_name), _parse_name(fs.name)
+    if a.given and b.given and a.given != b.given and b.given not in a.alts:
+        out.append(f"given name: {a.shown_given} vs {b.shown_given}")
+    if a.surname and b.surname and a.surname != b.surname and b.surname not in a.alts:
+        out.append(f"surname spelling: {a.shown_surname} vs {b.shown_surname}")
+    if person.birth is not None and fs.birth_year is not None and person.birth != fs.birth_year:
+        out.append(f"birth {person.birth} vs {fs.birth_year}")
+    if person.death is not None and fs.death_year is not None and person.death != fs.death_year:
+        out.append(f"death {person.death} vs {fs.death_year}")
+    return tuple(out)
 
 
 def _year_delta(a: int | None, b: int | None) -> int | None:
@@ -72,21 +145,18 @@ def _year_delta(a: int | None, b: int | None) -> int | None:
 
 
 def compare(person: Person, fs: FsPerson) -> Compare:
-    if not name_matches(person.display_name, fs.name):
+    quality = _name_quality(person.display_name, fs.name)
+    if quality == 0:
         return "mismatch"
-    deltas = [
-        d
-        for d in (
-            _year_delta(person.birth, fs.birth_year),
-            _year_delta(person.death, fs.death_year),
-        )
-        if d is not None
-    ]
-    if any(d > 2 for d in deltas):
+    birth = _year_delta(person.birth, fs.birth_year)
+    if birth is not None and birth > 2:
         return "mismatch"
-    if not deltas or any(d > 0 for d in deltas):
-        return "probable"
-    return "confirmed"
+    death = _year_delta(person.death, fs.death_year)
+    if birth is None and death is None:
+        return "probable"  # nothing to corroborate the name
+    if quality == 2 and not birth and not death:
+        return "confirmed"
+    return "probable"
 
 
 def resolve_links(person: Person, lookups: Mapping[str, FsPerson]) -> LinkResult:

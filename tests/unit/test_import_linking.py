@@ -132,3 +132,41 @@ def test_webloc_candidate(tmp_path):
     )
     (p2,) = scan_archive(tmp_path / "a")
     assert resolve_links(p2, {"ABCD-123": fs()}).verdict == "confirmed"
+
+
+def test_variant_spellings_are_probable_not_mismatch(tmp_path):
+    from familysearch_import.linking import differences
+
+    p = person(tmp_path, "1844-1915 Gilbert Guthro")
+    v = fs(name="Gilbert Gouthro")
+    assert compare(p, v) == "probable"
+    assert differences(p, v) == ("surname spelling: Guthro vs Gouthro",)
+    assert compare(person(tmp_path / "b", "1844-1915 Eli Eshleman"), fs(name="Eli Eschliman")) == "probable"
+    assert compare(person(tmp_path / "c", "1844-1915 Eli Eshleman"), fs(name="Eli Aeschlimann")) == "probable"
+    assert compare(person(tmp_path / "d", "1844-1915 Rene Comeau"), fs(name="Rene Comeaux")) == "probable"
+    assert compare(person(tmp_path / "e", "1844-1915 Elisabeth Theriot"), fs(name="Élisabeth Thériot")) == "confirmed"  # diacritics fold away
+
+
+def test_middle_names_initials_and_given_only(tmp_path):
+    p = person(tmp_path, "1844-1915 Leonard L Zeitz")
+    assert compare(p, fs(name="Leonard Joseph Zeitz")) == "confirmed"
+    p2 = person(tmp_path / "x", "1844-1915 Stella H Eschliman")
+    assert compare(p2, fs(name="Stella")) == "confirmed"
+    p3 = person(tmp_path / "y", "1844-1915 Pat Example III")
+    assert compare(p3, fs(name="Pat Example")) == "confirmed"
+
+
+def test_death_year_may_differ_birth_may_not(tmp_path):
+    from familysearch_import.linking import differences
+
+    p = person(tmp_path)
+    assert compare(p, fs(d=1996)) == "probable"
+    assert differences(p, fs(d=1996)) == ("death 1915 vs 1996",)
+    assert compare(p, fs(b=1850)) == "mismatch"
+    assert differences(p, fs(b=1850)) == ("birth 1844 vs 1850",)
+
+
+def test_alt_name_match(tmp_path):
+    p = person(tmp_path, "1844-1915 Mary Smith (Jones)")
+    assert compare(p, fs(name="Mary Jones")) == "confirmed"
+    assert compare(p, fs(name="Mary Quill")) == "mismatch"
