@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 import requests
@@ -31,6 +32,23 @@ _REDIRECTS = {301, 302, 303, 307, 308}
 
 class ReadOnlyError(FSError):
     """A non-read HTTP request was attempted through the read-only adapter."""
+
+
+class ReadFailed(FSError):
+    """A memories/sources read failed; callers must not treat it as empty."""
+
+
+@dataclass(frozen=True)
+class SourceRef:
+    title: str
+    url: str | None
+
+
+def _title(item: dict) -> str:
+    for t in item.get("titles") or []:
+        if isinstance(t, dict) and isinstance(t.get("value"), str) and t["value"].strip():
+            return t["value"].strip()
+    return ""
 
 
 def _year(text: Any) -> int | None:
@@ -175,6 +193,32 @@ class ReadOnlyFS:
         except requests.RequestException:
             return err()
         return fs_person_from_dict(data, person_id)
+
+    def _read_list(self, person_id: str, fn: Callable[[], list[dict]]) -> list[dict]:
+        """Run a list read with retries; any failure is ReadFailed (never an empty list)."""
+        self.last_response = None
+        try:
+            return self._call(fn)
+        except FSHTTPError as e:
+            raise ReadFailed(f"read failed for {person_id}: HTTP {e.status}") from e
+        except FSError as e:
+            if type(e) is not FSError:  # token / link errors are fatal
+                raise
+            raise ReadFailed(f"read failed for {person_id}: {e}") from e
+        except (requests.RequestException, ValueError) as e:
+            raise ReadFailed(f"read failed for {person_id}: {type(e).__name__}") from e
+
+    def get_memory_titles(self, person_id: str) -> list[str]:
+        items = self._read_list(person_id, lambda: self._tree.get_memories(person_id))
+        return [t for t in (_title(i) for i in items) if t]
+
+    def get_source_refs(self, person_id: str) -> list[SourceRef]:
+        items = self._read_list(person_id, lambda: self._tree.get_sources(person_id))
+        out = []
+        for i in items:
+            about = i.get("about")
+            out.append(SourceRef(_title(i), about if isinstance(about, str) and about else None))
+        return out
 
     def search_candidates(
         self, person: Person, limit: int = 3, status: str | None = None

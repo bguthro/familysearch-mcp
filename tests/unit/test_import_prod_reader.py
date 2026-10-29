@@ -268,3 +268,60 @@ def test_status_get_sends_browser_user_agent(monkeypatch):
     assert prod_reader._status_get("https://www.familysearch.org", "tok") == 200
     assert seen["headers"]["User-Agent"] == DEFAULT_USER_AGENT
     assert seen["url"].endswith("/platform/users/current")
+
+
+# ---- existing memories and sources ----
+
+def links_body(pid):
+    return Resp(200, {"persons": [{"id": pid, "links": {
+        "artifacts": {"href": f"/m/{pid}"},
+        "source-descriptions": {"href": f"/s/{pid}"},
+    }}]})
+
+
+def test_get_memory_titles_populated_and_empty():
+    body = {"sourceDescriptions": [
+        {"titles": [{"value": "Census 1900"}]}, {"titles": []}, {"titles": [{"value": "Will"}]}]}
+    fs, _, _ = make({P + "ABCD-123": [links_body("ABCD-123")], "/m/ABCD-123": [Resp(200, body)]})
+    assert fs.get_memory_titles("ABCD-123") == ["Census 1900", "Will"]
+    fs, _, _ = make({P + "ABCD-123": [links_body("ABCD-123")], "/m/ABCD-123": [Resp(200, {})]})
+    assert fs.get_memory_titles("ABCD-123") == []
+
+
+def test_get_source_refs_populated():
+    body = {"sourceDescriptions": [
+        {"about": "https://example.org/a", "titles": [{"value": "Record A"}]},
+        {"titles": [{"value": "No url"}]}]}
+    fs, _, _ = make({P + "ABCD-123": [links_body("ABCD-123")], "/s/ABCD-123": [Resp(200, body)]})
+    refs = fs.get_source_refs("ABCD-123")
+    assert refs == [prod_reader.SourceRef("Record A", "https://example.org/a"),
+                    prod_reader.SourceRef("No url", None)]
+
+
+def test_memory_read_error_is_read_failed_not_empty():
+    fs, _, _ = make({P + "ABCD-123": [links_body("ABCD-123")], "/m/ABCD-123": [Resp(404)]})
+    with pytest.raises(prod_reader.ReadFailed):
+        fs.get_memory_titles("ABCD-123")
+
+
+def test_source_read_retries_then_fails():
+    fs, _, sleeps = make({P + "ABCD-123": [links_body("ABCD-123")], "/s/ABCD-123": [Resp(503)]})
+    with pytest.raises(prod_reader.ReadFailed):
+        fs.get_source_refs("ABCD-123")
+    assert len(sleeps) >= 3
+
+
+def test_redirect_on_read_is_read_failed():
+    # the client surfaces an unfollowed redirect as a plain FSError
+    fs, _, _ = make({P + "ABCD-123": [FSError("redirect")]})
+    with pytest.raises(prod_reader.ReadFailed):
+        fs.get_memory_titles("ABCD-123")
+    fs, _, _ = make({P + "ABCD-123": [Resp(200, None)]})  # unparseable body
+    with pytest.raises(prod_reader.ReadFailed):
+        fs.get_source_refs("ABCD-123")
+
+
+def test_read_401_stays_fatal():
+    fs, _, _ = make({P + "ABCD-123": [Resp(401)]})
+    with pytest.raises(TokenExpiredError):
+        fs.get_source_refs("ABCD-123")
