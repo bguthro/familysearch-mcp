@@ -27,7 +27,7 @@ from familysearch.sources import Sources
 from familysearch.tree import TreeWriter, child_and_parents_url, couple_url
 
 from .core import _require_beta, redact_account
-from .teardown import verified_delete
+from .teardown import gone_after, verified_delete
 
 # teardown order: a collection after its member descriptions, so it is empty; the private
 # (Genealogies) persons and sources before the tree that holds them
@@ -35,6 +35,8 @@ KINDS = ("child_and_parents", "couple", "source", "collection", "memory", "perso
          "genealogies_person", "genealogies_source", "genealogies_tree")
 COLLECTIONS_PATH = "/platform/sources/collections"
 GENEALOGIES_PATH = "/platform/genealogies"
+# A private object's delete may show late: (attempts, seconds between) of the gone-check.
+GENEALOGIES_GONE_POLLS = (5, 3.0)
 # fixture kind -> the collection segment of its resource under /genealogies
 GENEALOGIES_KINDS = {"genealogies_person": "persons", "genealogies_source": "sources",
                      "genealogies_tree": "trees"}
@@ -171,20 +173,45 @@ def couple_tree_body(male: dict, female: dict) -> dict:
                                "person2": ref("f1")}]}
 
 
-def tree_entries(body) -> dict[str, dict]:
-    """The trees a list (or single read) answers: id -> its entry, whichever envelope."""
-    found: dict[str, dict] = {}
-    for key in ("collections", "sourceDescriptions", "trees"):
-        for entry in (body.get(key) if isinstance(body, dict) else None) or []:
-            if isinstance(entry, dict) and entry.get("id"):
-                found[str(entry["id"])] = entry
-    return found
+def tree_entry(body, tid: str) -> dict | None:
+    """The ``collections`` entry that is tree ``tid``, or None.
+
+    Live (readGenealogiesTree): ``{"collections": [{"title", "size", "content": [{"count",
+    "resourceType": Person}], "identifiers": {Persistent: [ark url ending in the tree
+    id]}, ...}], "description": "#t_NNN", "sourceDescriptions": [public collections]}``:
+    the entry carries no ``id``, so it is the one whose identifiers name ``tid`` (or whose
+    ``id``, if one is answered, is it). ``sourceDescriptions`` are not the tree.
+    """
+    found = [c for c in (body.get("collections") if isinstance(body, dict) else None) or []
+             if isinstance(c, dict) and (
+                 same_id(str(c["id"]), tid) if c.get("id")
+                 else any(same_id(u.rstrip("/").rsplit("/", 1)[-1], tid)
+                          for urls in (c.get("identifiers") or {}).values()
+                          for u in (urls if isinstance(urls, list) else [])
+                          if isinstance(u, str)))]
+    return found[0] if len(found) == 1 else None
+
+
+def tree_size(entry: dict):
+    """The number of persons a tree entry reports: ``size``, else ``content[0].count``."""
+    if isinstance(entry.get("size"), int):
+        return entry["size"]
+    content = entry.get("content")
+    first = content[0] if isinstance(content, list) and content else None
+    return first.get("count") if isinstance(first, dict) else None
+
+
+def local_part(oid: str) -> str:
+    """The id without its ``2:2:2:`` style prefix and without a local-id tag (live: the
+    source ``2:2:286671`` is answered as ``s_286671``)."""
+    tail = str(oid).rsplit(":", 1)[-1]
+    head, sep, rest = tail.partition("_")
+    return rest if sep and head.isalpha() and len(head) <= 3 else tail
 
 
 def same_id(a: str, b: str) -> bool:
-    """Ids equal, or equal after the ``2:2:2:`` style prefix (live ids carry one in the
-    Location; whether a body repeats it is unknown)."""
-    return a == b or a.rsplit(":", 1)[-1] == b.rsplit(":", 1)[-1]
+    """Ids equal, or equal once the prefix and any local-id tag are dropped."""
+    return a == b or local_part(a) == local_part(b)
 
 
 def entry_title(entry: dict) -> str | None:
@@ -453,7 +480,7 @@ class FixtureSet:
             raise ValueError("a fixture person's given name must start with ZZSPIKE")
         body = living_person_body(given if plain else f"ZZSPIKE {given}",
                                   surname or f"Test{uuid.uuid4().hex[:8]}", gender,
-                                  facts=facts)
+                                  facts=facts, local_id="p1")
         resp = self._client.post(self.genealogies_url("trees", tid, "persons"), json=body,
                                  reason=self._reason)
         pid = created_header_id(resp.headers)
@@ -501,7 +528,8 @@ class FixtureSet:
         for pid in ids:
             self.track("genealogies_person", pid)
         if len(ids) != 2:
-            raise FSError(f"the couple update made {len(ids)} persons, not 2")
+            raise FSError(f"the couple update made {len(ids)} persons, not 2; the update "
+                          f"answered {resp.status_code} {(resp.text or '')[:300]!r}")
         by_name = {}
         for pid in ids:
             by_name[pid] = self._client.get(self.genealogies_url("persons", pid)).text
@@ -531,7 +559,22 @@ class FixtureSet:
                     lambda: self._memories.delete(oid, reason=reason))
         if kind in GENEALOGIES_KINDS:
             url = self.genealogies_url(GENEALOGIES_KINDS[kind], oid)
-            return url, lambda: self._client.delete(url, reason=reason)
+
+            def delete_private():
+                self._client.delete(url, reason=reason)
+                if kind != "genealogies_source" or gone_after(
+                        lambda: self._client.get(url), GENEALOGIES_GONE_POLLS):
+                    return
+                # Live run 2: private sources stayed readable after the documented
+                # delete. Their reads answer a local id (s_<n> for 2:2:<n>): try the
+                # delete by that form once; the strict gone-check then decides.
+                local = "s_" + oid.rsplit(":", 1)[-1]
+                try:
+                    self._client.delete(self.genealogies_url("sources", local),
+                                        reason=reason)
+                except FSHTTPError:
+                    pass
+            return url, delete_private
         return (join_path(self._collection("persons"), oid),
                 lambda: self._writer.delete_person(oid, reason=reason))
 
@@ -550,6 +593,8 @@ class FixtureSet:
                     continue
                 get = (self._collection_get(oid, url) if kind == "collection"
                        else (lambda u=url: self._client.get(u)))
-                verified_delete(label, url, get, delete, problems)
+                verified_delete(label, url, get, delete, problems,
+                                GENEALOGIES_GONE_POLLS if kind in GENEALOGIES_KINDS
+                                else (1, 0.0))
             self._tracked[kind] = []
         return [redact_account(p) for p in problems]

@@ -6,7 +6,11 @@ Every tracked object was created in THIS run, so each is verified by read-back:
   3. GET again: it MUST be 404/410 (else LEFTOVER).
 A tolerated 404 once hid a wrong delete URL, so 404 is never accepted blindly.
 """
+import time
+
 from familysearch import FSHTTPError
+
+sleep = time.sleep  # the pause between gone-checks (tests replace it)
 
 
 def _gone(get) -> bool:
@@ -20,8 +24,20 @@ def _gone(get) -> bool:
     return False
 
 
-def verified_delete(label, url, get, delete, errors) -> None:
-    """GET must succeed, DELETE must be 2xx, then GET must be 404/410."""
+def gone_after(get, polls=(1, 0.0)) -> bool:
+    """``_gone``, repeated ``polls = (attempts, seconds)`` times while it is still readable
+    (a delete beta applies late); errors other than 404/410 propagate."""
+    attempts, pause = polls
+    for n in range(attempts):
+        if _gone(get):
+            return True
+        if n + 1 < attempts:
+            sleep(pause)
+    return False
+
+
+def verified_delete(label, url, get, delete, errors, polls=(1, 0.0)) -> None:
+    """GET must succeed, DELETE must be 2xx, then GET must be 404/410 (within ``polls``)."""
     try:
         try:
             get()
@@ -31,7 +47,7 @@ def verified_delete(label, url, get, delete, errors) -> None:
                 f"(wrong URL or vanished): HTTP {e.status}")
             return
         delete()
-        if not _gone(get):
+        if not gone_after(get, polls):
             errors.append(f"{label}: still readable at {url} after delete")
     except Exception as e:  # noqa: BLE001 - record, keep cleaning up
         errors.append(f"{label}: {e}")

@@ -66,9 +66,9 @@ def tree_create(ctx: VerifyContext) -> None:
     tree = read_tree(ctx, tid)
     ctx.expect_changed(unknown, tree.result.status,
                        f"readability of tree {tid} (vs an unknown id)")
-    if title not in tree.shown:
-        raise AssertionError(f"tree {tid} reads back {tree.shown!r}, not titled {title!r}; "
-                             f"{describe_box(tree.result)}")
+    if tree.shown != title or tree.size != 0:
+        raise AssertionError(f"tree {tid} reads back {tree.shown!r} with {tree.size!r} persons, "
+                             f"not {title!r} with none; {describe_box(tree.result)}")
 
 
 @redacted
@@ -114,7 +114,12 @@ def tree_update(ctx: VerifyContext) -> None:
         raise AssertionError(f"person {found[0]} reads back living={person.living!r}, "
                              f"names {dict(person.view.names)}; {describe_box(person.result)}")
     expect_same(s0.items, persons(ctx, sibling).items, f"the persons of the other tree {sibling}")
-    expect_same(t0, read_tree(ctx, tid), f"tree {tid} itself")
+    t1 = read_tree(ctx, tid)
+    ctx.expect_changed(t0.size, t1.size, f"the person count of tree {tid}")
+    if t1.size != 1:
+        raise AssertionError(f"tree {tid} reports {t1.size!r} persons, wanted 1; "
+                             f"{describe_box(t1.result)}")
+    expect_same(t0.shown, t1.shown, f"the title of tree {tid}")
     expect_same(st0, read_tree(ctx, sibling), f"the other tree {sibling}")
 
 

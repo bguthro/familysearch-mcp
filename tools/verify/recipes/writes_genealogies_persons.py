@@ -68,7 +68,8 @@ def person_create(ctx: VerifyContext) -> None:
     other = ctx.fixtures.genealogies_tree(token("s"))
     p0, s0 = persons(ctx, tid), persons(ctx, other)
     marker, year = token("p"), "1990"
-    body = living_person_body(marker, SURNAME, "Female",
+    # Live: beta refuses a create without a local id ("A local id is required").
+    body = living_person_body(marker, SURNAME, "Female", local_id="p1",
                               facts=[build_fact(FACT_BIRTH, date=year)])
     result = ctx.api.create_genealogies_person(tid, reason=ctx.reason, body=body)
     lowered = {k.lower(): v for k, v in result.headers.items()}

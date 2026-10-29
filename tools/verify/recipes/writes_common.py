@@ -598,11 +598,13 @@ def _values(items: Any) -> tuple:
                  for i in (items if isinstance(items, list) else []))
 
 
-def description_view(result: ApiResult, sid: str) -> Description:
-    """readSourceDescription's answer: exactly the description ``sid``."""
+def description_view(result: ApiResult, sid: str, *, same=lambda a, b: a == b
+                     ) -> Description:
+    """readSourceDescription's answer: exactly the description ``sid`` (``same`` decides
+    whether an answered id is it; the private-tree API answers a local form)."""
     body = result.body if isinstance(result.body, dict) else {}
     found = [d for d in body.get("sourceDescriptions") or []
-             if isinstance(d, dict) and d.get("id") == sid]
+             if isinstance(d, dict) and d.get("id") and same(str(d["id"]), sid)]
     if len(found) != 1:
         raise AssertionError(f"the read of source description {sid} does not hold it once; "
                              f"{describe_box(result)}")

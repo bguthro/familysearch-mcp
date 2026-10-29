@@ -11,13 +11,21 @@ negative control compares the unknown-id read (an error) with the created id's (
 from __future__ import annotations
 
 from ..core import Recipe, VerifyContext
+from ..fixtures import same_id
 from .genealogies_common import NO_SUCH_GENEALOGIES
+from .writes_common import poll as _poll
 from .writes_common import (GONE, created_id, describe_box, description_body, description_view,
                             expect_same, redacted, require_created_id, status_of, token)
 
 
+def poll(ctx, fetch, done, what, *, shown=None):
+    return _poll(ctx, fetch, done, what, shown=shown or describe_box)
+
+
 def _read(ctx: VerifyContext, sdid: str):
-    return description_view(ctx.api.read_genealogies_source_description(sdid), sdid)
+    # Live: the source 2:2:286671 is answered as s_286671 (same_id maps one to the other).
+    return description_view(ctx.api.read_genealogies_source_description(sdid), sdid,
+                            same=same_id)
 
 
 def _own(ctx: VerifyContext, sdid: str) -> None:
@@ -102,7 +110,8 @@ def source_delete(ctx: VerifyContext) -> None:
     before = status_of(lambda: ctx.api.read_genealogies_source_description(sdid))
     s0 = _read(ctx, sibling)
     ctx.api.delete_genealogies_source_description(sdid, reason=ctx.reason)
-    after = status_of(lambda: ctx.api.read_genealogies_source_description(sdid))
+    after = poll(ctx, lambda: status_of(lambda: ctx.api.read_genealogies_source_description(
+        sdid)), lambda s: s in GONE, f"readGenealogiesSourceDescription: {sdid} gone")
     ctx.expect_changed(before, after, f"readability of source description {sdid}")
     if after not in GONE:
         raise AssertionError(f"deleted source description {sdid} reads back {after}, "

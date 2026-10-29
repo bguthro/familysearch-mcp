@@ -18,7 +18,7 @@ from typing import Any
 from familysearch.api._runtime import ApiResult
 
 from ..core import VerifyContext
-from ..fixtures import entry_title, same_id, tree_entries
+from ..fixtures import entry_title, tree_entry, tree_size
 from .writes_common import (Listing, PersonView, Relationship, _relationship, describe_box,
                             person_view)
 
@@ -35,18 +35,20 @@ def shown(entry: dict) -> str:
 
 @dataclass(frozen=True)
 class TreeView:
+    """A tree as readGenealogiesTree answers it: its title and its person count."""
+
     id: str
     shown: str
-    result: ApiResult = field(compare=False, repr=False)
+    size: Any = field(compare=False, default=None)
+    result: ApiResult = field(compare=False, repr=False, default=None)
 
 
 def read_tree(ctx: VerifyContext, tid: str) -> TreeView:
     result = ctx.api.read_genealogies_tree(tid)
-    entries = tree_entries(result.body)
-    found = [e for i, e in entries.items() if same_id(i, tid)]
-    if len(found) != 1:
+    entry = tree_entry(result.body, tid)
+    if entry is None:
         raise AssertionError(f"the read of tree {tid} does not hold it; {describe_box(result)}")
-    return TreeView(tid, shown(found[0]), result)
+    return TreeView(tid, shown(entry), tree_size(entry), result)
 
 
 def _name_of(person: dict) -> str:

@@ -170,7 +170,7 @@ def test_update_and_delete_write_only_tracked_trees(reg_path, slept, monkeypatch
 
 LIES = [
     ("writes.genealogies.tree_create", "ignore_tree_create", "404"),
-    ("writes.genealogies.tree_create", "wrong_tree_title", "titled"),
+    ("writes.genealogies.tree_create", "wrong_tree_title", "reads back"),
     ("writes.genealogies.tree_update", "tree_update_noop", "not seen after"),
     ("writes.genealogies.tree_update", "tree_update_other", "not seen after"),
     ("writes.genealogies.tree_delete", "tree_delete_noop", "did not change"),

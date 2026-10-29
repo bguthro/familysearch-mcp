@@ -55,6 +55,7 @@ LIES = (
     "ignore_conclusion_delete",
     "conclusion_collateral",  # a conclusion delete removes the other fact too
     # sources
+    "source_delete_needs_local",  # only a delete by the local id s_<n> takes effect
     "ignore_source_create", "ignore_source_update", "source_update_creates",
     "source_update_collateral", "source_delete_noop",
     # relationships
@@ -122,8 +123,18 @@ class FakeGenealogies:
 
     # ------------------------------------------------------------ trees
 
-    def tree_json(self, tid):
-        return {"id": tid, "titles": [{"value": self.trees[tid]["title"]}]}
+    PUBLIC = {"about": "https://beta.familysearch.org/service/gen/llsc/collection/0",
+              "id": "sd_0", "titles": [{"value": "Partner Trees"}]}
+
+    def tree_json(self, tid, title=None):
+        """The live tree read: a ``collections`` entry named only by its identifiers."""
+        count = len([1 for p in self.persons.values() if p["tid"] == tid and not p["deleted"]])
+        ark = f"https://beta.familysearch.org/ark:/61903/{tid}"
+        return {"collections": [{
+            "title": title or self.trees[tid]["title"], "size": count, "lang": "en-US",
+            "content": [{"count": count, "resourceType": GX + "Person"}],
+            "identifiers": {GX + "Persistent": [ark]}}],
+            "description": "#t_" + tid.rsplit(":", 1)[-1], "sourceDescriptions": [self.PUBLIC]}
 
     def _live_trees(self):
         return {t: r for t, r in self.trees.items() if not r["deleted"]}
@@ -150,7 +161,7 @@ class FakeGenealogies:
         tid = path.rsplit("/", 1)[-1]
         if self.mode == "catch_all" and request.method == "GET":
             first = next(iter(self.trees))
-            return self._json(200, {"sourceDescriptions": [self.tree_json(first)]})
+            return self._json(200, self.tree_json(first))
         bad = self._bad_id(tid, tree=True)
         if bad:
             return bad
@@ -161,9 +172,8 @@ class FakeGenealogies:
             return 410, {}, ""
         if request.method == "GET":
             if self.mode == "read_other":
-                return self._json(200, {"sourceDescriptions": [{
-                    "id": tid, "titles": [{"value": "ZZSPIKE other"}]}]})
-            return self._json(200, {"sourceDescriptions": [self.tree_json(tid)]})
+                return self._json(200, self.tree_json(tid, "ZZSPIKE other"))
+            return self._json(200, self.tree_json(tid))
         if request.method == "DELETE":
             if self.mode == "tree_delete_noop":
                 return 204, {}, ""
@@ -250,6 +260,8 @@ class FakeGenealogies:
                 return 204, {}, ""
             return self._json(200, {"persons": [self.person_json(p) for p in live]})
         posted = body["persons"][0]
+        if not posted.get("id"):
+            return 400, {}, "A local id is required to create a person"
         assert posted.get("living") is not None and posted["names"][0]["nameForms"][0][
             "fullText"].startswith("ZZSPIKE")
         pid = self._id("person")
@@ -348,7 +360,8 @@ class FakeGenealogies:
 
     def source_json(self, sdid):
         s = self.sources[sdid]
-        return {"sourceDescriptions": [{"id": sdid, "about": s["about"],
+        local = "s_" + sdid.rsplit(":", 1)[-1]  # live: 2:2:286671 is answered as s_286671
+        return {"description": "#" + local, "sourceDescriptions": [{"id": local, "about": s["about"],
                                         "titles": [{"value": s["title"]}],
                                         "citations": [{"value": s["citation"]}]}]}
 
@@ -371,6 +384,9 @@ class FakeGenealogies:
     def source_route(self, request):
         body = self._record(request)
         sdid = P(request.url).rsplit("/", 1)[-1]
+        local_form = sdid.startswith("s_")
+        if local_form:  # the delete by the local id the reads answer
+            sdid = next((i for i in self.sources if i.rsplit(":", 1)[-1] == sdid[2:]), sdid)
         bad = self._bad_id(sdid)
         if bad:
             return bad
@@ -382,6 +398,8 @@ class FakeGenealogies:
         if request.method == "GET":
             return self._json(200, self.source_json(sdid))
         if request.method == "DELETE":
+            if self.mode == "source_delete_needs_local" and not local_form:
+                return 204, {}, ""
             if self.mode != "source_delete_noop":
                 source["deleted"] = True
             return 204, {}, ""

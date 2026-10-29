@@ -10,7 +10,7 @@ Each read is its own recipe, because every shape here is unproven on beta.
 """
 from __future__ import annotations
 
-from ..fixtures import entry_title, same_id, tree_entries
+from ..fixtures import entry_title, local_part, tree_entry, tree_size
 from ..reads import ReadCase, json_path, reads_recipe
 from .genealogies_common import NO_SUCH_GENEALOGIES
 
@@ -48,12 +48,11 @@ def _tree_id(world):
 def _expect_tree(result, world):
     """``collections`` (or the like) holds the fixture tree, by id, under its own title."""
     tid, want = world.ids["gtree"], world.names["gtree_title"]
-    entries = tree_entries(result.body)
-    found = [e for i, e in entries.items() if same_id(i, tid)]
-    assert len(found) == 1, f"the answer does not hold tree {tid}: {sorted(entries)}"
-    title = entry_title(found[0])
-    assert title is None or title == want, f"tree {tid} is titled {title!r}, not {want!r}"
-    assert want in str(found[0]), f"tree {tid} does not carry its title {want!r}"
+    entry = tree_entry(result.body, tid)
+    assert entry is not None, f"collections does not hold tree {tid} (by its identifiers)"
+    title = entry_title(entry)
+    assert title == want, f"tree {tid} is titled {title!r}, not {want!r}"
+    assert tree_size(entry) == 0, f"fresh tree {tid} reports {tree_size(entry)!r} persons"
 
 
 TREE_CASES = (
@@ -92,8 +91,9 @@ PERSON = reads_recipe("reads.genealogies.person", (
 
 def _expect_source(result, world):
     sdid, want = world.ids["gsource"], world.names["gsource_title"]
+    # Live: the source 2:2:286671 is answered with the local id s_286671.
     found = [d for d in json_path(result.body, "sourceDescriptions")
-             if isinstance(d, dict) and d.get("id") == sdid]
+             if isinstance(d, dict) and d.get("id") and local_part(d["id"]) == local_part(sdid)]
     assert len(found) == 1, f"sourceDescriptions does not hold {sdid} once"
     titles = [t.get("value") for t in found[0].get("titles") or [] if isinstance(t, dict)]
     assert titles == [want], f"description {sdid} is titled {titles!r}, not {want!r}"
