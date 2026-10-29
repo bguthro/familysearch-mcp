@@ -568,6 +568,8 @@ def run_plan(plan: PlanFile, services: ExecServices, ledger: Ledger, *, only: Se
             writes += 1
     except _Stop as e:
         summary.stopped, summary.stop_reason = True, str(e)
+    except Exception as e:  # unexpected (e.g. expired token mid-run): stop, never crash past the ledger
+        summary.stopped, summary.stop_reason = True, f"unexpected error: {_http_status(e)}"
     if out and out[-1].status in ("failed", "failed-readback"):
         summary.stopped = True
         summary.stop_reason = summary.stop_reason or out[-1].reason
@@ -610,8 +612,8 @@ def _write_one(a: Action, who: str, data: bytes, ctype: str, before: int, plan: 
 
     try:
         present, after = _present_in(services.reader, a)
-    except ReadFailed as e:
-        fail("failed-readback", f"read-back failed: {type(e).__name__}")
+    except Exception as e:  # incl. expired token: the created id must still reach the ledger
+        fail("failed-readback", f"read-back failed: {_http_status(e)}")
     if not present or after != before + 1:
         fail("failed-readback", f"read-back mismatch (before {before}, after {after}, present {present})")
     ledger.result(status="created", reason="created", memory_id=mem_id,
@@ -694,11 +696,8 @@ def rollback(ledger: Ledger, services: ExecServices, keys: Sequence[str] = (), e
 
         try:
             present, before = _present_in(services.reader, a)
-            if not present and t.get("status") == "failed-readback":
-                done("rollback-failed", "object not visible on FamilySearch; verify by id manually")
-                continue
-            if not present:
-                done("rolled-back" if execute else "would-rollback", "already absent; no delete issued")
+            if not present:  # retitled/removed by someone else: never claim success without a delete
+                done("rollback-failed", "not found by title on FamilySearch; verify by id manually")
                 continue
             if not execute:
                 out.append(Outcome(t["key"], kind, who, "would-rollback", "dry run"))
@@ -719,8 +718,10 @@ def rollback(ledger: Ledger, services: ExecServices, keys: Sequence[str] = (), e
         except _Stop as e:
             summary.stopped, summary.stop_reason = True, str(e)
             break
-        except ReadFailed as e:
-            summary.stopped, summary.stop_reason = True, f"read failed: {type(e).__name__}"
+        except Exception as e:  # incl. ReadFailed / expired token; a delete may have happened
+            summary.stopped, summary.stop_reason = True, f"unexpected error: {_http_status(e)}"
+            if execute:
+                done("rollback-failed", f"unexpected error: {_http_status(e)}; verify by id manually")
             break
     return summary
 

@@ -195,7 +195,7 @@ def test_rollback_dry_run_default_then_execute_only_ledger_ids(tmp_path, harness
     assert not [c for c in fs.calls if c[0].startswith("delete")]
     assert cli.main(rargs(tmp_path, "--execute")) == 0
     deletes = [c for c in fs.calls if c[0].startswith("delete")]
-    assert sorted(c[1] for c in deletes) == ["M1", "S3"] or {c[0] for c in deletes} == {"delete-memory", "delete-sd"}
+    assert {c[1] for c in deletes} == {"M1", "S2"}
     assert [m[0] for m in fs.mem[FS_ID]] == ["PRE"] and fs.src[FS_ID] == []
     # idempotent: second run deletes nothing more
     n = len(deletes)
@@ -302,6 +302,47 @@ def test_adapter_delete_honours_registry_lock():
     allowed = RecordingClient(Environment.PRODUCTION)
     _SourcesAdapter(FakeSourcesLib(), FakeDiscovery(), FamilySearchApi(allowed), True).delete("SD1", reason="r")
     assert allowed.requests[0][0] == "DELETE"
+
+
+def test_token_expiry_during_readback_keeps_created_id_and_exits_3(tmp_path, harness, capsys):
+    from familysearch.errors import TokenExpiredError
+    fs, _ = harness
+    mkfile(tmp_path)
+    pf = make_plan(tmp_path, [up()])
+    orig = fs.get_memory_titles
+    n = {"c": 0}
+
+    def expiring(pid):
+        n["c"] += 1
+        if n["c"] >= 2:
+            raise TokenExpiredError("expired")
+        return orig(pid)
+    fs.get_memory_titles = expiring
+    assert cli.main(args(tmp_path, pf, "--execute")) == 3
+    last = Ledger(ledger_path(tmp_path)).records()[-1]
+    assert last["status"] == "failed-readback" and last["memory_id"] == "M1"
+    assert "STOPPED" in capsys.readouterr().out
+
+
+def test_unexpected_error_before_write_exits_3_with_no_write(tmp_path, harness):
+    from familysearch.errors import TokenExpiredError
+    fs, _ = harness
+    mkfile(tmp_path)
+    pf = make_plan(tmp_path, [up()])
+
+    def boom(pid):
+        raise TokenExpiredError("expired")
+    fs.get_fs_person = boom
+    assert cli.main(args(tmp_path, pf, "--execute")) == 3
+    assert fs.writes() == [] and not ledger_path(tmp_path).exists()
+
+
+def test_rollback_retitled_object_is_not_claimed_rolled_back(tmp_path, harness):
+    fs, pf = populated(tmp_path, harness, [up("A.pdf")])
+    fs.mem[FS_ID] = [(mid, "Renamed by someone") for mid, _ in fs.mem[FS_ID]]
+    assert cli.main(rargs(tmp_path, "--execute")) == 3
+    assert [c for c in fs.calls if c[0] == "delete-memory"] == []
+    assert Ledger(ledger_path(tmp_path)).records()[-1]["status"] == "rollback-failed"
 
 
 def test_adapter_attach_builds_clean_url():
