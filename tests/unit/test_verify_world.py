@@ -25,7 +25,7 @@ UNIQUE = "ZZSPIKE0a1b2c3d"
 
 
 # The private-tree (Genealogies) groups have their own fake: tests/unit/test_verify_world_genealogies.py
-FAMILY_TREE_GROUPS = tuple(g for g in FIXTURE_GROUPS if g not in ("gtree", "gperson", "gsource"))
+FAMILY_TREE_GROUPS = tuple(g for g in FIXTURE_GROUPS if g not in ("gtree", "gperson", "gsource", "ugroup", "utree"))
 
 
 def beta_client():
@@ -258,7 +258,7 @@ def test_groups_are_the_documented_ones():
     assert set(FIXTURE_GROUPS) == {"persons", "couple", "person_note", "couple_note",
                                    "child_and_parents_note", "notes", "source", "collection",
                                    "memory", "relationship_source", "memory_comment",
-                                   "gtree", "gperson", "gsource"}
+                                   "gtree", "gperson", "gsource", "ugroup", "utree"}
     assert set(GROUPS) == set(FIXTURE_GROUPS) | {CANARY_GROUP} and CANARY_GROUP == "canaries"
 
 

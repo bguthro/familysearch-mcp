@@ -59,6 +59,8 @@ GROUPS: dict[str, tuple[str, ...]] = {
     "gtree": (),
     "gperson": ("gtree",),
     "gsource": ("gtree",),
+    "ugroup": (),
+    "utree": (),
 }
 FIXTURE_GROUPS = tuple(GROUPS)
 CANARY_GROUP = "canaries"
@@ -376,6 +378,20 @@ class World:
             title = self._value("gsource_title", "s")
             self._ids["gsource"] = self._fixtures.genealogies_source(self._ids["gtree"], title)
             self._named("gsource_title", title)
+
+    def _build_ugroup(self) -> None:
+        """A ZZSPIKE user tree group (raw client; the account has none)."""
+        if "ugroup" not in self._ids:
+            name = self._value("ugroup_name", "g")
+            self._ids["ugroup"] = self._fixtures.user_object("group", name)  # tracked there
+            self._named("ugroup_name", name)
+
+    def _build_utree(self) -> None:
+        """A private, hidden ZZSPIKE user tree; the account's current tree is untouched."""
+        if "utree" not in self._ids:
+            name = self._value("utree_name", "u")
+            self._ids["utree"] = self._fixtures.user_object("user_tree", name)
+            self._named("utree_name", name)
 
     def _build_canaries(self) -> None:
         """Real beta reference data (the CANARY block): constants, no request at all."""

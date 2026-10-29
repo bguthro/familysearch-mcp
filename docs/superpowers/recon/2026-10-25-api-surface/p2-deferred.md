@@ -38,13 +38,13 @@ Reads: 107. Verified: 69. Deferred: 38.
 | readCurrentUser | User Endpoints | takes no path or query parameter, so no not-found control can be built: every request reads the same signed-in user (already verified by the hand-written library's read-back) | P8 |
 | readPartnerEligibility | User Endpoints | documents only 204 (and 403), so the framework accepts no 200 and a 204 counts only after a populated case; beta answers 403 for this account (recon sweep), a partner-only feature | P8 |
 | readUserHistory | User Endpoints | recon answered an empty JSON object {} for the signed-in user's history, so no content can be anchored; filling it needs updateUserHistory, an unverified write, and the spec documents no not-found status for a control | P8 |
-| getGroups | User Tree Endpoints | needs a private tree/genealogy/group fixture; creating one is an unverified write (P7) | P7 |
-| readCurrentTree | User Tree Endpoints | needs a private tree/genealogy/group fixture; creating one is an unverified write (P7) | P7 |
-| readGroup | User Tree Endpoints | needs a private tree/genealogy/group fixture; creating one is an unverified write (P7) | P7 |
-| readTree | User Tree Endpoints | needs a private tree/genealogy/group fixture; creating one is an unverified write (P7) | P7 |
-| readTreeChanges | User Tree Endpoints | needs a private tree/genealogy/group fixture; creating one is an unverified write (P7) | P7 |
-| readTreeMatches | User Tree Endpoints | needs a private tree/genealogy/group fixture; creating one is an unverified write (P7) | P7 |
-| readUserTreePersons | User Tree Endpoints | needs a private tree/genealogy/group fixture; creating one is an unverified write (P7) | P7 |
+| getGroups | User Tree Endpoints | takes no path or query parameter, so no not-found control can be built (every request lists the signed-in user's groups); the account has none (204) and the Genealogies run showed a parameterless list can answer public records instead of the user's own; the group write recipes read by id (readGroup) instead | P7 |
+| readCurrentTree | User Tree Endpoints | takes no path or query parameter, so no not-found control can be built; it always answers the account's current tree (live: GLOBAL, which no fixture may change), so no fixture value can anchor it | P7 |
+| readGroup | User Tree Endpoints | claimed by recipe reads.usertree.group; awaiting its live run on beta | P7 |
+| readTree | User Tree Endpoints | claimed by recipe reads.usertree.tree; awaiting its live run on beta | P7 |
+| readTreeChanges | User Tree Endpoints | a fresh ZZSPIKE user tree has an empty change history (the spec documents 204), which carries no anchor the request did not send, and no operation verified so far changes a user tree's content; not probed live | P7 |
+| readTreeMatches | User Tree Endpoints | a fresh ZZSPIKE user tree has no persons and so no matches (the spec documents 204 'no matches found'); a 204 carries no anchor the request did not send; not probed live | P7 |
+| readUserTreePersons | User Tree Endpoints | a fresh ZZSPIKE user tree has no persons (the spec documents 204 for an empty tree), no operation verified so far puts a person in a user tree, and a 204 carries no anchor the request did not send; not probed live | P7 |
 | readPendingModifications | Utilities Endpoints | takes no path or query parameter, so no not-found control can be built: every request reads the same feature list, and an unknown query parameter is ignored | P8 |
 
 ## Verified reads by recipe

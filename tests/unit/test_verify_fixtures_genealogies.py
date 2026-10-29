@@ -15,7 +15,8 @@ def fixtures():
 
 
 def test_private_kinds_are_torn_down_last_and_trees_after_what_they_hold():
-    assert KINDS[-3:] == ("genealogies_person", "genealogies_source", "genealogies_tree")
+    assert KINDS[-5:] == ("genealogies_person", "genealogies_source", "genealogies_tree",
+                           "group", "user_tree")
 
 
 @responses.activate

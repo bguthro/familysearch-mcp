@@ -75,7 +75,7 @@ def test_deferral_tables_name_only_family_tree_or_memories_writes():
     writes = _writes()
     ops, _ex, _areas, registry = load_inputs()
     writes.update({o.operation_id: "x" for o in ops
-                   if o.kind != "read" and o.area in (dr.P5_AREA, dr.P7_AREA)})
+                   if o.kind != "read" and o.area in (dr.P5_AREA, *dr.P7_AREA)})
     for op in (*dr.NOT_ATTEMPTED, *dr.WRITE_DEFERRED):
         assert op in writes, op
     assert set(dr.WRITE_DEFERRED) <= set(dr.WRITE_DEFERRED_TIERS)

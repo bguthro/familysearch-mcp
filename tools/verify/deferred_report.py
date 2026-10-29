@@ -20,7 +20,8 @@ from pathlib import Path
 from familysearch.api.registry import effective_status
 from tools.spec.coverage import load_inputs
 
-from .recipes import (RECIPES, reads_genealogies, reads_misc, reads_standards,
+from .recipes import (RECIPES, reads_genealogies, reads_misc, reads_standards, reads_user_trees,
+                      writes_user_trees,
                       reads_tree_persons, reads_tree_relations, writes_memories,
                       writes_memory_links, writes_genealogies_sources,
                       writes_tree_relationship_details,
@@ -33,11 +34,11 @@ PRIVATE_TREE_REASON = ("needs a private tree/genealogy/group fixture; creating o
                        "unverified write (P7)")
 # The Genealogies reads are no longer all deferred: P7 gives each a read case or a concrete
 # reason of its own (reads_genealogies); only the User Tree area (Task C) is still blanket.
-PRIVATE_TREE_AREAS = ("User Tree Endpoints",)
+PRIVATE_TREE_AREAS: tuple[str, ...] = ()  # none left: Task C gave the User Tree reads cases or reasons
 
 DEFERRED: dict[str, str] = {}
 for _module in (reads_tree_persons, reads_tree_relations, reads_standards, reads_misc,
-                reads_genealogies):
+                reads_genealogies, reads_user_trees):
     DEFERRED.update(_module.DEFERRED)
 
 # The later tier whose writes or fixtures unblock each deferred read (P3..P9 per the
@@ -65,6 +66,8 @@ TIERS: dict[str, str] = {
     "readGenealogiesSourceDescription": "P7", "readGenealogiesTrees": "P7",
     "readGenealogiesNote": "P7", "readGenealogiesPersonMatches": "P7",
     "readGenealogiesBulkMatch": "P7",
+    "readGroup": "P7", "readTree": "P7", "getGroups": "P7", "readCurrentTree": "P7",
+    "readUserTreePersons": "P7", "readTreeChanges": "P7", "readTreeMatches": "P7",
 }
 
 
@@ -134,7 +137,7 @@ P3_AREA = "Family Tree Endpoints"
 P5_REPORT_PATH = REPORT_PATH.with_name("p5-deferred.md")
 P5_AREA = "Memories Endpoints"
 P7_REPORT_PATH = REPORT_PATH.with_name("p7-deferred.md")
-P7_AREA = "Genealogies Endpoints"
+P7_AREA = ("Genealogies Endpoints", "User Tree Endpoints")
 AWAITING_TIER = "P3"
 # Claimed writes of a later tier, awaiting their live run in that tier.
 AWAITING_TIERS: dict[str, str] = {op: "P4" for op in (
@@ -151,7 +154,8 @@ AWAITING_TIERS.update({op: "P7" for op in (
     "createGenealogiesPerson", "updateGenealogiesPerson", "deleteGenealogiesPerson",
     "restoreGenealogiesPerson", "deleteGenealogiesConclusion",
     "createGenealogiesSourceDescription", "updateGenealogiesSourceDescription",
-    "deleteGenealogiesSourceDescription")})
+    "deleteGenealogiesSourceDescription",
+    "createGroup", "updateGroup", "deleteGroup", "createTree", "updateTree", "deleteTree")})
 
 
 def awaiting_tier(op: str) -> str:
@@ -160,14 +164,16 @@ def awaiting_tier(op: str) -> str:
 # Writes a recipe tried and deferred with live evidence, and the tier that takes them up.
 WRITE_DEFERRED: dict[str, str] = {}
 for _module in (writes_tree_relationships, writes_tree_relationship_details,
-                writes_memories, writes_memory_links, writes_genealogies_sources):
+                writes_memories, writes_memory_links, writes_genealogies_sources,
+                writes_user_trees):
     WRITE_DEFERRED.update(_module.DEFERRED)
 # The artifact ops need story-text and coverage fixtures no tier builds yet: the long tail.
 WRITE_DEFERRED_TIERS: dict[str, str] = {
     "restoreChildAndParentsRelationship": "P6",
     "updateMemoryArtifact": "P9", "deleteMemoryArtifactCoverage": "P9",
     "deletePersonMemoriesPersonaReference": "P9",
-    "updateGenealogiesRelationship": "P9", "deleteGenealogiesRelationship": "P9"}
+    "updateGenealogiesRelationship": "P9", "deleteGenealogiesRelationship": "P9",
+    "setCurrentTree": "P8"}
 
 _MATCHES = ("matches, merges and change history are the P6 tier: P3 excludes "
             "match resolution and not-a-match by plan (mergePerson is never run: see the "
@@ -217,9 +223,10 @@ def _write_reason(op: str, recipe_of: dict[str, str]) -> tuple[str, str]:
                      "deferral reason")
 
 
-def _writes_report(area: str, title: str, label: str, blurb: str) -> str:
+def _writes_report(area: str | tuple[str, ...], title: str, label: str, blurb: str) -> str:
     ops, _excluded, _areas, registry = load_inputs()
-    writes = sorted((o for o in ops if o.kind != "read" and o.area == area),
+    areas = (area,) if isinstance(area, str) else area
+    writes = sorted((o for o in ops if o.kind != "read" and o.area in areas),
                     key=lambda o: o.operation_id)
     recipe_of: dict[str, str] = {}
     for name in sorted(RECIPES):
@@ -274,8 +281,8 @@ def build_p5_report() -> str:
 
 
 def build_p7_report() -> str:
-    return _writes_report(P7_AREA, "# P7 write verification: deferred Genealogies writes",
-                          "Genealogies writes", "")
+    return _writes_report(P7_AREA, "# P7 write verification: deferred Genealogies and User Tree writes",
+                          "Genealogies and User Tree writes", "")
 
 
 def main(argv: list[str] | None = None) -> int:

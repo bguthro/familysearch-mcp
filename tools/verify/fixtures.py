@@ -32,7 +32,7 @@ from .teardown import gone_after, verified_delete
 # teardown order: a collection after its member descriptions, so it is empty; the private
 # (Genealogies) persons and sources before the tree that holds them
 KINDS = ("child_and_parents", "couple", "source", "collection", "memory", "person",
-         "genealogies_person", "genealogies_source", "genealogies_tree")
+         "genealogies_person", "genealogies_source", "genealogies_tree", "group", "user_tree")
 COLLECTIONS_PATH = "/platform/sources/collections"
 GENEALOGIES_PATH = "/platform/genealogies"
 # A private object's delete may show late: (attempts, seconds between) of the gone-check.
@@ -40,6 +40,25 @@ GENEALOGIES_GONE_POLLS = (5, 3.0)
 # fixture kind -> the collection segment of its resource under /genealogies
 GENEALOGIES_KINDS = {"genealogies_person": "persons", "genealogies_source": "sources",
                      "genealogies_tree": "trees"}
+# User Tree API (Task C): groups and user trees, one resource each under /platform.
+USER_TREE_KINDS = {"group": "groups", "user_tree": "trees"}
+USER_TREE_ENVELOPES = {"group": "groups", "user_tree": "trees"}
+
+
+def user_object_body(kind: str, name: str, *, oid: str | None = None,
+                     description: str | None = None, **extra) -> dict:
+    """A group or user tree in its GEDCOM X FamilySearch extension envelope (a guess:
+    ``{"groups": [{"name"}]}`` / ``{"trees": [{"name"}]}``; the current-tree read shows
+    ``trees``); with ``oid`` it names the object it updates."""
+    item: dict = {"name": name}
+    if oid:
+        item = {"id": oid, **item}
+    if description is not None:
+        item["description"] = description
+    item.update(extra)
+    return {USER_TREE_ENVELOPES[kind]: [item]}
+
+
 # An unknown collection id: beta answered 400 (API recon), so 400 joins 404/410 here,
 # but only together with the folder list not naming the collection.
 COLLECTION_GONE = (400, 404, 410)
@@ -510,6 +529,28 @@ class FixtureSet:
         self.track("genealogies_source", sdid)
         return sdid
 
+    # ---------------------------------------------------------------- user trees and groups
+
+    def user_object(self, kind: str, name: str) -> str:
+        """Create a ZZSPIKE group or user tree with the raw client and track it at once.
+
+        A user tree is created private and hidden. The current tree is never touched.
+        """
+        if kind not in USER_TREE_KINDS:
+            raise ValueError(f"unknown user tree object {kind!r}")
+        if not (isinstance(name, str) and name.startswith("ZZSPIKE")):
+            raise ValueError("a fixture group or tree name must start with ZZSPIKE")
+        extra = {"private": True, "hidden": True} if kind == "user_tree" else {}
+        resp = self._client.post(
+            join_path(self._client.base_url + "/platform", USER_TREE_KINDS[kind]),
+            json=user_object_body(kind, name, description="ZZSPIKE fixture", **extra),
+            reason=self._reason)
+        oid = created_header_id(resp.headers)
+        if not oid:
+            raise FSError(f"{kind} created but no id was returned")
+        self.track(kind, oid)
+        return oid
+
     def _collection(self, rel: str) -> str:
         href = self._discovery.href(rel).split("?")[0]
         return href if href.startswith("http") else self._client.base_url + href
@@ -531,6 +572,9 @@ class FixtureSet:
         if kind == "memory":
             return (self._memories.memory_url(oid),
                     lambda: self._memories.delete(oid, reason=reason))
+        if kind in USER_TREE_KINDS:
+            url = join_path(self._client.base_url + "/platform", USER_TREE_KINDS[kind], oid)
+            return url, lambda: self._client.delete(url, reason=reason)
         if kind in GENEALOGIES_KINDS:
             url = self.genealogies_url(GENEALOGIES_KINDS[kind], oid)
 
@@ -568,7 +612,7 @@ class FixtureSet:
                 get = (self._collection_get(oid, url) if kind == "collection"
                        else (lambda u=url: self._client.get(u)))
                 verified_delete(label, url, get, delete, problems,
-                                GENEALOGIES_GONE_POLLS if kind in GENEALOGIES_KINDS
-                                else (1, 0.0))
+                                GENEALOGIES_GONE_POLLS if kind in (
+                                    *GENEALOGIES_KINDS, *USER_TREE_KINDS) else (1, 0.0))
             self._tracked[kind] = []
         return [redact_account(p) for p in problems]

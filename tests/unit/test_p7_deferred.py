@@ -22,7 +22,7 @@ def _unverified_rows():
 def _writes():
     ops, _ex, _areas, registry = load_inputs()
     return {o.operation_id: effective_status(o.operation_id, o.fingerprint, registry)
-            for o in ops if o.kind != "read" and o.area == dr.P7_AREA}
+            for o in ops if o.kind != "read" and o.area in dr.P7_AREA}
 
 
 def test_committed_file_equals_generated_output():
