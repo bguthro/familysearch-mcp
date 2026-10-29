@@ -67,7 +67,9 @@ def _image_strings(path: Path) -> list[str]:
     return out
 
 
-def embedded_urls(path: Path) -> tuple[str, ...]:
+def inspect_embedded(path: Path) -> tuple[tuple[str, ...], bool]:
+    """(urls, readable). readable is False when the file could not be parsed
+    (corrupt, missing, or the optional library is absent). Never raises."""
     path = Path(path)
     ext = path.suffix.lower()
     try:
@@ -76,7 +78,11 @@ def embedded_urls(path: Path) -> tuple[str, ...]:
         elif ext in IMAGE_EXTS:
             strings = _image_strings(path)
         else:
-            return ()
-        return tuple(_urls_in(strings))
+            return (), True
+        return tuple(_urls_in(strings)), True
     except Exception:
-        return ()
+        return (), False
+
+
+def embedded_urls(path: Path) -> tuple[str, ...]:
+    return inspect_embedded(path)[0]

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
-from .embedded import IMAGE_EXTS, embedded_urls
+from .embedded import IMAGE_EXTS, inspect_embedded
 from .scan import Person, nfc
 
 DEFAULT_BANNED: tuple[str, ...] = (
@@ -100,7 +100,7 @@ def classify_document(
     if path.suffix.lower() not in DOCUMENT_EXTS:
         return verdict("skip", "not a document file")
 
-    urls = embedded_urls(path)
+    urls, readable = inspect_embedded(path)
     provider = _banned_match(banned, name)
     if provider is None:
         for u in urls:
@@ -112,4 +112,8 @@ def classify_document(
         if urls:
             return verdict("cite-only", "banned provider, cite as text", provider, urls[0])
         return verdict("skip", "banned provider, no original source", provider)
-    return verdict("include", "ok", None, urls[0] if urls else None)
+    if not readable:
+        return verdict("skip", "unreadable, provenance unverifiable")
+    if not urls:
+        return verdict("include", "no provenance evidence (needs review)")
+    return verdict("include", "ok", None, urls[0])

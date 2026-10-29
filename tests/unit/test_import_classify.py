@@ -37,7 +37,11 @@ def test_living_never_gets_documents(tmp_path):
 
 
 def test_basic_include_and_kinds(tmp_path):
+    pytest.importorskip("pypdf")
+    from tests.unit.test_import_embedded import make_pdf
+
     p = person()
+    make_pdf(tmp_path / "1900 Census Pat.pdf")
     v = classify_document(p, tmp_path / "1900 Census Pat.pdf", "deceased")
     assert (v.action, v.kind) == ("include", "census")
     assert document_kind("Obituary.pdf") == "obituary"
@@ -90,11 +94,37 @@ def test_banned_detected_from_embedded_host(tmp_path):
     assert v.action == "cite-only" and v.provider == "fold3"
 
 
-def test_unreadable_pdf_included_when_not_banned(tmp_path):
-    f = tmp_path / "corrupt.pdf"
-    f.write_bytes(b"garbage")
+def test_unreadable_pdf_and_image_skipped(tmp_path):
+    for name in ("corrupt.pdf", "corrupt.jpg"):
+        f = tmp_path / name
+        f.write_bytes(b"garbage")
+        v = classify_document(person(), f, "deceased")
+        assert v.action == "skip" and v.reason == "unreadable, provenance unverifiable"
+
+
+def test_missing_file_skipped(tmp_path):
+    v = classify_document(person(), tmp_path / "gone.pdf", "deceased")
+    assert v.action == "skip" and v.reason == "unreadable, provenance unverifiable"
+
+
+def test_readable_without_url_needs_review(tmp_path):
+    pytest.importorskip("pypdf")
+    from tests.unit.test_import_embedded import make_pdf
+
+    f = tmp_path / "plain.pdf"
+    make_pdf(f)
     v = classify_document(person(), f, "deceased")
-    assert v.action == "include" and v.source_url is None
+    assert v.action == "include" and v.reason == "no provenance evidence (needs review)"
+
+
+def test_readable_with_nonbanned_url_ok(tmp_path):
+    pytest.importorskip("pypdf")
+    from tests.unit.test_import_embedded import make_pdf
+
+    f = tmp_path / "plain.pdf"
+    make_pdf(f, link="https://example.org/a")
+    v = classify_document(person(), f, "deceased")
+    assert (v.action, v.reason, v.source_url) == ("include", "ok", "https://example.org/a")
 
 
 def test_custom_banned_list(tmp_path):

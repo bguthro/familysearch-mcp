@@ -6,24 +6,10 @@ from collections import Counter
 from pathlib import Path
 
 from .classify import DOCUMENT_EXTS, classify_document
-from .record import RECORD_FILE, RecordError, is_inside, load_record
+from .record import is_inside, record_state_and_status
 from .scan import Person, scan_archive, unparsed_folders
 
 STATUSES = ("deceased", "living", "unknown")
-
-
-def _status_and_record(p: Person) -> tuple[str, str]:
-    """(status, record_state) where record_state is missing|draft|invalid|reviewed."""
-    from .classify import living_status
-
-    rec = p.path / RECORD_FILE
-    if not rec.is_file():
-        return living_status(p), "missing"
-    try:
-        data = load_record(rec)
-    except (RecordError, OSError):
-        return living_status(p), "invalid"
-    return living_status(p, data.get("status")), "reviewed" if data["reviewed"] else "draft"
 
 
 def check_archive(root: Path, repo_root: Path) -> None:
@@ -36,9 +22,10 @@ def check_archive(root: Path, repo_root: Path) -> None:
 
 def build_report(root: Path, repo_root: Path) -> str:
     check_archive(root, repo_root)
-    people = scan_archive(root)
+    problems: list[str] = []
+    people = scan_archive(root, problems=problems)
     unparsed = unparsed_folders(root)
-    info = {p.folder + "\0" + p.line: _status_and_record(p) for p in people}
+    info = {p.folder + "\0" + p.line: record_state_and_status(p) for p in people}
 
     def st(p):
         return info[p.folder + "\0" + p.line][0]
@@ -84,6 +71,10 @@ def build_report(root: Path, repo_root: Path) -> str:
         out += [f"- {ln} / {fo}" for ln, fo in unparsed]
     else:
         out.append("None.")
+    out.append("")
+
+    out += ["## Unreadable folders", ""]
+    out += [f"- {x}" for x in sorted(problems)] or ["None."]
     out.append("")
 
     out += ["## Unknown status (not importable until an ImportRecord says deceased)", ""]

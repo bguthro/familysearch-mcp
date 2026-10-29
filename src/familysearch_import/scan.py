@@ -94,13 +94,35 @@ def _ignored_file(name: str) -> bool:
     return n.startswith(".") or n.lower() in IGNORED_FILES or n.startswith("Gmail -")
 
 
-def _collect_files(folder: Path) -> list[Path]:
+def _isdir(p: Path) -> bool:
+    """Directory test that never follows symlinks."""
+    try:
+        return p.is_dir() and not p.is_symlink()
+    except OSError:
+        return False
+
+
+def _listdir(d: Path, problems: list[str] | None, root: Path | None = None) -> list[Path] | None:
+    """Sorted children, or None (and a record in problems) when unreadable."""
+    try:
+        return sorted(d.iterdir())
+    except OSError:
+        if problems is not None:
+            try:
+                label = str(d.relative_to(root)) if root else d.name
+            except ValueError:
+                label = d.name
+            problems.append(nfc(label))
+        return None
+
+
+def _collect_files(folder: Path, problems: list[str] | None = None, root: Path | None = None) -> list[Path]:
     out: list[Path] = []
-    for child in sorted(folder.iterdir()):
-        if child.is_dir():
+    for child in _listdir(folder, problems, root) or []:
+        if _isdir(child):
             if not _ignored_dir(child.name):
-                out.extend(_collect_files(child))
-        elif child.is_file() and not _ignored_file(child.name):
+                out.extend(_collect_files(child, problems, root))
+        elif child.is_file() and not child.is_symlink() and not _ignored_file(child.name):
             out.append(child)
     return out
 
@@ -126,7 +148,7 @@ def _line_dirs(root: Path, lines: Sequence[str] | None) -> list[Path]:
     wanted = {nfc(x) for x in lines} if lines is not None else None
     out = []
     for d in sorted(root.iterdir()):
-        if not d.is_dir() or d.name.startswith("."):
+        if not _isdir(d) or d.name.startswith("."):
             continue
         n = nfc(d.name)
         if n.startswith("0000_") or n.lower() in SKIP_TOP or _ignored_dir(n):
@@ -137,18 +159,25 @@ def _line_dirs(root: Path, lines: Sequence[str] | None) -> list[Path]:
     return out
 
 
-def scan_archive(root: Path, lines: Sequence[str] | None = None) -> list[Person]:
+def scan_archive(
+    root: Path,
+    lines: Sequence[str] | None = None,
+    problems: list[str] | None = None,
+) -> list[Person]:
+    """problems, when given, collects root-relative paths of unreadable folders."""
     root = Path(root)
     people: list[Person] = []
     for line_dir in _line_dirs(root, lines):
-        for d in sorted(line_dir.iterdir()):
-            if not d.is_dir() or _ignored_dir(d.name):
+        for d in _listdir(line_dir, problems, root) or []:
+            if not _isdir(d) or _ignored_dir(d.name):
                 continue
             parsed = parse_folder_name(d.name)
             if parsed is None:
                 continue
             birth, death, name = parsed
-            files = _collect_files(d)
+            if _listdir(d, problems, root) is None:
+                continue
+            files = _collect_files(d, problems, root)
             ids: list[str] = []
             for f in files:
                 if f.suffix.lower() == ".webloc":
@@ -176,7 +205,7 @@ def unparsed_folders(root: Path, lines: Sequence[str] | None = None) -> list[tup
     """(line, folder) for directories under a line that do not parse as a person."""
     out = []
     for line_dir in _line_dirs(Path(root), lines):
-        for d in sorted(line_dir.iterdir()):
-            if d.is_dir() and not _ignored_dir(d.name) and parse_folder_name(d.name) is None:
+        for d in _listdir(line_dir, None) or []:
+            if _isdir(d) and not _ignored_dir(d.name) and parse_folder_name(d.name) is None:
                 out.append((nfc(line_dir.name), nfc(d.name)))
     return out

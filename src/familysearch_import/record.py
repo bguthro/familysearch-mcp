@@ -170,13 +170,25 @@ def write_draft(person: Person, repo_root: Path) -> Path:
     return draft
 
 
-def record_status_for(person: Person) -> str:
-    """Living status using the person's ImportRecord.json when it is valid."""
+def record_state_and_status(person: Person) -> tuple[str, str]:
+    """(status, record_state); the single place that reads a person's record.
+
+    record_state is missing|draft|invalid|reviewed. A record's "deceased" is
+    honoured only when reviewed is true; "living" is always honoured.
+    """
     rec = person.path / RECORD_FILE
-    status = None
-    if rec.is_file():
-        try:
-            status = load_record(rec).get("status")
-        except (RecordError, OSError):
-            status = None
-    return living_status(person, status)
+    if not rec.is_file():
+        return living_status(person), "missing"
+    try:
+        data = load_record(rec)
+    except (RecordError, OSError):
+        return living_status(person), "invalid"
+    reviewed = data["reviewed"]
+    status = data.get("status")
+    if status == "deceased" and not reviewed:
+        status = None
+    return living_status(person, status), "reviewed" if reviewed else "draft"
+
+
+def record_status_for(person: Person) -> str:
+    return record_state_and_status(person)[0]

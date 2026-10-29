@@ -116,3 +116,18 @@ def test_webloc_regex_fallback(tmp_path):
     )
     (p,) = scan_archive(tmp_path / "a")
     assert p.familysearch_ids == ("WXYZ-9AB",)
+
+
+def test_symlinked_dirs_not_followed(tmp_path):
+    outside = tmp_path / "outside"
+    (outside / "1800-1870 Linked Person").mkdir(parents=True)
+    root = tmp_path / "a"
+    person = root / "L" / "1800-1870 Pat Example"
+    person.mkdir(parents=True)
+    (person / "real.pdf").write_text("x")
+    (person / "link").symlink_to(outside, target_is_directory=True)
+    (root / "L" / "1900-1950 Link Person").symlink_to(outside, target_is_directory=True)
+    (root / "LinkLine").symlink_to(outside, target_is_directory=True)
+    people = scan_archive(root)
+    assert [p.folder for p in people] == ["1800-1870 Pat Example"]
+    assert [f.name for f in people[0].files] == ["real.pdf"]

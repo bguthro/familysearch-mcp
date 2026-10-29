@@ -7,7 +7,8 @@ import sys
 from pathlib import Path
 
 from .record import DRAFT_FILE, RECORD_FILE, is_inside, repo_root, write_draft
-from .report import _status_and_record, build_report, check_archive
+from .record import record_state_and_status
+from .report import build_report, check_archive
 from .scan import nfc, scan_archive
 
 
@@ -34,9 +35,16 @@ def main(argv: list[str] | None = None) -> int:
         return _err(str(e))
 
     if args.cmd == "report":
-        out = args.out or (args.archive / "_import" / "InventoryReport.md")
+        import_dir = args.archive / "_import"
+        default = import_dir / "InventoryReport.md"
+        out = args.out or default
         if is_inside(out, repo):
             return _err(f"refusing to write inside the repo: {out}")
+        if out.resolve() != default.resolve():
+            if out.exists():
+                return _err(f"refusing to overwrite existing path: {out}")
+            if is_inside(out, args.archive) and not is_inside(out, import_dir):
+                return _err(f"refusing to write inside the archive outside _import/: {out}")
         try:
             text = build_report(args.archive, repo)
         except (FileNotFoundError, ValueError) as e:
@@ -48,11 +56,15 @@ def main(argv: list[str] | None = None) -> int:
 
     written = skipped = 0
     for p in scan_archive(args.archive, [args.line]):
-        status, state = _status_and_record(p)
-        if status == "living" or state != "missing" or (p.path / DRAFT_FILE).exists():
+        status, state = record_state_and_status(p)
+        if status != "deceased" or state != "missing" or (p.path / DRAFT_FILE).exists():
             skipped += 1
             continue
-        write_draft(p, repo)
+        try:
+            write_draft(p, repo)
+        except (FileExistsError, ValueError, OSError):
+            skipped += 1
+            continue
         written += 1
     print(f"drafts written: {written}, skipped: {skipped}")
     return 0

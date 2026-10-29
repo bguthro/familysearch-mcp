@@ -9,12 +9,19 @@ from familysearch_import.record import repo_root
 from familysearch_import.report import build_report
 
 
+def _pdf(path):
+    pytest.importorskip("pypdf")
+    from tests.unit.test_import_embedded import make_pdf
+
+    make_pdf(path)
+
+
 def make(tmp_path: Path) -> Path:
     root = tmp_path / "archive"
     line = root / "Line A"
     dead = line / "1844-1915 Dead Example"
     dead.mkdir(parents=True)
-    (dead / "census.pdf").write_bytes(b"x")
+    _pdf(dead / "census.pdf")
     (dead / "ancestry thing.pdf").write_bytes(b"x")
     (dead / "Citation: foo.pdf").write_bytes(b"x")
     (dead / "ResearchSummary.md").write_text("x")
@@ -37,7 +44,7 @@ def make(tmp_path: Path) -> Path:
             "gender": None, "facts": [], "relationships": [], "sources": [], "reviewed": True,
         })
     )
-    (reviewed / "will.pdf").write_bytes(b"x")
+    _pdf(reviewed / "will.pdf")
     (line / "No Dates Folder").mkdir()
     return root
 
@@ -103,9 +110,71 @@ def test_cli_drafts(tmp_path, capsys):
     assert main(["drafts", "--archive", str(root), "--line", "Line A"]) == 0
     line = root / "Line A"
     assert (line / "1844-1915 Dead Example" / "ImportRecord.draft.json").is_file()
-    assert (line / "1700-? Unknown Example" / "ImportRecord.draft.json").is_file()
+    assert not (line / "1700-? Unknown Example" / "ImportRecord.draft.json").exists()
     assert not (line / "1960 Livingston Zzliving" / "ImportRecord.draft.json").exists()
     assert not (line / "1950 Marked Deceased" / "ImportRecord.draft.json").exists()
     # second run writes nothing new and does not fail
     assert main(["drafts", "--archive", str(root), "--line", "Line A"]) == 0
     assert "drafts written: 0" in capsys.readouterr().out
+
+
+def test_cli_out_refuses_existing_and_archive_paths(tmp_path, capsys):
+    root = make(tmp_path)
+    existing = tmp_path / "exists.md"
+    existing.write_text("keep")
+    assert main(["report", "--archive", str(root), "--out", str(existing)]) == 2
+    assert existing.read_text() == "keep"
+    inside = root / "Line A" / "R.md"
+    assert main(["report", "--archive", str(root), "--out", str(inside)]) == 2
+    assert not inside.exists()
+    ok = root / "_import" / "Other.md"
+    assert main(["report", "--archive", str(root), "--out", str(ok)]) == 0
+    assert ok.is_file()
+    outside = tmp_path / "elsewhere" / "R.md"
+    outside.parent.mkdir()
+    assert main(["report", "--archive", str(root), "--out", str(outside)]) == 0
+
+
+def test_default_out_overwrite_allowed(tmp_path):
+    root = make(tmp_path)
+    assert main(["report", "--archive", str(root)]) == 0
+    default = root / "_import" / "InventoryReport.md"
+    default.write_text("old")
+    assert main(["report", "--archive", str(root), ]) == 0
+    assert "Import Inventory Report" in default.read_text()
+    assert main(["report", "--archive", str(root), "--out", str(default)]) == 0
+
+
+def test_unreviewed_deceased_record_stays_living(tmp_path):
+    root = tmp_path / "a"
+    f = root / "L" / "1950 Pending Person"
+    f.mkdir(parents=True)
+    (f / "ImportRecord.json").write_text(
+        json.dumps({
+            "version": 1, "status": "deceased", "familysearch_id": None, "names": [],
+            "gender": None, "facts": [], "relationships": [], "sources": [], "reviewed": False,
+        })
+    )
+    text = build_report(root, repo_root())
+    assert "| L | 0 | 1 | 0 | 1 |" in text
+    assert "Pending Person" not in text
+
+
+def test_unreadable_folders_listed(tmp_path):
+    import os
+
+    root = tmp_path / "a"
+    ok = root / "L" / "1800-1870 Fine Person"
+    ok.mkdir(parents=True)
+    bad = root / "L" / "1800-1870 Locked Person"
+    bad.mkdir()
+    bad.chmod(0)
+    try:
+        if os.access(bad, os.R_OK):
+            pytest.skip("cannot make folder unreadable")
+        text = build_report(root, repo_root())
+    finally:
+        bad.chmod(0o755)
+    assert "## Unreadable folders" in text
+    assert "L/1800-1870 Locked Person" in text
+    assert "People scanned: 1" in text
