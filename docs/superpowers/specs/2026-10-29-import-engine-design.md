@@ -40,8 +40,8 @@ Take Ben's genealogical archive (Google Drive `GenealogicalResearch/`) and add i
 ## Can be done without production access
 Scan, classify, document filter, extraction format, plan format, dry-run report, ledger and rollback, and the full pipeline against beta using fictional test people. The production canary read check and the pilot cannot.
 
-## Open questions for Ben
-1. Extraction: may I draft the structured per-person record from `ResearchSummary.md` for you to review? Where should those reviewed records live (inside the archive, or in this repo)?
-2. Living threshold: is "no death year and born 1900 or later" right, or should you maintain an explicit list?
-3. First pilot subjects: which one or two deceased people, ideally already linked, and a low-stakes line.
-4. Should banned-provider images still be cited as sources (text citation only) while the image itself is not uploaded?
+## Answers from Ben (2026-10-29)
+1. **Extraction records live in the archive, not in this repo.** This repo stays free of personal data: no names, dates or ids of real people in code, tests, fixtures, docs or the ledger default location. Tests use fictional people only. The engine reads records from a configurable archive path and writes plans, reports and ledgers there too.
+2. **Living rule confirmed**: no death year and born 1900 or later is living, unless the archive explicitly says deceased.
+3. **Pilot subjects**: no line is low-stakes; I pick one (deceased, already linked, a few clean documents) when the plan exists, and Ben approves it. The choice is recorded in the archive, not here.
+4. **Banned-provider images**: cite them as text sources only when the original source id/URL is known; otherwise skip. Many PDFs and images embed the original URL, so the scan stage must extract embedded URLs (PDF text and metadata, image EXIF/XMP). The image itself is still never uploaded.
