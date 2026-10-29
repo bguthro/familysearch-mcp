@@ -10,6 +10,7 @@ from .reads_relationship_sources import READS_RELATIONSHIP_SOURCES
 from .reads_standards import READS_STANDARDS
 from .reads_tree_persons import READS_TREE_PERSONS
 from .reads_tree_relations import READS_TREE_RELATIONS
+from .writes_genealogies_persons import WRITES_GENEALOGIES_PERSONS
 from .writes_genealogies_trees import WRITES_GENEALOGIES_TREES
 from .writes_memories import WRITES_MEMORIES
 from .writes_memory_links import WRITES_MEMORY_LINKS
@@ -27,7 +28,8 @@ RECIPES: dict[str, Recipe] = {
                         *WRITES_TREE_NOTES, *WRITES_TREE_RELATIONSHIPS,
                         *WRITES_TREE_RELATIONSHIP_DETAILS, *WRITES_SOURCES,
                         *WRITES_SOURCE_BOX, *WRITES_MEMORIES,
-                        *WRITES_MEMORY_LINKS, *WRITES_GENEALOGIES_TREES)}
+                        *WRITES_MEMORY_LINKS, *WRITES_GENEALOGIES_TREES,
+                        *WRITES_GENEALOGIES_PERSONS)}
 
 
 def validate_recipes(recipes: dict[str, Recipe]) -> list[str]:

@@ -303,7 +303,7 @@ class FakeGenealogies:
                 at = next((i for i, x in enumerate(person[part]) if c.get("id") == x["id"]),
                           None)
                 if at is None or self.mode == "person_update_creates":
-                    person[part].append(self._named(c))
+                    person[part].append(self._named({k: v for k, v in c.items() if k != "id"}))
                 else:
                     person[part][at] = {**c, "id": person[part][at]["id"]}
         if self.mode == "person_update_collateral" and person["facts"]:

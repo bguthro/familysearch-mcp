@@ -12,7 +12,7 @@ Each read is its own recipe, because every shape here is unproven on beta.
 from __future__ import annotations
 
 from ..fixtures import entry_title, tree_entries
-from ..reads import ReadCase, reads_recipe
+from ..reads import ReadCase, json_path, reads_recipe
 from .genealogies_common import NO_SUCH_GENEALOGIES
 
 DEFERRED: dict[str, str] = {
@@ -38,8 +38,6 @@ DEFERRED: dict[str, str] = {
         "'Unable to fetch match resolutions' for ids of the wrong prefix, and no real match "
         "can be made for a fixture"),
     # Pending the person and source cases of the next P7 tasks (removed when they land).
-    "readGenealogiesPersons": "awaiting the Genealogies person recipes (P7 Task B2)",
-    "readGenealogiesPerson": "awaiting the Genealogies person recipes (P7 Task B2)",
     "readGenealogiesSourceDescription": "awaiting the Genealogies source recipes (P7 Task B3)",
 }
 
@@ -65,4 +63,31 @@ TREE_CASES = (
 )
 TREE = reads_recipe("reads.genealogies.tree", TREE_CASES)
 
-READS_GENEALOGIES = (TREE,)
+def _persons(result, world):
+    pid, name = world.ids["gperson"], world.names["gperson_name"]
+    persons = json_path(result.body, "persons")
+    rows = [p for p in persons if isinstance(p, dict) and p.get("id") == pid]
+    assert len(rows) == 1, f"persons does not hold {pid} once"
+    assert name in str(rows[0].get("names")), f"person {pid} is not named {name!r}"
+    assert rows[0].get("living") is True, f"person {pid} is not listed living"
+
+
+def _expect_person(result, world):
+    pid, name = world.ids["gperson"], world.names["gperson_name"]
+    person = json_path(result.body, "persons[0]")
+    assert person.get("id") == pid, f"the answer is person {person.get('id')}, not {pid}"
+    assert name in str(person.get("names")), f"person {pid} is not named {name!r}"
+    assert person.get("living") is True, f"person {pid} does not read back living"
+
+
+_NAME = (lambda w: w.names["gperson_name"],)
+PERSONS = reads_recipe("reads.genealogies.persons", (
+    ReadCase(op="readGenealogiesPersons", path_args=_tree_id,
+             missing={"tid": NO_SUCH_GENEALOGIES}, expect=_persons, anchors=_NAME,
+             needs=("gperson",)),))
+PERSON = reads_recipe("reads.genealogies.person", (
+    ReadCase(op="readGenealogiesPerson", path_args=lambda w: {"pid": w.ids["gperson"]},
+             missing={"pid": NO_SUCH_GENEALOGIES}, expect=_expect_person, anchors=_NAME,
+             needs=("gperson",)),))
+
+READS_GENEALOGIES = (TREE, PERSONS, PERSON)
