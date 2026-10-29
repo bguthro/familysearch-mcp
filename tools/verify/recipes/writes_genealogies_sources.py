@@ -41,7 +41,7 @@ def source_create(ctx: VerifyContext) -> None:
 
     The id is the create's X-ENTITY-ID / Location, tracked at once. Negative control: the
     status of readGenealogiesSourceDescription for an id that does not exist (an error)
-    against the new id's (200). It must answer the posted about, title and citation, and
+    against the new id's (200). It must answer the posted title and citation (and some about: beta rewrites it), and
     a second read of the unknown id must still error.
     """
     tid = ctx.fixtures.genealogies_tree(token("t"))
@@ -56,9 +56,11 @@ def source_create(ctx: VerifyContext) -> None:
     d = _read(ctx, sdid)
     ctx.expect_changed(before, d.result.status,
                        f"readability of source description {sdid} (vs an unknown id)")
-    if (d.title, d.citation, d.about) != (title, citation, about):
+    # The server rewrites ``about`` to its own source URL (live), so it is only required
+    # to be present; the exact title and citation are the proof.
+    if (d.title, d.citation) != (title, citation) or not d.about:
         raise AssertionError(f"source description {sdid} reads back {d!r}, not the posted "
-                             f"title, citation and about; {describe_box(d.result)}")
+                             f"title and citation (with an about); {describe_box(d.result)}")
 
 
 @redacted

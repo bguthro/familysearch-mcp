@@ -63,12 +63,10 @@ TREE_CASES = (
 TREE = reads_recipe("reads.genealogies.tree", TREE_CASES)
 
 def _persons(result, world):
-    pid, name = world.ids["gperson"], world.names["gperson_name"]
-    persons = json_path(result.body, "persons")
-    rows = [p for p in persons if isinstance(p, dict) and p.get("id") == pid]
-    assert len(rows) == 1, f"persons does not hold {pid} once"
-    assert name in str(rows[0].get("names")), f"person {pid} is not named {name!r}"
-    assert rows[0].get("living") is True, f"person {pid} is not listed living"
+    """Live: the list is ids and links only. A tree holding one person lists exactly it."""
+    pid = world.ids["gperson"]
+    ids = [p.get("id") for p in json_path(result.body, "persons") if isinstance(p, dict)]
+    assert ids == [pid], f"the tree's persons are {ids}, not exactly [{pid!r}]"
 
 
 def _expect_person(result, world):
@@ -82,7 +80,8 @@ def _expect_person(result, world):
 _NAME = (lambda w: w.names["gperson_name"],)
 PERSONS = reads_recipe("reads.genealogies.persons", (
     ReadCase(op="readGenealogiesPersons", path_args=_tree_id,
-             missing={"tid": NO_SUCH_GENEALOGIES}, expect=_persons, anchors=_NAME,
+             missing={"tid": NO_SUCH_GENEALOGIES}, expect=_persons,
+             anchors=(lambda w: w.ids["gperson"],),
              needs=("gperson",)),))
 PERSON = reads_recipe("reads.genealogies.person", (
     ReadCase(op="readGenealogiesPerson", path_args=lambda w: {"pid": w.ids["gperson"]},

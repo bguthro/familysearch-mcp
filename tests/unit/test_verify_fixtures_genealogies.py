@@ -49,3 +49,14 @@ def test_teardown_deletes_persons_and_sources_before_the_tree():
     deletes = [p for m, p in fake.calls if m == "DELETE"]
     assert [p.split("/genealogies/")[1].split("/")[0] for p in deletes] == [
         "persons", "sources", "trees"]
+
+
+def test_created_persons_parses_the_live_tree_update_answer():
+    from tools.verify.fixtures import created_persons
+    ark = "https://beta.familysearch.org/ark:/61903/"
+    body = {"sourceDescriptions": [
+        {"id": "m1", "identifiers": {"http://gedcomx.org/Persistent": [ark + "2:2:MSGD-Z4F"]}},
+        {"id": "f1", "identifiers": {"http://gedcomx.org/Persistent": [ark + "2:2:MSGD-Z4G"]}},
+        {"id": "sd_0"}]}
+    assert created_persons(body, {"m1", "f1"}) == {"m1": "2:2:MSGD-Z4F", "f1": "2:2:MSGD-Z4G"}
+    assert created_persons({}, {"m1"}) == {}

@@ -51,14 +51,9 @@ def read_tree(ctx: VerifyContext, tid: str) -> TreeView:
     return TreeView(tid, shown(entry), tree_size(entry), result)
 
 
-def _name_of(person: dict) -> str:
-    names = person.get("names") or []
-    forms = (names[0].get("nameForms") if names and isinstance(names[0], dict) else None) or [{}]
-    return (forms[0] or {}).get("fullText") or ""
-
-
 def persons(ctx: VerifyContext, tid: str) -> Listing:
-    """readGenealogiesPersons: the tree's persons, id -> (full name, living). 204: none."""
+    """readGenealogiesPersons: the tree's person ids (live: the answer is ids and links
+    only, no names or living flag; those come from readGenealogiesPerson). 204: none."""
     result = ctx.api.read_genealogies_persons(tid)
     if result.status == 204 or not (result.text or "").strip():
         return Listing({}, result)
@@ -66,7 +61,7 @@ def persons(ctx: VerifyContext, tid: str) -> Listing:
     items = {}
     for person in body.get("persons") or []:
         if isinstance(person, dict) and person.get("id"):
-            items[str(person["id"])] = (_name_of(person), person.get("living"))
+            items[str(person["id"])] = True
     if not items:
         raise AssertionError(f"the persons of tree {tid} are not in persons; "
                              f"{describe_box(result)}")

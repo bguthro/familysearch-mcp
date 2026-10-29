@@ -44,6 +44,7 @@ LIES = (
     "tree_delete_noop",       # tree delete answers 204, deletes nothing
     "tree_delete_collateral", # tree delete also deletes every other tree
     # persons
+    "persons_list_extra",     # the tree's person list names a person that is not there
     "drop_living",            # the person is stored not-living
     "ignore_person_create",   # person create answers 201, stores nothing
     "ignore_person_update",
@@ -187,7 +188,7 @@ class FakeGenealogies:
     def tree_update(self, tid, body):
         """POST: add persons (local ids replaced by server ids) and relationships."""
         if self.mode == "tree_update_noop":
-            return self._json(200, {"persons": []})
+            return self._json(200, {"sourceDescriptions": []})
         target = tid
         if self.mode == "tree_update_other":
             target = next((t for t in self.trees if t != tid), tid)
@@ -197,7 +198,9 @@ class FakeGenealogies:
             pid = self._id("person")
             local[person.get("id")] = pid
             self.persons[pid] = self._new_person(target, person)
-            out.append({"id": pid})
+            # live: keyed by the posted local id, the real id the tail of the ark
+            out.append({"id": person.get("id"), "resourceType": GX + "Person", "identifiers": {
+                GX + "Persistent": [f"https://beta.familysearch.org/ark:/61903/{pid}"]}})
         for rel in body.get("relationships") or []:
             p1 = local.get(str(rel["person1"]["resource"]).lstrip("#"))
             p2 = local.get(str(rel["person2"]["resource"]).lstrip("#"))
@@ -208,7 +211,7 @@ class FakeGenealogies:
                 return 400, {}, "person1 must be male and person2 female"
             self.relationships[self._id("rel")] = {
                 "persons": [p1, p2], "facts": [], "deleted": False, "type": rel["type"]}
-        return self._json(200, {"persons": out})
+        return self._json(200, {"sourceDescriptions": out})
 
     # ------------------------------------------------------------ persons
 
@@ -258,7 +261,11 @@ class FakeGenealogies:
             live = [p for p, r in self.persons.items() if r["tid"] == tid and not r["deleted"]]
             if not live:
                 return 204, {}, ""
-            return self._json(200, {"persons": [self.person_json(p) for p in live]})
+            # live: ids and links only
+            return self._json(200, {"links": {"self": {"href": G}}, "persons": [
+                {"id": p, "links": {"person": {"href": f"{G}/persons/{p}"}}}
+                for p in [*live, *(["2:2:2:GZPE-999"] if self.mode == "persons_list_extra"
+                                   else [])]]})
         posted = body["persons"][0]
         if not posted.get("id"):
             return 400, {}, "A local id is required to create a person"
@@ -365,6 +372,10 @@ class FakeGenealogies:
                                         "titles": [{"value": s["title"]}],
                                         "citations": [{"value": s["citation"]}]}]}
 
+    @staticmethod
+    def _about(sdid):
+        return "https://beta.familysearch.org/service/gen/llsc/source/" + sdid.rsplit(":", 1)[-1]
+
     def sources_in_tree(self, request, tid):
         body = self._record(request)
         bad = self._bad_id(tid, tree=True)
@@ -376,7 +387,8 @@ class FakeGenealogies:
         desc = body["sourceDescriptions"][0]
         sdid = self._id("source")
         if self.mode != "ignore_source_create":
-            self.sources[sdid] = {"tid": tid, "about": desc["about"],
+            # live: the server rewrites about to its own source URL
+            self.sources[sdid] = {"tid": tid, "about": self._about(sdid),
                                   "title": desc["titles"][0]["value"],
                                   "citation": desc["citations"][0]["value"], "deleted": False}
         return self._created("sources", sdid)
@@ -411,7 +423,7 @@ class FakeGenealogies:
             self.sources[new] = {**source, "title": desc["titles"][0]["value"],
                                  "citation": desc["citations"][0]["value"]}
             return 204, {"Location": f"{G}/sources/{new}"}, ""
-        source.update(about=desc["about"], title=desc["titles"][0]["value"],
+        source.update(title=desc["titles"][0]["value"],
                       citation=desc["citations"][0]["value"])
         if self.mode == "source_update_collateral":
             for other in self.sources.values():

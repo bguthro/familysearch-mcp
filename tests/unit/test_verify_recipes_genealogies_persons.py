@@ -131,7 +131,7 @@ def test_writes_only_tracked_persons(reg_path, slept, monkeypatch):
 
 
 LIES = [
-    ("writes.genealogies.person_create", "drop_living", "tree"),
+    ("writes.genealogies.person_create", "drop_living", "living=False"),
     ("writes.genealogies.person_create", "ignore_person_create", "not seen after"),
     ("writes.genealogies.person_update", "ignore_person_update", "negative control"),
     ("writes.genealogies.person_update", "person_update_creates", "number of names"),
@@ -161,5 +161,7 @@ def test_person_read_cases_pass_and_catch_lies(name, reg_path, slept):
     assert result == {"recipe": name, "passed": True, "problems": []}
     assert fake.live() == []
     responses.reset()
-    bad, _fake, _ctx = run(name, reg_path, "drop_living")
-    assert not bad["passed"] and "living" in " ".join(bad["problems"])
+    lie = "drop_living" if name.endswith(".person") else "persons_list_extra"
+    bad, _fake, _ctx = run(name, reg_path, lie)
+    assert not bad["passed"] and ("living" if lie == "drop_living" else "not exactly") in " ".join(
+        bad["problems"])

@@ -224,12 +224,28 @@ def entry_title(entry: dict) -> str | None:
     return first.get("value") if isinstance(first, dict) else None
 
 
-def new_persons(body, local_ids) -> list[str]:
-    """The server ids a tree update answers for the persons it created (those not named
-    by one of the posted local ids)."""
-    persons = body.get("persons") if isinstance(body, dict) else None
-    return [str(p["id"]) for p in persons or []
-            if isinstance(p, dict) and p.get("id") and str(p["id"]) not in local_ids]
+def created_persons(body, local_ids) -> dict[str, str]:
+    """The persons a tree update created: local id -> server id.
+
+    Live (updateGenealogiesTree, 200): the persons come back as ``sourceDescriptions``
+    keyed by the LOCAL ids posted (``m1``), each with the real id as the tail of its
+    ark ``identifiers`` URL (``.../ark:/61903/2:2:MSGD-Z4F``). A ``persons`` entry whose
+    id is not a local one is taken as the server id too.
+    """
+    found: dict[str, str] = {}
+    if not isinstance(body, dict):
+        return found
+    for desc in body.get("sourceDescriptions") or []:
+        if not (isinstance(desc, dict) and desc.get("id") in local_ids):
+            continue
+        for urls in (desc.get("identifiers") or {}).values():
+            for url in urls if isinstance(urls, list) else []:
+                if isinstance(url, str) and url.rstrip("/").rsplit("/", 1)[-1]:
+                    found.setdefault(desc["id"], url.rstrip("/").rsplit("/", 1)[-1])
+    for person in body.get("persons") or []:
+        if isinstance(person, dict) and person.get("id") and person["id"] not in local_ids:
+            found.setdefault(f"#{len(found)}", str(person["id"]))
+    return found
 
 
 class FixtureSet:
@@ -519,22 +535,13 @@ class FixtureSet:
         resp = self._client.post(self.genealogies_url("trees", tid),
                                  json=couple_tree_body(male, female), reason=self._reason)
         body = resp.json() if resp.text.strip() else {}
-        ids = new_persons(body, {"m1", "f1"})
-        if len(ids) != 2:  # no ids answered: find the two persons by their marker names
-            listed = self._client.get(self.genealogies_url("trees", tid, "persons"))
-            persons = (listed.json() if listed.text.strip() else {}).get("persons") or []
-            ids = [str(p["id"]) for p in persons if isinstance(p, dict) and p.get("id")
-                   and marker in json.dumps(p.get("names"))]
-        for pid in ids:
+        made = created_persons(body, {"m1", "f1"})
+        for pid in made.values():
             self.track("genealogies_person", pid)
-        if len(ids) != 2:
-            raise FSError(f"the couple update made {len(ids)} persons, not 2; the update "
+        if set(made) != {"m1", "f1"}:
+            raise FSError(f"the couple update made {len(made)} persons, not 2; the update "
                           f"answered {resp.status_code} {(resp.text or '')[:300]!r}")
-        by_name = {}
-        for pid in ids:
-            by_name[pid] = self._client.get(self.genealogies_url("persons", pid)).text
-        male_id = next((p for p, t in by_name.items() if given["m1"] in t), ids[0])
-        return male_id, next(p for p in ids if p != male_id)
+        return made["m1"], made["f1"]
 
     def _collection(self, rel: str) -> str:
         href = self._discovery.href(rel).split("?")[0]

@@ -62,7 +62,7 @@ def person_create(ctx: VerifyContext) -> None:
     Negative control: the id among the tree's persons (readGenealogiesPersons), before
     (absent; the tree is empty) and after (polled). The person reads back
     (readGenealogiesPerson) living, with the marker name, the birth fact and the gender;
-    the list row agrees. Sibling: the other tree still lists no persons.
+    the tree lists exactly that id (the list answers ids only). Sibling: the other tree still lists no persons.
     """
     tid = ctx.fixtures.genealogies_tree(token("t"))
     other = ctx.fixtures.genealogies_tree(token("s"))
@@ -82,10 +82,9 @@ def person_create(ctx: VerifyContext) -> None:
                  f"readGenealogiesPersons: person {pid}")
     ctx.expect_changed(pid in p0.items, pid in after.items,
                        f"presence of person {pid} in tree {tid}")
-    name, living = after.items[pid]
-    if marker not in name or living is not True or set(after.items) != {pid}:
-        raise AssertionError(f"tree {tid} lists {after.items!r}, wanted only person {pid} "
-                             f"named {marker}, living; {describe_box(after.result)}")
+    if set(after.items) != {pid}:  # the listing is ids only; the person read has the rest
+        raise AssertionError(f"tree {tid} lists {sorted(after.items)}, wanted only person "
+                             f"{pid}; {describe_box(after.result)}")
     person = read_person(ctx, pid)
     _living(person, pid)
     if not person.view.name_has(marker):

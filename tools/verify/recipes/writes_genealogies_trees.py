@@ -16,7 +16,7 @@ persons back. Ids are only ever used as the server returns them.
 from __future__ import annotations
 
 from ..core import Recipe, VerifyContext
-from ..fixtures import create_tree, living_person_body, new_persons
+from ..fixtures import create_tree, created_persons, living_person_body
 from .genealogies_common import NO_SUCH_GENEALOGIES, persons, read_person, read_tree
 from .writes_common import (GONE, created_id, describe_box, expect_same, redacted, status_of,
                             token)
@@ -77,12 +77,13 @@ def tree_update(ctx: VerifyContext) -> None:
 
     The spec: the update adds persons (and relationships) and answers new ids for the
     persons created. Two ZZSPIKE trees; only the first is updated, with
-    ``{"persons": [{"id": "zz1", living: true, a marker name}]}``. Every id the answer
-    names that is not the local one is tracked at once (else the person is found by the
-    marker in the tree's persons and tracked). Negative control: the marker in the
-    tree's persons (readGenealogiesPersons), absent before and present (polled) after,
-    on exactly one person, who reads back living with that name. Siblings: the other
-    tree still lists no persons, and both trees read back as they were.
+    ``{"persons": [{"id": "zz1", living: true, a marker name}]}``. The answer names the
+    created person as a ``sourceDescriptions`` entry keyed ``zz1`` whose ark identifier
+    ends in the real id, tracked at once. Negative control: that id among the tree's
+    persons (readGenealogiesPersons: ids only), absent before and, polled, the only one
+    after; the person reads back (readGenealogiesPerson) living with the marker name, and
+    the tree reports one person. Siblings: the other tree still lists no persons, and
+    both trees keep their titles.
     """
     tid = ctx.fixtures.genealogies_tree(token("t"))
     sibling = ctx.fixtures.genealogies_tree(token("s"))
@@ -94,21 +95,21 @@ def tree_update(ctx: VerifyContext) -> None:
         tid, reason=ctx.reason, body=living_person_body(marker, SURNAME, "Female",
                                                         local_id="zz1"))
     ctx.notes.append(f"tree update answered {result.status}")
-    for pid in new_persons(result.body, {"zz1"}):
+    made = created_persons(result.body, {"zz1"})
+    for pid in made.values():
         ctx.fixtures.track("genealogies_person", pid)
-    p1 = poll(ctx, lambda: persons(ctx, tid),
-              lambda p: any(marker in name for name, _ in p.items.values()),
-              f"readGenealogiesPersons: a person named {marker}")
-    found = [pid for pid, (name, _) in p1.items.items() if marker in name]
-    for pid in found:
-        if pid not in ctx.fixtures.tracked("genealogies_person"):
-            ctx.fixtures.track("genealogies_person", pid)
-    ctx.expect_changed(any(marker in n for n, _ in p0.items.values()),
-                       any(marker in n for n, _ in p1.items.values()),
-                       f"presence of a person named {marker} in tree {tid}")
-    if len(found) != 1 or set(p1.items) - set(found) or p1.items[found[0]][1] is not True:
-        raise AssertionError(f"tree {tid} lists persons {p1.items!r}, wanted exactly one "
-                             f"living person named {marker}; {describe_box(p1.result)}")
+    if len(made) != 1:
+        raise AssertionError(f"the update named {len(made)} created persons, wanted one; "
+                             f"{describe_box(result)}")
+    new_id = next(iter(made.values()))
+    p1 = poll(ctx, lambda: persons(ctx, tid), lambda p: new_id in p.items,
+              f"readGenealogiesPersons: person {new_id}")
+    ctx.expect_changed(new_id in p0.items, new_id in p1.items,
+                       f"presence of person {new_id} in tree {tid}")
+    if set(p1.items) != {new_id}:
+        raise AssertionError(f"tree {tid} lists persons {sorted(p1.items)}, wanted exactly "
+                             f"{new_id}; {describe_box(p1.result)}")
+    found = [new_id]
     person = read_person(ctx, found[0])
     if person.living is not True or not person.view.name_has(marker):
         raise AssertionError(f"person {found[0]} reads back living={person.living!r}, "
