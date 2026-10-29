@@ -102,18 +102,27 @@ class ReadOnlyFS:
         self._search = Search(client, discovery)
 
     @classmethod
-    def production(
+    def for_environment(
         cls,
+        env: Environment,
         *,
         token_fn: Callable[[], str] = extract_brave_token,
         http_get: Callable[[str, str], int] | None = None,
     ) -> "ReadOnlyFS":
-        """Build from Brave's session; refuse unless the token is a production one."""
+        """Build from Brave's session; refuse unless the token belongs to env."""
         token = token_fn()
         get = http_get or _status_get
-        if get(Environment.PRODUCTION.base_url, token) != 200:
-            raise FSError("Brave's FamilySearch session is not signed in to production.")
-        return cls(FSClient(token, Environment.PRODUCTION))
+        if get(env.base_url, token) != 200:
+            raise FSError(f"Brave's FamilySearch session is not signed in to {env.name.lower()}.")
+        return cls(FSClient(token, env))
+
+    @classmethod
+    def production(cls, **kw) -> "ReadOnlyFS":
+        return cls.for_environment(Environment.PRODUCTION, **kw)
+
+    @classmethod
+    def beta(cls, **kw) -> "ReadOnlyFS":
+        return cls.for_environment(Environment.BETA, **kw)
 
     def _pace(self) -> None:
         if self._last_call is not None:

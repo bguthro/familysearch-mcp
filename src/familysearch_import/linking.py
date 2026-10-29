@@ -37,6 +37,9 @@ class LinkResult:
     candidates: tuple[tuple[IdCandidate, FsPerson, str], ...]
     verdict: Verdict
     chosen_id: str | None
+    # Evidence only, filled by the report builder for needs-search people; never accepted.
+    search: tuple[FsPerson, ...] = ()
+    search_error: bool = False
 
 
 def _tokens(text: str) -> list[str]:
