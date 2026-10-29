@@ -105,6 +105,79 @@ def _plan(args, repo: Path) -> int:
     return 0
 
 
+def _print_outcomes(summary) -> None:
+    for o in summary.outcomes:
+        print(f"{o.status}: {o.kind} {o.person} [{o.key[:8]}] {o.reason}")
+    stats: dict[str, int] = {}
+    for o in summary.outcomes:
+        stats[o.status] = stats.get(o.status, 0) + 1
+    print("summary: " + (", ".join(f"{n} {s}" for s, n in sorted(stats.items())) or "nothing to do"))
+    if getattr(summary, "truncated", False):
+        print("note: --max-actions reached; more actions remain")
+    if summary.stopped:
+        print(f"STOPPED: {summary.stop_reason}")
+
+
+def _execute(args, repo: Path) -> int:
+    from familysearch.errors import FSError
+    from . import execute as ex
+
+    plan_arg = Path(args.plan)
+    plan_path = args.archive / "_import" / plan_arg if len(plan_arg.parts) == 1 else plan_arg
+    try:
+        ex.check_run_gates(args.env, args.allow_production, args.only, args.max_actions)
+        plan = ex.verify_plan_for_execution(args.archive, plan_path, args.confirm_hash)
+        ledger = ex.Ledger(args.archive / "_import" / "ledger.jsonl")
+
+        def go() -> int:
+            services = ex.build_services(args.archive, args.env, args.allow_production)
+            summary = ex.run_plan(plan, services, ledger, only=args.only, max_actions=args.max_actions,
+                                  execute=args.execute, allow_production=args.allow_production)
+            print(("EXECUTED" if args.execute else "DRY RUN (nothing written; pass --execute)")
+                  + f" env={args.env} plan={plan.plan_hash[:12]}")
+            _print_outcomes(summary)
+            return 3 if summary.stopped else 0
+
+        if args.execute:
+            with ex.RunLock(args.archive, break_lock=args.break_lock):
+                return go()
+        return go()
+    except ex.GateError as e:
+        return _err(str(e))
+    except FSError as e:
+        return _err(f"FamilySearch session/environment check failed: {type(e).__name__}: {e}")
+
+
+def _rollback(args, repo: Path) -> int:
+    from familysearch.errors import FSError
+    from . import execute as ex
+
+    ledger_path = args.archive / "_import" / "ledger.jsonl"
+    try:
+        ex.check_run_gates(args.env, args.allow_production, args.only, 1)
+        if not ledger_path.is_file():
+            raise ex.GateError(f"no ledger at {ledger_path}")
+        ledger = ex.Ledger(ledger_path)
+
+        def go() -> int:
+            services = ex.build_services(args.archive, args.env, args.allow_production)
+            summary = ex.rollback(ledger, services, args.key, args.execute,
+                                  only=args.only, allow_production=args.allow_production)
+            print(("ROLLED BACK" if args.execute else "DRY RUN (nothing deleted; pass --execute)")
+                  + f" env={args.env}")
+            _print_outcomes(summary)
+            return 3 if summary.stopped or any(o.status == "rollback-failed" for o in summary.outcomes) else 0
+
+        if args.execute:
+            with ex.RunLock(args.archive, break_lock=getattr(args, "break_lock", False)):
+                return go()
+        return go()
+    except ex.GateError as e:
+        return _err(str(e))
+    except FSError as e:
+        return _err(f"FamilySearch session/environment check failed: {type(e).__name__}: {e}")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="familysearch_import")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -123,6 +196,24 @@ def main(argv: list[str] | None = None) -> int:
     pl.add_argument("--archive", required=True, type=Path)
     pl.add_argument("--env", required=True, choices=("production", "beta"))
     pl.add_argument("--limit", type=int)
+    ex = sub.add_parser("execute", help="WRITE approved documents/sources to FamilySearch (dry run by default)")
+    ex.add_argument("--archive", required=True, type=Path)
+    ex.add_argument("--env", required=True, choices=("production", "beta"))
+    ex.add_argument("--plan", required=True, help="Plan file name in <archive>/_import (or a path inside it)")
+    ex.add_argument("--confirm-hash", required=True)
+    ex.add_argument("--only", action="append", default=[], metavar="LINE/FOLDER")
+    ex.add_argument("--max-actions", type=int, default=10)
+    ex.add_argument("--execute", action="store_true", help="actually write (default: dry run)")
+    ex.add_argument("--allow-production", action="store_true")
+    ex.add_argument("--break-lock", action="store_true")
+    rb = sub.add_parser("rollback", help="delete objects this tool created (dry run by default)")
+    rb.add_argument("--archive", required=True, type=Path)
+    rb.add_argument("--env", required=True, choices=("production", "beta"))
+    rb.add_argument("--key", action="append", default=[])
+    rb.add_argument("--only", action="append", default=[], metavar="LINE/FOLDER")
+    rb.add_argument("--execute", action="store_true")
+    rb.add_argument("--allow-production", action="store_true")
+    rb.add_argument("--break-lock", action="store_true")
     args = ap.parse_args(argv)
 
     repo = repo_root()
@@ -130,6 +221,11 @@ def main(argv: list[str] | None = None) -> int:
         check_archive(args.archive, repo)
     except (FileNotFoundError, ValueError) as e:
         return _err(str(e))
+
+    if args.cmd == "execute":
+        return _execute(args, repo)
+    if args.cmd == "rollback":
+        return _rollback(args, repo)
 
     if args.cmd == "links":
         return _links(args, repo)

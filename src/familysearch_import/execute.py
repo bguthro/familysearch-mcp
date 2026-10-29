@@ -251,20 +251,22 @@ class Ledger:
         self._append({
             "type": "intent", "intent_id": intent_id, "ts": utc_now(), "key": action.key,
             "kind": action.kind, "fs_id": action.fs_id, "env": env, "plan_hash": plan_hash,
+            "person": f"{action.person_line}/{action.person_folder}",
             "file": action.file, "title": action.title, "url": action.url, "sha256": action.sha256,
         })
         return intent_id
 
     def result(self, *, intent_id: str, key: str, status: str, reason: str,
                kind: str | None = None, fs_id: str | None = None, env: str | None = None,
-               title: str | None = None, url: str | None = None, memory_id: str | None = None,
+               title: str | None = None, url: str | None = None, person: str | None = None,
+               memory_id: str | None = None,
                source_description_id: str | None = None, reconciled: bool = False) -> None:
         if status not in ("created", "skipped", "failed", "failed-readback"):
             raise ValueError(f"bad result status {status!r}")
         self._append({
             "type": "result", "intent_id": intent_id, "ts": utc_now(), "key": key,
             "status": status, "reason": reason, "kind": kind, "fs_id": fs_id, "env": env,
-            "title": title, "url": url, "memory_id": memory_id,
+            "title": title, "url": url, "person": person, "memory_id": memory_id,
             "source_description_id": source_description_id, "reconciled": reconciled,
         })
 
@@ -443,7 +445,7 @@ def _reconcile(plan_actions: dict[str, Action], services: ExecServices, ledger: 
         if present:
             if execute:
                 ledger.result(intent_id=rec["intent_id"], key=key, status="created",
-                              reason="created (reconciled)", kind=probe.kind, fs_id=fs_id,
+                              reason="created (reconciled)", kind=probe.kind, fs_id=fs_id, person=rec.get("person"),
                               env=services.env, title=probe.title, url=probe.url, reconciled=True)
             executed.add(key)
             out.append(Outcome(key, who, "", "reconciled-created",
@@ -452,7 +454,7 @@ def _reconcile(plan_actions: dict[str, Action], services: ExecServices, ledger: 
             if execute:
                 ledger.result(intent_id=rec["intent_id"], key=key, status="skipped",
                               reason="interrupted before write; absent on FamilySearch",
-                              kind=probe.kind, fs_id=fs_id, env=services.env,
+                              kind=probe.kind, fs_id=fs_id, person=rec.get("person"), env=services.env,
                               title=probe.title, url=probe.url)
             out.append(Outcome(key, who, "", "reconciled-absent",
                                "interrupted run: object absent, eligible again"))
@@ -578,7 +580,7 @@ def _write_one(a: Action, who: str, data: bytes, ctype: str, before: int, plan: 
     from .prod_reader import ReadFailed
     intent_id = ledger.intent(action=a, env=services.env, plan_hash=plan.plan_hash)
     common = dict(intent_id=intent_id, key=a.key, kind=a.kind, fs_id=a.fs_id, env=services.env,
-                  title=a.title, url=a.url)
+                  title=a.title, url=a.url, person=who)
     mem_id = sd_id = None
 
     def fail(status: str, reason: str) -> None:
@@ -615,3 +617,163 @@ def _write_one(a: Action, who: str, data: bytes, ctype: str, before: int, plan: 
     ledger.result(status="created", reason="created", memory_id=mem_id,
                   source_description_id=sd_id, **common)
     out.append(Outcome(a.key, a.kind, who, "created", "created"))
+
+
+# ------------------------------------------------------------------------ rollback
+
+ROLLBACK_REASON = "Rolled back import from family research archive"
+
+
+@dataclass
+class RollbackSummary:
+    execute: bool
+    outcomes: list[Outcome]
+    stopped: bool = False
+    stop_reason: str = ""
+
+
+def _rollback_targets(ledger: Ledger, env: str, keys: Sequence[str]) -> list[dict]:
+    """Ledger result lines this tool created, in this env, not yet rolled back."""
+    recs = ledger.records()
+    rolled = {(r.get("key"), r.get("memory_id"), r.get("source_description_id"))
+              for r in recs if r.get("type") == "rollback" and r.get("status") == "rolled-back"}
+    wanted = set(keys)
+    known = {r.get("key") for r in recs if r.get("type") == "result"}
+    missing = wanted - known
+    if missing:
+        raise GateError(f"key not in the ledger: {sorted(missing)[0][:12]}")
+    out, seen = [], set()
+    for r in recs:
+        if r.get("type") != "result" or r.get("env") != env:
+            continue
+        status = r.get("status")
+        # failed-readback objects exist but are unconfirmed: only on explicit request by key
+        if not (status == "created" or (status == "failed-readback" and r.get("key") in wanted)):
+            continue
+        if wanted and r.get("key") not in wanted:
+            continue
+        ident = (r.get("key"), r.get("memory_id"), r.get("source_description_id"))
+        if ident in rolled or ident in seen or not (ident[1] or ident[2]):
+            continue
+        if not (isinstance(r.get("fs_id"), str) and _ID_RE.match(r["fs_id"])):
+            continue
+        seen.add(ident)
+        out.append(r)
+    return out
+
+
+def rollback(ledger: Ledger, services: ExecServices, keys: Sequence[str] = (), execute: bool = False,
+             *, only: Sequence[str] = (), allow_production: bool = False) -> RollbackSummary:
+    """Delete only objects whose ids this tool recorded as created, then read back absence."""
+    check_run_gates(services.env, allow_production, only, 1)
+    if execute and not (ledger.path.parent / "execute.lock").is_file():
+        raise GateError("execute requires the run lock to be held")
+    scope = parse_only(only)
+    targets = [t for t in _rollback_targets(ledger, services.env, keys)
+               if not scope or t.get("person") in scope]
+    if services.env == "production" and len(targets) > PRODUCTION_HARD_CAP:
+        raise GateError(f"refusing to roll back more than {PRODUCTION_HARD_CAP} objects in production")
+    out: list[Outcome] = []
+    summary = RollbackSummary(execute, out)
+    from .prod_reader import ReadFailed
+    for t in targets:
+        is_mem = bool(t.get("memory_id"))
+        oid = t["memory_id"] if is_mem else t["source_description_id"]
+        a = Action(t["key"], "upload-document" if is_mem else "add-source", "", "", t["fs_id"],
+                   None, t.get("title"), t.get("url"), "planned", "", None)
+        who = t.get("person") or ""
+        kind = "memory" if is_mem else "source"
+
+        def done(status: str, reason: str) -> None:
+            out.append(Outcome(t["key"], kind, who, status, reason))
+            if execute:
+                ledger.rollback_result(
+                    key=t["key"], status="rolled-back" if status == "rolled-back" else "rollback-failed",
+                    reason=reason, env=services.env,
+                    memory_id=t.get("memory_id"), source_description_id=t.get("source_description_id"))
+
+        try:
+            present, before = _present_in(services.reader, a)
+            if not present and t.get("status") == "failed-readback":
+                done("rollback-failed", "object not visible on FamilySearch; verify by id manually")
+                continue
+            if not present:
+                done("rolled-back" if execute else "would-rollback", "already absent; no delete issued")
+                continue
+            if not execute:
+                out.append(Outcome(t["key"], kind, who, "would-rollback", "dry run"))
+                continue
+            try:
+                if is_mem:
+                    services.memories.delete(oid, reason=ROLLBACK_REASON)
+                else:
+                    services.sources.delete(oid, reason=ROLLBACK_REASON)
+            except Exception as e:
+                done("rollback-failed", f"delete error: {_http_status(e)}")
+                raise _Stop("delete failed") from e
+            present2, after = _present_in(services.reader, a)
+            if after != before - 1:
+                done("rollback-failed", f"absence read-back mismatch (before {before}, after {after})")
+                raise _Stop("read-back mismatch")
+            done("rolled-back", "deleted")
+        except _Stop as e:
+            summary.stopped, summary.stop_reason = True, str(e)
+            break
+        except ReadFailed as e:
+            summary.stopped, summary.stop_reason = True, f"read failed: {type(e).__name__}"
+            break
+    return summary
+
+
+# ---------------------------------------------------------------- real services
+
+class _SourcesAdapter:
+    """Sources writes: create/attach via the verified library; delete via the locked generated API."""
+
+    def __init__(self, sources, discovery, api, allow_production: bool):
+        self._sources, self._discovery, self._api = sources, discovery, api
+        self._allow_production = allow_production is True
+
+    def create_description(self, about_url, title, citation, *, reason):
+        return self._sources.create_description(about_url, title, citation, reason=reason)
+
+    def attach_to_person(self, person_id, source_description_id, *, reason):
+        import urllib.parse
+        from familysearch._urls import join_path
+        parts = urllib.parse.urlsplit(self._discovery.href("source-descriptions"))
+        base = urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+        self._sources.attach_to_person(person_id, join_path(base, source_description_id), reason=reason)
+
+    def delete(self, source_description_id, *, reason):
+        # The registry lock decides: verified-on-beta, so production needs allow_production.
+        self._api.delete_source_description(
+            source_description_id, reason=reason, confirm_destructive=True,
+            allow_production=self._allow_production)
+
+
+def build_services(archive: Path, env: str, allow_production: bool) -> ExecServices:
+    """Real services from Brave's session. Refuses unless the session belongs to ``env``."""
+    from familysearch.api import FamilySearchApi
+    from familysearch.auth import Environment, extract_brave_token
+    from familysearch.client import FSClient
+    from familysearch.discovery import Discovery
+    from familysearch.memories import Memories
+    from familysearch.sources import Sources
+
+    from .prod_reader import ReadOnlyFS
+
+    environment = {"beta": Environment.BETA, "production": Environment.PRODUCTION}.get(env)
+    if environment is None:
+        raise GateError(f"unknown environment {env!r}")
+    token = extract_brave_token()
+    reader = ReadOnlyFS.for_environment(environment, token_fn=lambda: token)  # session must match env
+    client = FSClient(token, environment)  # separate client: the reader's is locked read-only
+    discovery = Discovery(client)
+    return ExecServices(
+        reader=reader,
+        memories=Memories(client, discovery),
+        sources=_SourcesAdapter(Sources(client, discovery), discovery, FamilySearchApi(client),
+                                allow_production),
+        archive=Path(archive),
+        env=env,
+    )
