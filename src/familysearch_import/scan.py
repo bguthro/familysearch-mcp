@@ -17,7 +17,7 @@ _ANCESTORS_PATH_RE = re.compile(rf"^/[a-z]{{2}}(?:-[A-Za-z]+)?/({_ID})(?:/|$)")
 _STRING_RE = re.compile(r"<string>\s*([^<]+?)\s*</string>")
 _URL_RE = re.compile(r"https?://[^\s<>\"']+")
 
-SKIP_TOP = {"_tools", "books", "to sort"}
+SKIP_TOP = {"_tools", "_import", "books", "to sort"}
 IGNORED_FILES = {"family migration map.html"}
 
 
