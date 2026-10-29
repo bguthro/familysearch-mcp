@@ -22,7 +22,7 @@ from tools.spec.coverage import load_inputs
 
 from .recipes import (RECIPES, reads_genealogies, reads_misc, reads_standards,
                       reads_tree_persons, reads_tree_relations, writes_memories,
-                      writes_memory_links,
+                      writes_memory_links, writes_genealogies_sources,
                       writes_tree_relationship_details,
                       writes_tree_relationships)
 
@@ -150,7 +150,6 @@ AWAITING_TIERS.update({op: "P7" for op in (
     "createGenealogiesTree", "updateGenealogiesTree", "deleteGenealogiesTree",
     "createGenealogiesPerson", "updateGenealogiesPerson", "deleteGenealogiesPerson",
     "restoreGenealogiesPerson", "deleteGenealogiesConclusion",
-    "updateGenealogiesRelationship", "deleteGenealogiesRelationship",
     "createGenealogiesSourceDescription", "updateGenealogiesSourceDescription",
     "deleteGenealogiesSourceDescription")})
 
@@ -161,13 +160,14 @@ def awaiting_tier(op: str) -> str:
 # Writes a recipe tried and deferred with live evidence, and the tier that takes them up.
 WRITE_DEFERRED: dict[str, str] = {}
 for _module in (writes_tree_relationships, writes_tree_relationship_details,
-                writes_memories, writes_memory_links):
+                writes_memories, writes_memory_links, writes_genealogies_sources):
     WRITE_DEFERRED.update(_module.DEFERRED)
 # The artifact ops need story-text and coverage fixtures no tier builds yet: the long tail.
 WRITE_DEFERRED_TIERS: dict[str, str] = {
     "restoreChildAndParentsRelationship": "P6",
     "updateMemoryArtifact": "P9", "deleteMemoryArtifactCoverage": "P9",
-    "deletePersonMemoriesPersonaReference": "P9"}
+    "deletePersonMemoriesPersonaReference": "P9",
+    "updateGenealogiesRelationship": "P9", "deleteGenealogiesRelationship": "P9"}
 
 _MATCHES = ("matches, merges and change history are the P6 tier: P3 excludes "
             "match resolution and not-a-match by plan (mergePerson is never run: see the "

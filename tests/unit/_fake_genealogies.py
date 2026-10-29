@@ -5,7 +5,7 @@ Shapes are the recipes' guesses except what live runs showed: a tree is created 
 ``2:2:2:<id>`` (that prefix is required: any other id answers 400 ``Invalid prefix for
 genealogies``; a tree id shorter than four characters answers 500 ``Range [0, 4) out of
 bounds``), and ``GET /trees`` answers a list of PUBLIC collections (the Pedigree Resource
-File), never the user's own trees. Persons, sources and relationships follow the Family Tree
+File), never the user's own trees. Persons and sources follow the Family Tree
 shapes (guesses). A well-formed unknown id answers 404, other lists answer 204 when empty,
 a deleted person answers 410. Paths in ``calls`` and ``bodies`` are unquoted.
 
@@ -59,9 +59,6 @@ LIES = (
     "source_delete_needs_local",  # only a delete by the local id s_<n> takes effect
     "ignore_source_create", "ignore_source_update", "source_update_creates",
     "source_update_collateral", "source_delete_noop",
-    # relationships
-    "ignore_relationship_update", "relationship_update_collateral",  # an update adds a stray extra fact
-    "relationship_delete_noop", "relationship_delete_persons",
 )
 
 
@@ -74,7 +71,6 @@ class FakeGenealogies:
         self.trees: dict[str, dict] = {}
         self.persons: dict[str, dict] = {}
         self.sources: dict[str, dict] = {}
-        self.relationships: dict[str, dict] = {}
         self.calls: list[tuple[str, str]] = []
         self.bodies: list[tuple[str, str, object]] = []  # (method, path, posted json)
         self._seq = {"tree": 0, "person": 0, "source": 0, "rel": 0, "concl": 0}
@@ -186,7 +182,7 @@ class FakeGenealogies:
         return self.tree_update(tid, body)
 
     def tree_update(self, tid, body):
-        """POST: add persons (local ids replaced by server ids) and relationships."""
+        """POST: add persons (local ids replaced by server ids)."""
         if self.mode == "tree_update_noop":
             return self._json(200, {"sourceDescriptions": []})
         target = tid
@@ -201,16 +197,6 @@ class FakeGenealogies:
             # live: keyed by the posted local id, the real id the tail of the ark
             out.append({"id": person.get("id"), "resourceType": GX + "Person", "identifiers": {
                 GX + "Persistent": [f"https://beta.familysearch.org/ark:/61903/{pid}"]}})
-        for rel in body.get("relationships") or []:
-            p1 = local.get(str(rel["person1"]["resource"]).lstrip("#"))
-            p2 = local.get(str(rel["person2"]["resource"]).lstrip("#"))
-            assert p1 and p2
-            male = self.persons[p1]["gender"]["type"] == GX + "Male"
-            female = self.persons[p2]["gender"]["type"] == GX + "Female"
-            if not (male and female):
-                return 400, {}, "person1 must be male and person2 female"
-            self.relationships[self._id("rel")] = {
-                "persons": [p1, p2], "facts": [], "deleted": False, "type": rel["type"]}
         return self._json(200, {"sourceDescriptions": out})
 
     # ------------------------------------------------------------ persons
@@ -237,17 +223,7 @@ class FakeGenealogies:
                                      if p["names"] else "")}}
         if p["gender"]:
             body["gender"] = p["gender"]
-        rels = [self.relationship_json(c) for c, r in self.relationships.items()
-                if pid in r["persons"] and not r["deleted"]]
-        if rels:
-            body["relationships"] = rels
         return body
-
-    def relationship_json(self, cid):
-        r = self.relationships[cid]
-        ref = lambda pid: {"resource": f"{G}/persons/{pid}", "resourceId": pid}  # noqa: E731
-        return {"id": cid, "type": r["type"], "person1": ref(r["persons"][0]),
-                "person2": ref(r["persons"][1]), "facts": r["facts"]}
 
     def persons_in_tree(self, request, tid):
         body = self._record(request)
@@ -299,8 +275,6 @@ class FakeGenealogies:
             return self._person(request.method, pid, person, body)
         if rest[1] == "conclusions":
             return self._delete_conclusion(pid, person, rest[2])
-        if rest[1] == "relationships":
-            return self._relationship(request.method, pid, rest[2], body)
         return 404, {}, ""
 
     def _person(self, method, pid, person, body):
@@ -339,28 +313,6 @@ class FakeGenealogies:
         person["facts"] = [f for f in person["facts"] if f["id"] != cid]
         if self.mode == "conclusion_collateral":
             person["facts"] = person["facts"][1:]
-        return 204, {}, ""
-
-    def _relationship(self, method, pid, cid, body):
-        rel = self.relationships.get(cid)
-        if rel is None or pid not in rel["persons"]:
-            return 404, {}, ""
-        if rel["deleted"]:
-            return 410, {}, ""
-        if method == "DELETE":
-            if self.mode != "relationship_delete_noop":
-                rel["deleted"] = True
-            if self.mode == "relationship_delete_persons":
-                for p in rel["persons"]:
-                    self.persons[p]["deleted"] = True
-            return 204, {}, ""
-        if self.mode == "ignore_relationship_update":
-            return 204, {}, ""
-        facts = (body["relationships"][0]).get("facts") or []
-        if self.mode == "relationship_update_collateral":
-            rel["facts"].append(self._named({"type": GX + "Divorce"}))
-        for fact in facts:
-            rel["facts"].append(self._named(fact))
         return 204, {}, ""
 
     # ------------------------------------------------------------ sources

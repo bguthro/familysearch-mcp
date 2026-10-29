@@ -122,6 +122,21 @@ def source_delete(ctx: VerifyContext) -> None:
     expect_same(s0, _read(ctx, sibling), f"the other source description {sibling}")
 
 
+# Deferred with live evidence (2026-10-29 live run): the P7 recipes planted a couple with
+# updateGenealogiesTree and could not find it.
+DEFERRED = {
+    "updateGenealogiesRelationship": (
+        "a tree update that plants two persons and a Couple creates the persons but the "
+        "Couple never appears under readGenealogiesPerson.relationships on beta, and no "
+        "other Genealogies operation creates a relationship, so there is no relationship "
+        "to update or read back (2026-10-29 live run)"),
+    "deleteGenealogiesRelationship": (
+        "a tree update that plants two persons and a Couple creates the persons but the "
+        "Couple never appears under readGenealogiesPerson.relationships on beta, and no "
+        "other Genealogies operation creates a relationship, so there is no relationship "
+        "to delete or read back (2026-10-29 live run)"),
+}
+
 WRITES_GENEALOGIES_SOURCES = (
     Recipe("writes.genealogies.source_create", ("createGenealogiesSourceDescription",),
            "state-change", source_create),

@@ -19,8 +19,7 @@ from familysearch.api._runtime import ApiResult
 
 from ..core import VerifyContext
 from ..fixtures import entry_title, tree_entry, tree_size
-from .writes_common import (Listing, PersonView, Relationship, _relationship, describe_box,
-                            person_view)
+from .writes_common import Listing, PersonView, describe_box, person_view
 
 # A well-formed unknown id: live, created ids came back as ``2:2:2:<id>`` (the prefix the
 # recon's 400 "Invalid prefix for genealogies" asked for). Recipes never build a prefix;
@@ -86,16 +85,3 @@ def read_person(ctx: VerifyContext, pid: str) -> PrivatePerson:
         raise AssertionError(f"the read of person {pid} answered {person.get('id')}; "
                              f"{describe_box(result)}")
     return PrivatePerson(view, person.get("living"), person.get("relationships"), result)
-
-
-def person_relationships(person: PrivatePerson) -> dict[str, Relationship]:
-    """The relationships a person read lists (``relationships`` entries): id -> view.
-
-    Whether beta lists them there is unproven: an absent key reads as none, and the
-    relationship recipes fail with the person's skeleton if they expect one.
-    """
-    found = {}
-    for record in person.relationships or []:
-        if isinstance(record, dict) and record.get("id"):
-            found[str(record["id"])] = _relationship(record, "relationships", person.result)
-    return found

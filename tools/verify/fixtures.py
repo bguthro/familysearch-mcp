@@ -122,7 +122,6 @@ def folder_titles(body) -> dict[str, str | None]:
 # (live: 201, id ``2:2:2:<id>`` in Location and X-ENTITY-ID); a ``collections`` title was
 # not the working body.
 TREE_SHAPES = ("sourceDescriptions",)
-FACT_COUPLE = "http://gedcomx.org/Couple"
 
 
 def tree_body(title: str, shape: str = TREE_SHAPES[0]) -> dict:
@@ -162,15 +161,6 @@ def living_person_body(given: str, surname: str, gender: str = "Male", *,
 def genealogies_description_body(about: str, title: str, citation: str) -> dict:
     return {"sourceDescriptions": [{"about": about, "titles": [{"value": title}],
                                     "citations": [{"value": citation}]}]}
-
-
-def couple_tree_body(male: dict, female: dict) -> dict:
-    """A tree update adding a male and a female person (local ids ``m1`` / ``f1``) and the
-    Couple joining them (the spec: ``person1`` must be male, ``person2`` female)."""
-    ref = lambda local: {"resource": f"#{local}", "resourceId": local}  # noqa: E731
-    return {"persons": [{"id": "m1", **male}, {"id": "f1", **female}],
-            "relationships": [{"type": FACT_COUPLE, "person1": ref("m1"),
-                               "person2": ref("f1")}]}
 
 
 def tree_entry(body, tid: str) -> dict | None:
@@ -519,29 +509,6 @@ class FixtureSet:
             raise FSError("private source created but no id was returned")
         self.track("genealogies_source", sdid)
         return sdid
-
-    def genealogies_couple(self, tid: str, marker: str) -> tuple[str, str]:
-        """A living male and female ZZSPIKE person joined by a Couple, added to a tracked
-        private tree with one tree update. Returns the two ids, both tracked at once.
-
-        The ids are the update's answer (``persons`` ids that are not the local ones),
-        else the two new persons found by ``marker`` in the tree's person list.
-        """
-        self._own_tree(tid)
-        given = {"m1": f"ZZSPIKE {marker}M", "f1": f"ZZSPIKE {marker}F"}
-        surname = f"Test{uuid.uuid4().hex[:8]}"
-        male = living_person_body(given["m1"], surname, "Male")["persons"][0]
-        female = living_person_body(given["f1"], surname, "Female")["persons"][0]
-        resp = self._client.post(self.genealogies_url("trees", tid),
-                                 json=couple_tree_body(male, female), reason=self._reason)
-        body = resp.json() if resp.text.strip() else {}
-        made = created_persons(body, {"m1", "f1"})
-        for pid in made.values():
-            self.track("genealogies_person", pid)
-        if set(made) != {"m1", "f1"}:
-            raise FSError(f"the couple update made {len(made)} persons, not 2; the update "
-                          f"answered {resp.status_code} {(resp.text or '')[:300]!r}")
-        return made["m1"], made["f1"]
 
     def _collection(self, rel: str) -> str:
         href = self._discovery.href(rel).split("?")[0]
