@@ -87,7 +87,12 @@
   },
   "createGroup": {
    "generated": {
-    "status": "unverified"
+    "commit": "093570489f757aac5792f8d674648ffb8b8a354f",
+    "evidence": "state-change",
+    "fingerprint": "985f7244250beeacfa02d8ded1da4126c3db6c2606e26173569dd6a33326eb6a",
+    "recipe": "writes.usertree.group_create",
+    "status": "verified",
+    "verified_on": "2026-10-29"
    }
   },
   "createMemories": {
@@ -375,7 +380,12 @@
   },
   "deleteGroup": {
    "generated": {
-    "status": "unverified"
+    "commit": "093570489f757aac5792f8d674648ffb8b8a354f",
+    "evidence": "state-change",
+    "fingerprint": "5a80b2f5c0ffc7a8f2909822c674b2d72529a24f22d1e2c5ec78d2029b7baa6b",
+    "recipe": "writes.usertree.group_delete",
+    "status": "verified",
+    "verified_on": "2026-10-29"
    }
   },
   "deleteMemory": {
@@ -943,7 +953,12 @@
   },
   "readGroup": {
    "generated": {
-    "status": "unverified"
+    "commit": "093570489f757aac5792f8d674648ffb8b8a354f",
+    "evidence": "read-content",
+    "fingerprint": "5b5dccd97761a03763c32208f92d95057bbf4f7bfcfe9a633b6d88b750fa62ae",
+    "recipe": "reads.usertree.group",
+    "status": "verified",
+    "verified_on": "2026-10-29"
    }
   },
   "readMemory": {
@@ -1616,7 +1631,12 @@
   },
   "updateGroup": {
    "generated": {
-    "status": "unverified"
+    "commit": "093570489f757aac5792f8d674648ffb8b8a354f",
+    "evidence": "state-change",
+    "fingerprint": "86e9765381a6aed85242836f3db8c8f2f92e6062078b74ccc7ed676682bdd325",
+    "recipe": "writes.usertree.group_update",
+    "status": "verified",
+    "verified_on": "2026-10-29"
    }
   },
   "updateMatchResolution": {
