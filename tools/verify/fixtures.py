@@ -30,7 +30,10 @@ from .core import _require_beta, redact_account
 from .teardown import gone_after, verified_delete
 
 # teardown order: a collection after its member descriptions, so it is empty; the private
-# (Genealogies) persons and sources before the tree that holds them
+# (Genealogies) persons and sources before the tree that holds them. Deleting a tree is NOT
+# assumed to remove its persons: a person this run did not track (a failed id parse) can
+# outlive its tree; tools.verify.cleanup_zzspike_genealogies --list-tree-persons finds those
+# (list them BEFORE deleting the tree).
 KINDS = ("child_and_parents", "couple", "source", "collection", "memory", "person",
          "genealogies_person", "genealogies_source", "genealogies_tree", "group")
 COLLECTIONS_PATH = "/platform/sources/collections"
@@ -125,6 +128,13 @@ def created_header_id(headers) -> str | None:
             return lowered[name]
     location = (lowered.get("location") or "").split("?")[0].split("#")[0].rstrip("/")
     return location.rsplit("/", 1)[-1] or None if location else None
+
+
+def no_id_note(what: str, resp) -> str:
+    """The message for a create that answered no id: status, Location, X-ENTITY-ID."""
+    lowered = {k.lower(): v for k, v in (getattr(resp, "headers", None) or {}).items()}
+    return (f"{what} created but no id was returned (status {getattr(resp, 'status_code', None)}, "
+            f"Location={lowered.get('location')!r}, X-ENTITY-ID={lowered.get('x-entity-id')!r})")
 
 
 def folder_titles(body) -> dict[str, str | None]:
@@ -253,7 +263,8 @@ def created_persons(body, local_ids) -> dict[str, str]:
                     found.setdefault(desc["id"], url.rstrip("/").rsplit("/", 1)[-1])
     for person in body.get("persons") or []:
         if isinstance(person, dict) and person.get("id") and person["id"] not in local_ids:
-            found.setdefault(f"#{len(found)}", str(person["id"]))
+            if str(person["id"]) not in found.values():
+                found[f"#{len(found)}"] = str(person["id"])
     return found
 
 
@@ -488,7 +499,7 @@ class FixtureSet:
                                            reason=self._reason), title)
         tid = created_header_id(resp.headers)
         if not tid:
-            raise FSError("tree created but no id was returned")
+            raise FSError(no_id_note("tree", resp))
         self.track("genealogies_tree", tid)
         return tid
 
@@ -510,7 +521,7 @@ class FixtureSet:
                                  reason=self._reason)
         pid = created_header_id(resp.headers)
         if not pid:
-            raise FSError("private person created but no id was returned")
+            raise FSError(no_id_note("private person", resp))
         self.track("genealogies_person", pid)
         return pid
 
@@ -525,7 +536,7 @@ class FixtureSet:
                                               f"{title} citation"), reason=self._reason)
         sdid = created_header_id(resp.headers)
         if not sdid:
-            raise FSError("private source created but no id was returned")
+            raise FSError(no_id_note("private source", resp))
         self.track("genealogies_source", sdid)
         return sdid
 

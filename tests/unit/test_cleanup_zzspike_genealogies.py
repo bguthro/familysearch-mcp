@@ -1,4 +1,6 @@
 """Offline tests for the private-tree cleanup helper, and the live-run fixes it shares."""
+import re
+
 import pytest
 import responses
 
@@ -129,3 +131,44 @@ def test_a_person_create_without_a_local_id_is_refused_like_beta_and_fixtures_se
     with pytest.raises(Exception, match="local id"):
         fx._client.post(fx.genealogies_url("trees", tid, "persons"),
                         json={"persons": [{"living": True}]}, reason="ZZSPIKE")
+
+
+# ---------------------------------------------------------------- hardening
+
+
+def test_the_source_title_guard_uses_the_entry_of_the_requested_id():
+    body = {"sourceDescriptions": [{"id": "s_1", "titles": [{"value": "ZZSPIKE other"}]},
+                                   {"id": "s_286671", "titles": [{"value": "Keep me"}]}]}
+    assert cz._title("source", "2:2:286671", body) == "Keep me"
+    assert cz._title("source", "2:2:999", body) is None  # no entry of that id: never [0]
+
+
+@responses.activate
+def test_list_tree_persons_deletes_zzspike_persons_before_the_tree():
+    fake = FakeGenealogies().serve()
+    fx = fixtures()
+    tid = fx.genealogies_tree("ZZSPIKEleft")
+    pid = fx.genealogies_person(tid, "Leftover")
+    lines = []
+    before = len(fake.calls)
+    assert cz.main(["--tree", tid, "--list-tree-persons"], client=client(),
+                   out=lines.append) == 0
+    assert all(m == "GET" for m, _ in fake.calls[before:])
+    assert any(line.startswith("would delete person") for line in lines)
+    assert not fake.persons[pid]["deleted"]
+    assert cz.main(["--tree", tid, "--list-tree-persons", "--apply"], client=client(),
+                   out=lines.append) == 0, lines
+    assert fake.persons[pid]["deleted"] and fake.trees[tid]["deleted"]
+    deletes = [p.split("/genealogies/")[1].split("/")[0] for m, p in fake.calls
+               if m == "DELETE"]
+    assert deletes.index("persons") < deletes.index("trees")
+
+
+@responses.activate
+@pytest.mark.parametrize("status,code", [(404, 0), (410, 0), (400, 1), (403, 1), (500, 1)])
+def test_only_404_and_410_count_as_already_clean(status, code):
+    responses.add(responses.GET, re.compile(r".*/genealogies/sources/[^/?]+(\?.*)?$"),
+                  status=status, body="x")
+    lines = []
+    assert cz.main(["--source", "2:2:1", "--apply"], client=client(), out=lines.append) == code
+    assert any(("already clean" in line) == (code == 0) for line in lines), lines

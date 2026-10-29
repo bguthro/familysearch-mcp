@@ -30,7 +30,7 @@ from familysearch import FSHTTPError
 from familysearch.api._runtime import ApiResult
 from familysearch.models import GEDCOMX, GENDER_URI, build_name
 
-from ..core import VerifyContext, redact_account
+from ..core import VerifyContext, redact_account, without_account_data
 from ..fixtures import created_header_id, folder_titles
 from ..reads import skeleton
 
@@ -77,7 +77,9 @@ def gone(read: Callable[[], ApiResult]) -> bool:
 
 def describe(result: ApiResult | None) -> str:
     """The response skeleton for a failure message (``(no response)`` without one)."""
-    return "response: " + (skeleton(result) if result is not None else "(no response)")
+    if result is None:
+        return "response: (no response)"
+    return "response: " + redact_account(skeleton(result))
 
 
 # ------------------------------------------------------------------ person read-back
@@ -654,15 +656,11 @@ def redacted(run: Callable[[VerifyContext], None]) -> Callable[[VerifyContext], 
 
 # What a source box read may carry about the signed-in account (its uid in links, the
 # contributor of a folder): left out of a failure's skeleton (ruling I-4).
-_ACCOUNT_KEYS = ("links", "attribution", "contributor")
+_ACCOUNT_KEYS = ("links",)
 
 
 def _without_account(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {k: _without_account(v) for k, v in value.items() if k not in _ACCOUNT_KEYS}
-    if isinstance(value, list):
-        return [_without_account(v) for v in value]
-    return value
+    return without_account_data(value, _ACCOUNT_KEYS)
 
 
 def describe_box(result: ApiResult | None) -> str:

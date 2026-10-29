@@ -195,6 +195,14 @@ def test_a_delete_that_deletes_nothing_is_reported_by_teardown_too(reg_path, sle
                for p in result["problems"]), result["problems"]
 
 
+@responses.activate
+def test_an_unparsed_update_answer_still_tracks_and_tears_down_the_new_person(reg_path, slept):
+    result, fake, ctx = run("writes.genealogies.tree_update", reg_path, "tree_update_unparsed")
+    assert not result["passed"] and "named 0 created persons" in " ".join(result["problems"])
+    assert [p for p, r in fake.persons.items() if not r["deleted"]] == []
+    assert fake.live() == []
+
+
 # ---------------------------------------------------------------- the read case
 
 

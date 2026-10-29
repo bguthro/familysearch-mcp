@@ -67,6 +67,12 @@ def test_recipes_registered_claiming_only_their_writes():
 
 
 @responses.activate
+def test_update_answering_the_local_form_of_the_same_source_is_not_a_new_one(reg_path, slept):
+    result, fake, ctx = run("writes.genealogies.source_update", reg_path, "source_update_alias")
+    assert result["passed"], result["problems"]
+
+
+@responses.activate
 @pytest.mark.parametrize("name", sorted(OPS))
 def test_recipe_passes_records_and_leaves_nothing(name, reg_path, slept):
     result, fake, ctx = run(name, reg_path)

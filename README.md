@@ -128,7 +128,7 @@ Rules:
   `deletePersonPortrait`) and the P5 Memories writes (`createMemories`, `updateMemory`,
   `deleteMemory`, `createMemoryComments`, `deleteMemoryComment`, `createMemoryPersona`,
   `updateMemoryPersona`, `deleteMemoryPersona`, the P7 Genealogies private-tree writes and the
-group writes); see Verification status) runs on beta as is; any other write needs `allow_unverified`.
+  group writes; see Verification status) runs on beta as is; any other write needs `allow_unverified`.
 - `allow_unverified` and `confirm_destructive` (deletes and other destructive operations)
   are Ben's explicit decisions; the assistant never sets them on its own.
 - The 5 unverifiable operations (and the 2 excluded OAuth ones) can never run, even with

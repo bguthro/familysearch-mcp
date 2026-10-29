@@ -426,3 +426,24 @@ def test_a_non_empty_collection_fails_teardown_loudly():
     tree._set_folder(headers["X-ENTITY-ID"], udcid)  # a member this run does not track
     problems = ctx.fixtures.teardown()
     assert len(problems) == 1 and "400" in problems[0], problems
+
+
+ACCOUNT_BODY = {
+    "persons": [{"id": "PPPP-001", "display": {"name": "ZZSPIKE Visible Person"},
+                 "names": [{"nameForms": [{"fullText": "ZZSPIKE Visible Person"}]}]}],
+    "agents": [{"id": "cis.user.MMMM-AAA1", "accounts": [{"accountName": "realaccountname"}],
+                "names": [{"value": "Real Person Name"}],
+                "emails": [{"resource": "mailto:real@example.org"}]}],
+    "attribution": {"contributor": {"resourceId": "cis.user.MMMM-AAA1"}},
+    "sourceDescriptions": [{"id": "SD-1", "creator": {"resourceId": "creatorid"},
+                            "userName": "realuser", "displayName": "Real Display"}],
+}
+ACCOUNT_LEAKS = ("realaccountname", "Real Person Name", "real@example.org", "MMMM-AAA1",
+                 "creatorid", "realuser", "Real Display")
+
+
+def test_describe_and_describe_box_drop_account_data_but_keep_fixture_names():
+    for shown in (wc.describe(result(ACCOUNT_BODY)), wc.describe_box(result(ACCOUNT_BODY))):
+        assert "ZZSPIKE Visible Person" in shown
+        for leak in ACCOUNT_LEAKS:
+            assert leak not in shown, leak

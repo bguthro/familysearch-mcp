@@ -173,7 +173,8 @@ def person_conclusions(ctx: VerifyContext) -> None:
     sibling = ctx.fixtures.genealogies_person(tid, "Sibling")
     _own_person(ctx, pid)
     v0, s0 = read_person(ctx, pid), read_person(ctx, sibling)
-    cid = _single(v0.view.facts_with(place), f"fact marked {place}", v0)
+    _living(v0, pid)
+    cid =_single(v0.view.facts_with(place), f"fact marked {place}", v0)
     others = {k: f for k, f in v0.view.facts.items() if k != cid}
     if not any(f.type == FACT_BIRTH for f in others.values()):
         raise AssertionError(f"the fixture's birth fact is missing: {v0.view.summary()}")
@@ -211,9 +212,10 @@ def person_delete_restore(ctx: VerifyContext) -> None:
     _living(v0, pid)
     poll(ctx, lambda: persons(ctx, tid), lambda p: pid in p.items,
          f"readGenealogiesPersons: person {pid} listed before the delete")
+    readable = v0.result.status  # measured, not assumed
     ctx.api.delete_genealogies_person(pid, reason=ctx.reason)
     after = status_of(lambda: ctx.api.read_genealogies_person(pid))
-    ctx.expect_changed(200, after, f"readability of person {pid} after the delete")
+    ctx.expect_changed(readable, after, f"readability of person {pid} after the delete")
     if after not in GONE:
         raise AssertionError(f"deleted person {pid} reads back {after}, not 404/410")
     poll(ctx, lambda: persons(ctx, tid), lambda p: pid not in p.items,

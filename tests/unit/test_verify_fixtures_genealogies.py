@@ -61,3 +61,17 @@ def test_created_persons_parses_the_live_tree_update_answer():
         {"id": "sd_0"}]}
     assert created_persons(body, {"m1", "f1"}) == {"m1": "2:2:MSGD-Z4F", "f1": "2:2:MSGD-Z4G"}
     assert created_persons({}, {"m1"}) == {}
+
+
+@responses.activate
+def test_a_create_that_answers_no_id_raises_with_status_and_headers():
+    FakeGenealogies("genealogies_no_id").serve()
+    with pytest.raises(Exception, match=r"status 201.*Location=None.*X-ENTITY-ID=None"):
+        fixtures().genealogies_tree("ZZSPIKEtree")
+
+
+def test_created_persons_counts_one_server_id_once():
+    from tools.verify.fixtures import created_persons
+    body = {"sourceDescriptions": [{"id": "zz1", "identifiers": {"x": ["https://a/ark:/1/2:2:AAA-111"]}}],
+            "persons": [{"id": "2:2:AAA-111"}, {"id": "2:2:AAA-111"}]}
+    assert list(created_persons(body, {"zz1"}).values()) == ["2:2:AAA-111"]

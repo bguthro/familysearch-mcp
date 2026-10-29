@@ -117,6 +117,25 @@ def redact_account(text: str) -> str:
     return text
 
 
+# Keys whose whole subtree is account data (the signed-in user's agent record, who
+# contributed or created an object, account names, emails): dropped from any failure
+# skeleton. Fixture person names live under ``persons``/``display``/``names`` and stay.
+ACCOUNT_KEYS = frozenset({
+    "agents", "attribution", "contributor", "creator", "accountName", "userName",
+    "displayName", "emails", "email", "contactName", "givenName", "familyName",
+    "treeUserId", "cisUserId", "userId"})
+
+
+def without_account_data(value: Any, extra: tuple[str, ...] = ()) -> Any:
+    """``value`` (JSON-like) with every ``ACCOUNT_KEYS`` (and ``extra``) subtree removed."""
+    if isinstance(value, dict):
+        return {k: without_account_data(v, extra) for k, v in value.items()
+                if k not in ACCOUNT_KEYS and k not in extra}
+    if isinstance(value, list):
+        return [without_account_data(v, extra) for v in value]
+    return value
+
+
 def expect_changed(before: Any, after: Any, what: str) -> None:
     """The negative control: a write that left its read-back unchanged proves nothing."""
     if before == after:

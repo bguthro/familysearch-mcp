@@ -41,6 +41,8 @@ LIES = (
     "wrong_tree_title",       # the stored title is not the posted one
     "tree_update_noop",       # tree update answers 200 but adds nothing
     "tree_update_other",      # tree update adds the person to the other tree
+    "tree_update_unparsed",   # tree update adds the person but names no id in its answer
+    "genealogies_no_id",      # creates answer 201 with no Location / X-ENTITY-ID
     "tree_delete_noop",       # tree delete answers 204, deletes nothing
     "tree_delete_collateral", # tree delete also deletes every other tree
     # persons
@@ -59,6 +61,7 @@ LIES = (
     "source_delete_needs_local",  # only a delete by the local id s_<n> takes effect
     "ignore_source_create", "ignore_source_update", "source_update_creates",
     "source_update_collateral", "source_delete_noop",
+    "source_update_alias",    # honest, but the update answers the local form s_<n>
 )
 
 
@@ -100,6 +103,8 @@ class FakeGenealogies:
         return status, {"Content-Type": FS_JSON, **(headers or {})}, json.dumps(body)
 
     def _created(self, kind_path, oid):
+        if self.mode == "genealogies_no_id":
+            return 201, {}, ""
         headers = {"Location": f"{G}/{kind_path}/{oid}"}
         if self.entity_id:
             headers["X-ENTITY-ID"] = oid
@@ -197,6 +202,8 @@ class FakeGenealogies:
             # live: keyed by the posted local id, the real id the tail of the ark
             out.append({"id": person.get("id"), "resourceType": GX + "Person", "identifiers": {
                 GX + "Persistent": [f"https://beta.familysearch.org/ark:/61903/{pid}"]}})
+        if self.mode == "tree_update_unparsed":
+            out = []
         return self._json(200, {"sourceDescriptions": out})
 
     # ------------------------------------------------------------ persons
@@ -381,6 +388,8 @@ class FakeGenealogies:
             for other in self.sources.values():
                 if other is not source:
                     other["title"] = "ZZSPIKE collateral"
+        if self.mode == "source_update_alias":  # answers the same source by its local id
+            return 204, {"Location": f"{G}/sources/s_{sdid.rsplit(':', 1)[-1]}"}, ""
         return 204, {}, ""
 
     # ------------------------------------------------------------ wiring

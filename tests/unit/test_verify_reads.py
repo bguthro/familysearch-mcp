@@ -1508,3 +1508,15 @@ def test_eventual_not_for_an_allow_empty_case():
     with pytest.raises(ValueError, match="eventual"):
         reads_recipe("t", [children_case("dad"),
                            children_case("child", allow_empty=True, eventual=(3, 1.0))])
+
+
+def test_skeleton_and_failure_text_drop_account_data_but_keep_fixture_names():
+    from familysearch.api import ApiResult
+    from test_verify_writes_common import ACCOUNT_BODY, ACCOUNT_LEAKS
+    api = ApiResult(200, {}, FS_JSON, ACCOUNT_BODY, json.dumps(ACCOUNT_BODY))
+    shown = reads.skeleton(api)
+    text = reads._failure_text(reads.ContentFailure("bad", shown))
+    for out in (shown, text):
+        assert "ZZSPIKE Visible Person" in out
+        for leak in ACCOUNT_LEAKS:
+            assert leak not in out, leak

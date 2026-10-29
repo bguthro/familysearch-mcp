@@ -99,6 +99,13 @@ def tree_update(ctx: VerifyContext) -> None:
     for pid in made.values():
         ctx.fixtures.track("genealogies_person", pid)
     if len(made) != 1:
+        # The answer did not name the created id(s): whatever the tree lists now that it
+        # did not before is ours, so track it before failing (no untracked leak).
+        try:
+            for pid in sorted(set(persons(ctx, tid).items) - set(p0.items) - set(made.values())):
+                ctx.fixtures.track("genealogies_person", pid)
+        except Exception:  # noqa: BLE001 - best effort; the failure below is the report
+            pass
         raise AssertionError(f"the update named {len(made)} created persons, wanted one; "
                              f"{describe_box(result)}")
     new_id = next(iter(made.values()))

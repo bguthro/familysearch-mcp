@@ -83,7 +83,7 @@ def source_update(ctx: VerifyContext) -> None:
     result = ctx.api.update_genealogies_source_description(
         sdid, reason=ctx.reason, body=description_body(d0.about, title, citation, sid=sdid))
     other = created_id(result, "private source description")
-    if other and other != sdid:
+    if other and not same_id(other, sdid):  # the local form s_N is the same object
         ctx.fixtures.track("genealogies_source", other)
         raise AssertionError(f"the update of {sdid} answered another description's id {other} "
                              f"(status {result.status}): it made a new one")

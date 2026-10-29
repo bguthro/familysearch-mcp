@@ -43,7 +43,7 @@ from familysearch.api._runtime import ApiResult
 from familysearch.api.spec import OpSpec, is_write
 from familysearch.errors import FSHTTPError
 
-from .core import Recipe, VerifyContext, redact_account
+from .core import ACCOUNT_KEYS, Recipe, VerifyContext, redact_account
 
 MAX_CASES = 12  # one bad case should fail only a small group
 # Not-found means the id (or query) does not exist; nothing else proves the server looked.
@@ -360,7 +360,7 @@ def _shape(value: Any, depth: int) -> Any:
         if depth >= _SKELETON_DEPTH:
             return "{...}"
         return {k: "<hidden>" if _SECRET_KEY.search(str(k)) else _shape(v, depth + 1)
-                for k, v in value.items()}
+                for k, v in value.items() if k not in ACCOUNT_KEYS}
     if isinstance(value, list):
         return [f"list[{len(value)}]", _shape(value[0], depth)] if value else []
     if isinstance(value, str):
