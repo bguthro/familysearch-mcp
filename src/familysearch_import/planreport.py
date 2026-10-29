@@ -1,0 +1,112 @@
+"""Plan inputs and outputs: links.json / approvals.json / ledger readers, report, JSON."""
+
+from __future__ import annotations
+
+import json
+from collections import Counter
+from dataclasses import asdict
+from pathlib import Path
+
+from .planner import Plan
+
+NON_NAMED_NOTES = ("living", "unknown status")
+
+
+def load_links(path: Path) -> dict[str, str | None]:
+    """'<line>/<folder>' -> FS id for confirmed verdicts only (others map to None)."""
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    out: dict[str, str | None] = {}
+    for p in data.get("people", []):
+        key = f"{p['line']}/{p['folder']}"
+        out[key] = p.get("chosen_id") if p.get("verdict") == "confirmed" else None
+    return out
+
+
+def load_approvals(path: Path) -> dict[str, str]:
+    path = Path(path)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as e:
+        raise ValueError(f"approvals file is not valid JSON: {path}") from e
+    links = data.get("approved_links") if isinstance(data, dict) else None
+    if not isinstance(links, dict) or not all(
+        isinstance(k, str) and "/" in k and isinstance(v, str) and v for k, v in links.items()
+    ):
+        raise ValueError(f'approvals file must be {{"approved_links": {{"<line>/<folder>": "<FS id>"}}}}: {path}')
+    return dict(links)
+
+
+def load_ledger_keys(path: Path) -> frozenset[str]:
+    path = Path(path)
+    if not path.exists():
+        return frozenset()
+    keys = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(rec, dict) and isinstance(rec.get("key"), str):
+            keys.add(rec["key"])
+    return frozenset(keys)
+
+
+def plan_json(plan: Plan) -> dict:
+    return {
+        "plan_hash": plan.plan_hash,
+        "people": [asdict(p) for p in plan.people],
+    }
+
+
+def _named(p) -> bool:
+    return p.note not in NON_NAMED_NOTES
+
+
+def render_plan_report(plan: Plan) -> str:
+    kinds: Counter = Counter()
+    reasons: Counter = Counter()
+    for p in plan.people:
+        for a in p.actions:
+            kinds[(a.state, a.kind)] += 1
+            if a.state == "skipped":
+                reasons[a.reason] += 1
+    person_status = Counter(p.status for p in plan.people)
+    person_notes = Counter(p.note for p in plan.people if p.status == "skipped" and p.note)
+
+    lines = [f"# Import plan (dry run)", "", f"Plan hash: `{plan.plan_hash}`", "",
+             "Nothing has been written to FamilySearch.", "", "## Totals", ""]
+    lines.append(f"- people: {len(plan.people)} ("
+                 + ", ".join(f"{n} {s}" for s, n in sorted(person_status.items())) + ")")
+    for state in ("planned", "already-present", "skipped"):
+        parts = [f"{n} {k}" for (s, k), n in sorted(kinds.items()) if s == state]
+        lines.append(f"- {state}: {sum(n for (s, _), n in kinds.items() if s == state)}"
+                     + (f" ({', '.join(parts)})" if parts else ""))
+    if person_notes:
+        lines += ["", "## People skipped, by reason", ""]
+        lines += [f"- {r}: {n}" for r, n in sorted(person_notes.items())]
+    if reasons:
+        lines += ["", "## Skipped files, by reason", ""]
+        lines += [f"- {r}: {n}" for r, n in sorted(reasons.items())]
+
+    lines += ["", "## Deceased people", ""]
+    shown = False
+    for p in plan.people:
+        if not _named(p) or not (p.actions or p.status != "skipped" or p.note):
+            continue
+        shown = True
+        lines.append(f"### {p.line} / {p.folder}")
+        lines.append(f"- FamilySearch id: {p.fs_id or 'none'}; status: {p.status}"
+                     + (f"; note: {p.note}" if p.note else ""))
+        for a in p.actions:
+            what = {"upload-document": "upload", "add-source": "cite", "skip": "skip"}[a.kind]
+            detail = f" as \"{a.title}\"" if a.title else ""
+            lines.append(f"  - {a.state}: {what} {a.file}{detail} ({a.reason})")
+        lines.append("")
+    if not shown:
+        lines += ["(none)", ""]
+    return "\n".join(lines).rstrip() + "\n"
