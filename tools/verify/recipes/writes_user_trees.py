@@ -80,8 +80,9 @@ def _create(kind: str):
     The id is the create's X-ENTITY-ID / Location, tracked at once. Negative control:
     the read's status for an id that does not exist (an error) against the new id's
     (200). The read must name the id with the marker name. A tree is created for a fixture
-    group (tried in turn as groups[id], groupId, group{{id}}, groups[resourceId]; refusals
-    go into the notes) and must read back naming that group.
+    group (the Tree's groupAccess/ownerAccess forms first, then groups[id], groupId and the
+    like, one at a time while beta answers 400; every refusal goes into the notes, or into
+    the failure when none is accepted) and must read back naming that group.
     """
     return run
 

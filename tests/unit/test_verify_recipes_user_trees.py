@@ -93,7 +93,7 @@ def test_create_sends_a_private_hidden_tree_and_a_plain_group(reg_path):
              for c in responses.calls if c.request.method == "POST"]
     tree = [b for p, b in posts if p == "trees"][-1]["trees"][0]
     assert tree["private"] is True and tree["hidden"] is True
-    assert tree["name"].startswith("ZZSPIKE") and tree["groupId"]
+    assert tree["name"].startswith("ZZSPIKE") and tree["groupAccess"]["groupId"]
     group = [b for p, b in posts if p == "groups"][-1]["groups"][0]
     assert set(group) == {"name", "description"}
 
@@ -104,11 +104,12 @@ def test_a_tree_is_created_for_its_own_group_trying_the_group_fields_in_turn(reg
     assert result["passed"], result["problems"]
     posts = [(c.request.url.split("/platform/")[1], json.loads(c.request.body))
              for c in responses.calls if c.request.method == "POST"]
-    assert [p for p, _ in posts] == ["groups", "trees", "trees"]  # groupId is the 2nd shape
-    assert "groups" in posts[1][1]["trees"][0]
-    assert posts[2][1]["trees"][0]["groupId"].startswith("UG")
-    assert any("refused before" in n and "groups[id]" in n and "one and only one group" in n
-               for n in result["notes"])
+    assert [p for p, _ in posts] == ["groups", "trees", "trees"]  # groupAccess{groupId}: 2nd
+    first, second = posts[1][1]["trees"][0], posts[2][1]["trees"][0]
+    assert isinstance(first["groupAccess"], list) and first["private"] is True
+    assert second["groupAccess"]["groupId"].startswith("UG")
+    [note] = [n for n in result["notes"] if "refused before" in n]
+    assert "groupAccess[{groupId,access}]" in note and "one and only one group" in note
     # the tree is deleted before its group
     assert [p for m, p in fake.calls if m == "DELETE"] == [
         "/platform/trees/UT002-ZZZ", "/platform/groups/UG001-ZZZ"]
@@ -180,3 +181,34 @@ def test_set_current_tree_is_locked_even_for_a_recipe_that_does_not_claim_it(reg
     with pytest.raises(FSError):
         ctx.api.set_current_tree(reason="ZZSPIKE", body={"trees": [{"id": "X"}]})
     assert fake.current_posts == []
+
+
+@responses.activate
+def test_when_no_group_shape_is_accepted_the_failure_lists_every_shape_tried(reg_path):
+    from tools.verify.fixtures import TREE_GROUP_SHAPES
+    result, fake, ctx = run_with_group_of(reg_path, lambda item: None)
+    assert not result["passed"]
+    text = " ".join(result["problems"])
+    for label, _fields, _bare in TREE_GROUP_SHAPES:
+        assert label in text, label
+    assert "one and only one group" in text
+    assert fake.live() == []  # the fixture group is torn down
+
+
+def run_with_group_of(reg_path, group_of):
+    fake = FakeUserTree(group_of=group_of).serve()
+    recipe = RECIPES["writes.usertree.tree_create"]
+    client = FSClient("tkn", Environment.BETA, min_write_interval=0)
+    ctx = runner.make_context(client, recipe, registry_path=reg_path)
+    return runner.run_recipe(recipe, ctx, registry_path=reg_path, commit="abc123",
+                             today="2026-10-29"), fake, ctx
+
+
+@responses.activate
+def test_bare_shapes_omit_the_private_and_hidden_flags(reg_path):
+    from tools.verify.fixtures import TREE_GROUP_SHAPES
+    assert [bare for _l, _f, bare in TREE_GROUP_SHAPES].count(True) >= 3
+    result, fake, ctx = run_with_group_of(reg_path, lambda item: None)
+    bodies = [json.loads(c.request.body)["trees"][0] for c in responses.calls
+              if c.request.method == "POST" and c.request.url.endswith("/trees")]
+    assert any("private" not in b for b in bodies) and any(b.get("private") for b in bodies)

@@ -40,12 +40,14 @@ ENVELOPE = {"groups": "group", "trees": "tree"}
 
 
 class FakeUserTree:
-    def __init__(self, mode=None, *, unknown_status=400, group_field="groupId"):
+    def __init__(self, mode=None, *, unknown_status=400, group_of=None):
         if mode is not None and mode not in LIES:
             raise ValueError(f"unknown lie {mode!r}")
         self.mode = mode
         self.unknown_status = unknown_status
-        self.group_field = group_field  # the one field of a tree that names its group
+        # the one shape of a tree that names its group: here groupAccess as {"groupId": g}
+        self.group_of = group_of or (lambda item: (item.get("groupAccess") or {}).get("groupId")
+                                     if isinstance(item.get("groupAccess"), dict) else None)
         self.objects = {"groups": {}, "trees": {}}
         self.current = "GLOBAL"
         self.current_posts: list = []
@@ -73,7 +75,7 @@ class FakeUserTree:
         entry = {"id": oid, "name": name, **{k: v for k, v in o.items()
                                              if k not in ("name", "deleted")}}
         if self.mode == "drop_group":
-            entry.pop(self.group_field, None)
+            entry.pop("groupAccess", None)
         return {kind: [entry]}
 
     def collection(self, request, kind):
@@ -86,7 +88,7 @@ class FakeUserTree:
         item = json.loads(request.body)[kind][0]
         assert item["name"].startswith("ZZSPIKE")
         if kind == "trees":
-            gid = item.get(self.group_field)
+            gid = self.group_of(item)
             gid = gid if isinstance(gid, str) else None
             live = self.objects["groups"].get(gid)
             if not live or live["deleted"]:
