@@ -241,6 +241,136 @@ def test_relations_check_validates_and_cross_checks(tmp_path, capsys):
     assert "edges[0]: b does not reference" in capsys.readouterr().out
 
 
+def rn(id, name, status="deceased", birth=None, death=None, folder=None, **kw):
+    d = {"id": id, "name": name, "birth": birth, "death": death, "status": status, "folder": folder,
+         "source": "s"}
+    d.update(kw)
+    return d
+
+
+def re_(kind, a, b, order=None, year=None):
+    return {"kind": kind, "a": a, "b": b, "order": order, "marriage_year": year}
+
+
+REVIEW_DOC = {
+    "version": 1, "line": "Example Line", "reviewed": False,
+    "nodes": [
+        rn("adam", "Adam Example", birth=1800, death=1860, folder="Example Line/1844-1915 Pat Example"),
+        rn("eve", "Eve Sample", birth=1802, death=1880),
+        rn("una", "Una Second", birth=1810, death=1890),
+        rn("cal", "Cal Example", birth=1825, death=1890),
+        rn("dan", "Dan Example", birth=1827, death=1900),
+        rn("kay", "Kay Example", birth=1840, death=1900),
+        rn("fay", "Fay Solo", birth=1850, death=1920),
+        rn("moe", "Moe Modern", birth=1950, death=None, deceased_note="obit"),
+        rn("tri", "Tri Parent", birth=1860, death=1930),
+        rn("liv", "Secretname Livingston", status="living", birth=2005),
+        rn("unk", "Mystery Hidden", status="unknown"),
+        rn("odd", "Odd Loner", birth=1700, death=1750),
+        rn("liv2", "Livspouse Hidden", status="living"),
+    ],
+    "edges": [
+        re_("spouse", "adam", "eve", 1, 1822), re_("spouse", "adam", "una"),
+        re_("parent-child", "adam", "cal"), re_("parent-child", "eve", "cal"),
+        re_("parent-child", "adam", "dan"), re_("parent-child", "eve", "dan"),
+        re_("parent-child", "adam", "kay"), re_("parent-child", "una", "kay"),
+        re_("parent-child", "cal", "fay"),
+        re_("parent-child", "cal", "liv"), re_("parent-child", "cal", "tri"),
+        re_("parent-child", "dan", "tri"), re_("parent-child", "fay", "tri"),
+        re_("spouse", "cal", "liv2"), re_("parent-child", "unk", "moe"),
+        re_("parent-child", "adam", "moe"),
+    ],
+}
+
+
+def review_text():
+    from familysearch_import.relations import load_relations
+    from familysearch_import.relationsreview import render_review
+    import tempfile
+    from pathlib import Path
+    p = Path(tempfile.mkdtemp()) / "Example Line.json"
+    p.write_text(json.dumps(REVIEW_DOC))
+    rel = load_relations(p, {"Example Line/1844-1915 Pat Example"})
+    return render_review([("Example Line", rel)], {"Example Line/1844-1915 Pat Example": (1844, 1915)})
+
+
+def test_review_never_names_living_or_unknown_people():
+    text = review_text()
+    for secret in ("Secretname", "Livingston", "Mystery", "Hidden", "Livspouse"):
+        assert secret not in text
+    assert "(living person)" in text and "(unknown-status person)" in text
+    assert "reviewed: NO" in text and "people: 13 (deceased 10," in text
+
+
+def test_review_families_children_and_marriage_labels():
+    text = review_text()
+    assert ("- Adam Example (1800-1860) + Eve Sample (1802-1880) (m. 1822, 1st marriage) -> children: "
+            "Cal Example (1825-1890), Dan Example (1827-1900)") in text
+    assert "Adam Example (1800-1860) + Una Second (1810-1890) -> children: Kay Example (1840-1900)" in text
+    assert "Fay Solo (1850-1920) (only one parent shown: Cal Example (1825-1890))" in text
+    assert "| Adam Example | 1800-1860 | deceased | Example Line/1844-1915 Pat Example |" in text
+    assert "| Eve Sample | 1802-1880 | deceased | no folder |" in text
+
+
+def test_review_not_in_folders_and_checklist():
+    text = review_text()
+    assert "### Not in your archive folders" in text.split("### Review checklist")[0]
+    assert "- Odd Loner (1700-1750)" in text
+    check = text.split("### Review checklist")[1]
+    assert "Adam Example: years differ from the folder name (birth 1800 vs folder 1844" in check
+    assert "Moe Modern: marked deceased but born 1950 (obit)" in check
+    assert "1 (unknown-status person) node(s) have status unknown" in check
+    assert "Tri Parent (1860-1930): has 3 parents" in check
+    assert "Adam Example (1800-1860): 2 spouses but some marriages have no order" in check
+    assert "Odd Loner: has no relationships" in check
+    assert "living or unknown-status node(s) have no relationships" not in check
+
+
+def test_review_invalid_file_and_empty():
+    from familysearch_import.relationsreview import render_review
+    assert "NOT VALID" in render_review([("X", ["X.json: nodes[0]: bad"])], {})
+    assert "No relations files found" in render_review([], {})
+
+
+def test_cli_relations_review_writes_only_its_file(tmp_path, capsys):
+    root = make_archive(tmp_path)
+    write_rel(root, rel_doc())
+    assert cli.main(["relations-review", "--archive", str(root)]) == 0
+    out = capsys.readouterr().out
+    path = root / "_import" / "RelationsReview.md"
+    assert str(path) in out and "1 file(s), 0 invalid, 1 reviewed" in out
+    assert "## Example Line" in path.read_text()
+    assert cli.main(["relations-review", "--archive", str(root)]) == 0  # overwrite is fine
+    assert cli.main(["relations-review", "--archive", str(cli.repo_root())]) == 2
+
+
+def test_cli_relations_review_marks_invalid_files(tmp_path, capsys):
+    root = make_archive(tmp_path)
+    bad = rel_doc()
+    bad["nodes"][0]["folder"] = "Example Line/Nobody"
+    write_rel(root, bad)
+    assert cli.main(["relations-review", "--archive", str(root)]) == 0
+    assert "NOT VALID" in (root / "_import" / "RelationsReview.md").read_text()
+    assert "1 invalid" in capsys.readouterr().out
+
+
+def test_cli_relations_approve_requires_yes_and_valid_file(tmp_path, capsys):
+    root = make_archive(tmp_path)
+    write_rel(root, rel_doc(reviewed=False))
+    f = root / "_import" / "relations" / "Example Line.json"
+    assert cli.main(["relations-approve", "--archive", str(root), "--line", "Example Line"]) == 2
+    assert json.loads(f.read_text())["reviewed"] is False
+    assert "RelationsReview.md" in capsys.readouterr().out  # the reminder
+    assert cli.main(["relations-approve", "--archive", str(root), "--line", "Example Line", "--yes"]) == 0
+    assert json.loads(f.read_text())["reviewed"] is True
+    assert cli.main(["relations-approve", "--archive", str(root), "--line", "Nope", "--yes"]) == 2
+    bad = rel_doc(reviewed=False)
+    bad["edges"][0]["b"] = "zz"
+    write_rel(root, bad)
+    assert cli.main(["relations-approve", "--archive", str(root), "--line", "Example Line", "--yes"]) == 2
+    assert json.loads(f.read_text())["reviewed"] is False
+
+
 def test_relations_check_reports_unreviewed_and_empty(tmp_path, capsys):
     root = make_archive(tmp_path)
     assert cli.main(["relations-check", "--archive", str(root)]) == 0

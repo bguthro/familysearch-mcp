@@ -196,6 +196,58 @@ def _relations_check(args, repo: Path) -> int:
     return 2 if bad else 0
 
 
+def _relations_review(args, repo: Path) -> int:
+    from .relations import RelationsError, load_relations
+    from .relationsreview import render_review
+
+    import_dir = args.archive / "_import"
+    if is_inside(import_dir, repo):
+        return _err(f"refusing to write inside the repo: {import_dir}")
+    rel_dir = import_dir / "relations"
+    people = scan_archive(args.archive)
+    valid = {f"{p.line}/{p.folder}" for p in people}
+    years = {f"{p.line}/{p.folder}": (p.birth, p.death) for p in people}
+    entries = []
+    for f in sorted(rel_dir.glob("*.json")) if rel_dir.is_dir() else []:
+        try:
+            entries.append((f.stem, load_relations(f, valid)))
+        except RelationsError as e:
+            entries.append((f.stem, e.errors))
+    import_dir.mkdir(parents=True, exist_ok=True)
+    path = import_dir / "RelationsReview.md"
+    path.write_text(render_review(entries, years), encoding="utf-8")
+    good = [e for _, e in entries if not isinstance(e, list)]
+    print(f"wrote {path}: {len(entries)} file(s), {len(entries) - len(good)} invalid, "
+          f"{sum(1 for e in good if e.reviewed)} reviewed")
+    return 0
+
+
+def _relations_approve(args, repo: Path) -> int:
+    import json
+
+    from .relations import RelationsError, load_relations
+
+    path = args.archive / "_import" / "relations" / f"{args.line}.json"
+    if not path.is_file():
+        return _err(f"no relations file for line {args.line!r}: {path}")
+    valid = {f"{p.line}/{p.folder}" for p in scan_archive(args.archive)}
+    try:
+        rel = load_relations(path, valid)
+    except RelationsError as e:
+        return _err("refusing to approve an invalid file: " + "; ".join(e.errors))
+    print("reminder: approving is your sign-off. Read RelationsReview.md for this line first.")
+    if not args.yes:
+        return _err("pass --yes to mark the file reviewed")
+    if rel.reviewed:
+        print(f"{path.name} is already reviewed")
+        return 0
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["reviewed"] = True
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(f"marked {path.name} reviewed")
+    return 0
+
+
 def _plan(args, repo: Path) -> int:
     import json
 
@@ -379,6 +431,12 @@ def main(argv: list[str] | None = None) -> int:
     rc = sub.add_parser("relations-check", help="validate reviewed relations files and cross-check them "
                         "against the regex parser (offline)")
     rc.add_argument("--archive", required=True, type=Path)
+    rv = sub.add_parser("relations-review", help="write RelationsReview.md from the relations files (offline)")
+    rv.add_argument("--archive", required=True, type=Path)
+    ra = sub.add_parser("relations-approve", help="mark one line's relations file reviewed (your sign-off)")
+    ra.add_argument("--archive", required=True, type=Path)
+    ra.add_argument("--line", required=True)
+    ra.add_argument("--yes", action="store_true")
     ex = sub.add_parser("execute", help="WRITE approved documents/sources to FamilySearch (dry run by default)")
     ex.add_argument("--archive", required=True, type=Path)
     ex.add_argument("--env", required=True, choices=("production", "beta"))
@@ -431,6 +489,10 @@ def main(argv: list[str] | None = None) -> int:
         return _relatives(args, repo)
     if args.cmd == "relationships":
         return _relationships(args, repo)
+    if args.cmd == "relations-review":
+        return _relations_review(args, repo)
+    if args.cmd == "relations-approve":
+        return _relations_approve(args, repo)
     if args.cmd == "relations-check":
         return _relations_check(args, repo)
 
