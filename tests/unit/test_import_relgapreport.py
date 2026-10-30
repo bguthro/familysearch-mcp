@@ -326,6 +326,23 @@ def test_review_not_in_folders_and_checklist():
     assert "living or unknown-status node(s) have no relationships" not in check
 
 
+def test_review_checklist_is_quiet_for_dated_deaths_and_approximate_years():
+    import tempfile
+    from pathlib import Path
+    from familysearch_import.relations import load_relations
+    from familysearch_import.relationsreview import render_review
+    folders = {"Example Line/A": (1928, 2013), "Example Line/B": (1850, 1920), "Example Line/C": (1850, 1920)}
+    doc = {"version": 1, "line": "Example Line", "reviewed": False, "edges": [],
+           "nodes": [rn("a", "Alma Recent", birth=1928, death=2013, folder="Example Line/A"),
+                     rn("b", "Bo Approx", birth=1851, death=1920, folder="Example Line/B", source="Bo (c.1851-1920)"),
+                     rn("c", "Cy Exact", birth=1851, death=1920, folder="Example Line/C", source="Cy (1851-1920)")]}
+    p = Path(tempfile.mkdtemp()) / "Example Line.json"
+    p.write_text(json.dumps(doc))
+    check = render_review([("Example Line", load_relations(p, set(folders)))], folders).split("### Review checklist")[1]
+    assert "Alma Recent: marked deceased" not in check and "Bo Approx: years differ" not in check
+    assert "Cy Exact: years differ from the folder name (birth 1851 vs folder 1850)" in check
+
+
 def test_review_invalid_file_and_empty():
     from familysearch_import.relationsreview import render_review
     assert "NOT VALID" in render_review([("X", ["X.json: nodes[0]: bad"])], {})

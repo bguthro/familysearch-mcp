@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 
 from .relations import RelationsFile
 
 LIVING = "(living person)"
 UNKNOWN = "(unknown-status person)"
+
+
+_APPROX = re.compile(r"~|\bc\.|\bca\.?\s*\d|\babt\.?")
 
 
 def _years(birth: int | None, death: int | None) -> str:
@@ -96,12 +100,14 @@ def render_line_review(rel: RelationsFile, folder_years: Mapping[str, tuple[int 
     for n in rel.nodes:
         if n.folder and n.folder in folder_years and n.id in visible:
             fb, fd = folder_years[n.folder]
+            approx = bool(_APPROX.search(n.source))
             diffs = [f"{what} {mine} vs folder {theirs}" for what, mine, theirs in
                      (("birth", n.birth, fb), ("death", n.death, fd))
-                     if mine is not None and theirs is not None and mine != theirs]
+                     if mine is not None and theirs is not None and mine != theirs
+                     and not (approx and abs(mine - theirs) == 1)]
             if diffs:
                 check.append(f"{n.name}: years differ from the folder name ({'; '.join(diffs)})")
-        if n.id in visible and n.birth is not None and n.birth >= 1900:
+        if n.id in visible and n.birth is not None and n.birth >= 1900 and n.death is None:
             check.append(f"{n.name}: marked deceased but born {n.birth}"
                          + (f" ({n.deceased_note})" if n.deceased_note else ""))
     if unknown:
