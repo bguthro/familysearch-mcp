@@ -79,9 +79,28 @@ class TreeReader:
             href = _next_href(body)
         return out
 
-    def get_relatives(self, person_id: str) -> dict:
+    def get_relatives(self, person_id: str, *, strict: bool = False) -> dict:
+        """Parents, children, spouses. ``strict``: a missing section link raises (it would otherwise
+        read as an empty list, which proves nothing)."""
         links = self._discovery.person_links(person_id)
+        if strict:
+            for rel in ("parents", "children", "spouses"):
+                if not links.get(rel):
+                    raise FSError(f"person has no {rel} link; refusing to read it as empty")
         return {rel: self._fetch_all(links, rel, "persons") for rel in ("parents", "children", "spouses")}
+
+    def get_couple_relationship_ids(self, person_id: str, other_id: str) -> list[str]:
+        """Ids of couple relationships between the two people (from the spouses section)."""
+        links = self._discovery.person_links(person_id)
+        href = links.get("spouses")
+        if not href:
+            raise FSError("person has no spouses link")
+        out: list[str] = []
+        for rel in self._fetch_all(links, "spouses", "relationships"):
+            ends = {(rel.get(k) or {}).get("resourceId") for k in ("person1", "person2")}
+            if str(rel.get("type", "")).endswith("/Couple") and ends == {person_id, other_id} and rel.get("id"):
+                out.append(str(rel["id"]))
+        return out
 
     def get_memories(self, person_id: str) -> list[dict]:
         links = self._discovery.person_links(person_id)

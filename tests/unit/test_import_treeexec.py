@@ -1,37 +1,66 @@
-import hashlib
+import dataclasses
 import json
 
 import pytest
 
+from familysearch.api.registry import OperationLockedError
+from familysearch.auth import Environment
 from familysearch.errors import FSHTTPError
 from familysearch_import.execute import GateError, Ledger, RunLock
 from familysearch_import.linking import FsPerson
 from familysearch_import.prod_reader import ReadFailed, Relative
 from familysearch_import.treeexec import (
-    TreeServices, resolve_tree, rollback_tree, run_tree_plan, verify_tree_plan_for_execution,
+    GuardedTreeWriter, TreeServices, resolve_tree, rollback_tree, run_tree_plan, verify_tree_plan_for_execution,
 )
-from familysearch_import.treeplan import TreeAction, TreePlan, compute_tree_plan_hash, tree_plan_json
+from familysearch_import.treeplan import TreeAction, TreePlan, compute_tree_plan_hash, creation_key, tree_plan_json
 
 A, B, C, D, E, F = "AAAA-001", "BBBB-002", "CCCC-003", "DDDD-004", "EEEE-005", "FFFF-006"
 LINKED = [A, B, C, D, E, F]
+LINE = "Line A"
+FOLDER = {A: "1850-1910 Alpha Testname", B: "1852-1912 Beta Testname", C: "1880-1950 Gamma Testname",
+          D: "1882-1952 Delta Testname", E: "1860-1930 Epsilon Testname", F: "1862-1932 Zeta Testname"}
+
+
+def fk(pid):
+    return f"{LINE}/{FOLDER[pid]}"
+
+
+def _year(body_facts, kind):
+    for f in body_facts or []:
+        if f["type"].endswith(kind):
+            return int(f["date"]["original"])
+    return None
 
 
 class FakeFS:
     """Fictional FamilySearch: persons, couples, child-and-parents relationships."""
 
     def __init__(self):
-        self.people = {p: dict(name=f"Person {p}", living=False, status="ok") for p in LINKED}
+        self.people = {p: dict(name=f"Person {p}", living=False, status="ok", birth=None, death=None)
+                       for p in LINKED}
         self.couples = {}   # rel id -> frozenset
         self.cap = {}       # rel id -> (child, tuple(parents))
-        self.hits = []      # search_candidates results
+        self.tree = []      # other people in the tree: dicts(id, given, surname, birth, death, living)
+        self.search_error = None
+        self.search_calls = []
         self.calls = []
         self.n = 0
         self.apply = True            # does a write take effect
         self.leak_to = None          # write also (wrongly) links this person
         self.write_error = None
+        self.write_error_after_effect = False
         self.ret_id = None           # override the returned id
         self.delete_effect = True
-        self.new_name = None         # name stored for created people (None: as requested)
+        self.new_name = None
+        self.derive_couple = False   # a two-parent child link also creates a couple between the parents
+        self.double_write = False
+        self.points_elsewhere = False
+        self.no_links = set()        # persons whose section links are missing (strict reads fail)
+        self.sources = {}
+        self.memories = {}
+        self.changes = {}            # pid -> [(who, text)]
+        self.new_living = False
+        self.new_years = True
 
     # reader
     def get_fs_person(self, pid):
@@ -39,9 +68,11 @@ class FakeFS:
         p = self.people.get(pid)
         if p is None:
             return FsPerson(pid, "", None, None, None, "not-found")
-        return FsPerson(pid, p["name"], None, None, p["living"], p["status"])
+        return FsPerson(pid, p["name"], p["birth"], p["death"], p["living"], p["status"])
 
-    def get_relatives(self, pid):
+    def get_relatives(self, pid, strict=False):
+        if strict and pid in self.no_links:
+            raise ReadFailed("no section links")
         out = []
         for cid, s in self.couples.items():
             if pid in s:
@@ -54,41 +85,88 @@ class FakeFS:
                 out.append(Relative(self.get_fs_person(child), "child"))
         return out
 
-    def search_candidates(self, person, limit=3, status=None):
-        self.calls.append(("search", person.display_name, person.birth, person.death))
-        return list(self.hits)
+    def search_duplicates(self, given, surname, birth, death):
+        self.search_calls.append((given, surname, birth, death))
+        if self.search_error:
+            raise self.search_error
+        hits = []
+        for t in self.tree:
+            if t["surname"].lower() != surname.lower():
+                continue
+            near = any(y is not None and q is not None and abs(y - q) <= 10
+                       for y, q in ((t["birth"], birth), (t["death"], death)))
+            if near:
+                hits.append(FsPerson(t["id"], f"{t['given']} {t['surname']}", t["birth"], t["death"],
+                                     t["living"], "ok"))
+        return hits
+
+    def get_couple(self, rid):
+        return self.couples.get(rid)
+
+    def get_child_and_parents(self, rid):
+        v = self.cap.get(rid)
+        return None if v is None else (v[0], frozenset(v[1]))
+
+    def get_couple_ids(self, a, b):
+        return [rid for rid, s in self.couples.items() if s == frozenset((a, b))]
+
+    def get_source_ids(self, pid):
+        return list(self.sources.get(pid, []))
+
+    def get_memory_ids(self, pid):
+        return list(self.memories.get(pid, []))
+
+    def get_change_summary(self, pid):
+        return self.changes.get(pid, [("me", "create person")])
 
     # writer
     def _id(self, prefix):
         self.n += 1
         return self.ret_id or f"{prefix}{self.n}"
 
+    def _maybe_fail(self):
+        if self.write_error and not self.write_error_after_effect:
+            raise FSHTTPError(self.write_error, "x")
+
     def create_couple(self, p1, p2, *, reason):
         self.calls.append(("create_couple", p1, p2))
-        if self.write_error:
-            raise FSHTTPError(self.write_error, "x")
+        self._maybe_fail()
         rid = self._id("R")
         if self.apply:
             self.couples[rid] = frozenset((p1, p2))
+            if self.double_write:
+                self.couples[rid + "dup"] = frozenset((p1, p2))
         if self.leak_to:
             self.couples[rid + "x"] = frozenset((p1, self.leak_to))
+        if self.points_elsewhere:
+            self.couples["ROTHER"] = frozenset((E, F))
+            return "ROTHER"
         return rid
 
     def create_parent_child(self, *, child_id, parent_ids, reason):
         self.calls.append(("create_parent_child", child_id, tuple(parent_ids)))
+        self._maybe_fail()
         rid = self._id("P")
         if self.apply:
             self.cap[rid] = (child_id, tuple(parent_ids))
+            if self.derive_couple and len(parent_ids) == 2 and not self.get_couple_ids(*parent_ids):
+                self.couples[f"D{self.n}"] = frozenset(parent_ids)
         if self.leak_to:
             self.cap[rid + "x"] = (self.leak_to, (parent_ids[0],))
         return rid
 
     def create_person(self, person, *, reason):
         self.calls.append(("create_person", json.dumps(person, sort_keys=True)))
-        rid = self.ret_id or f"NNNN-{self.n + 1:03d}"; self.n += 1
-        if self.apply:
+        self.n += 1
+        rid = self.ret_id or f"NNNN-{self.n:03d}"
+        if self.apply or self.write_error_after_effect:
             name = self.new_name or person["names"][0]["nameForms"][0]["fullText"]
-            self.people[rid] = dict(name=name, living=False, status="ok")
+            facts = person.get("facts")
+            self.people[rid] = dict(name=name, living=self.new_living, status="ok",
+                                    birth=_year(facts, "Birth") if self.new_years else None,
+                                    death=_year(facts, "Death") if self.new_years else None)
+        if self.write_error:
+            raise FSHTTPError(self.write_error, "x")
         return rid
 
     def delete_couple(self, rid, *, reason):
@@ -112,31 +190,49 @@ class FakeFS:
 
 def couple(a=A, b=B):
     x, y = sorted((a, b))
-    return TreeAction("add-couple", f"spouse:{x}:{y}", {"a": x, "b": y}, "planned", "r")
+    return TreeAction("add-couple", f"spouse:{x}:{y}",
+                      {"a": x, "b": y, "a_folder": fk(x), "b_folder": fk(y)}, "planned", "r")
 
 
 def child(c=C, parents=(A, B)):
     ps = sorted(parents)
     return TreeAction("add-child-parents", f"child-parents:{c}",
-                      {"child": c, "parents": ps}, "planned", "r")
+                      {"child": c, "child_folder": fk(c), "parents": ps,
+                       "parent_folders": [fk(p) for p in ps]}, "planned", "r")
 
 
 def newp(name="Zed Testname", birth=1850, death=1910):
-    key = "create-person:" + hashlib.sha256(name.encode()).hexdigest()[:16]
-    return TreeAction("create-person", key, {"name": name, "birth": birth, "death": death,
-                                             "gender": "Unknown"}, "planned", "r")
+    return TreeAction("create-person", creation_key(name, birth, death),
+                      {"name": name, "birth": birth, "death": death, "gender": "Unknown"}, "planned", "r")
+
+
+def approved_for(actions):
+    rel, new = [], []
+    for a in actions:
+        if a.kind == "add-couple":
+            rel.append(a.key)
+        elif a.kind == "add-child-parents":
+            rel += [f"parent-child:{p}:{a.params['child']}" for p in a.params["parents"]]
+        else:
+            new.append(a.key)
+    return rel, new
 
 
 def make(tmp_path, actions, env="beta", approve=True, links=LINKED):
     arch = tmp_path / "arch"
     imp = arch / "_import"
     imp.mkdir(parents=True, exist_ok=True)
+    for pid in LINKED:  # archive folders: deceased by the years in the folder name
+        (arch / LINE / FOLDER[pid]).mkdir(parents=True, exist_ok=True)
     plan = TreePlan(env, tuple(actions), compute_tree_plan_hash(actions, env))
     path = imp / "TreePlan.json"
     path.write_text(json.dumps(tree_plan_json(plan)))
     (imp / "links.json").write_text(json.dumps({"people": [
-        {"line": "L", "folder": f"f{i}", "verdict": "confirmed", "chosen_id": x} for i, x in enumerate(links)]}))
-    appr = {"approved_tree_plan_hash": plan.plan_hash} if approve else {}
+        {"line": LINE, "folder": FOLDER[x], "verdict": "confirmed", "chosen_id": x} for x in links]}))
+    rel, new = approved_for(actions)
+    appr = {"approved_relationships": rel, "approved_creations": new}
+    if approve:
+        appr["approved_tree_plan_hash"] = plan.plan_hash
     (imp / "approvals.json").write_text(json.dumps(appr))
     return arch, path, plan
 
@@ -158,6 +254,18 @@ def run(tmp_path, fs, actions, env="beta", execute=True, **kw):
 
 def statuses(summary):
     return [o.status for o in summary.outcomes]
+
+
+def led_of(tmp_path):
+    return Ledger(tmp_path / "arch" / "_import" / "tree-ledger.jsonl")
+
+
+def age_intents(led):
+    lines = [json.loads(x) for x in led.path.read_text().splitlines()]
+    for x in lines:
+        if x["type"] == "intent":
+            x["ts"] = "2020-01-01T00:00:00Z"
+    led.path.write_text("".join(json.dumps(x) + "\n" for x in lines))
 
 
 # ------------------------------------------------------------------ verify gates
@@ -183,7 +291,9 @@ def test_verify_requires_approval_hash(tmp_path):
 
 def test_verify_approved_hash_must_match(tmp_path):
     arch, path, plan = make(tmp_path, [couple()])
-    (arch / "_import" / "approvals.json").write_text(json.dumps({"approved_tree_plan_hash": "1" * 64}))
+    data = json.loads((arch / "_import" / "approvals.json").read_text())
+    data["approved_tree_plan_hash"] = "1" * 64
+    (arch / "_import" / "approvals.json").write_text(json.dumps(data))
     with pytest.raises(GateError, match="approved_tree_plan_hash"):
         verify_tree_plan_for_execution(arch, path, plan.plan_hash, "beta")
 
@@ -213,9 +323,34 @@ def test_verify_rejects_malformed_runnable(tmp_path):
         verify_tree_plan_for_execution(arch, path, plan.plan_hash, "beta")
 
 
+def test_verify_rejects_missing_folder_keys(tmp_path):
+    a = couple()
+    bad = TreeAction(a.kind, a.key, {"a": A, "b": B}, "planned", "r")
+    arch, path, plan = make(tmp_path, [bad])
+    with pytest.raises(GateError, match="folder"):
+        verify_tree_plan_for_execution(arch, path, plan.plan_hash, "beta")
+
+
 def test_verify_rejects_living_creation(tmp_path):
     arch, path, plan = make(tmp_path, [newp(birth=1950, death=None)])
     with pytest.raises(GateError, match="deceased"):
+        verify_tree_plan_for_execution(arch, path, plan.plan_hash, "beta")
+
+
+def test_verify_rejects_old_style_creation_key(tmp_path):
+    n = newp()
+    old = TreeAction(n.kind, "create-person:0123456789abcdef", n.params, "planned", "r")
+    arch, path, plan = make(tmp_path, [old])
+    with pytest.raises(GateError, match="key does not match"):
+        verify_tree_plan_for_execution(arch, path, plan.plan_hash, "beta")
+
+
+def test_verify_rechecks_per_item_approvals(tmp_path):  # minor 4
+    arch, path, plan = make(tmp_path, [couple()])
+    data = json.loads((arch / "_import" / "approvals.json").read_text())
+    data["approved_relationships"] = []
+    (arch / "_import" / "approvals.json").write_text(json.dumps(data))
+    with pytest.raises(GateError, match="no longer in approvals"):
         verify_tree_plan_for_execution(arch, path, plan.plan_hash, "beta")
 
 
@@ -242,7 +377,6 @@ def test_run_requires_lock_when_executing(tmp_path):
 def test_unverified_plan_refused(tmp_path):
     fs = FakeFS()
     arch, pf, _ = pf_for(tmp_path, [couple()])
-    import dataclasses
     raw = dataclasses.replace(pf, verified=False)
     with pytest.raises(GateError, match="not verified"):
         run_tree_plan(raw, TreeServices(fs, fs, arch, "beta"), Ledger(arch / "_import" / "tree-ledger.jsonl"))
@@ -292,6 +426,12 @@ def test_max_actions_truncates(tmp_path):
     assert statuses(s) == ["created"] and s.truncated
 
 
+def test_executor_runs_couples_before_children_before_people(tmp_path):  # M8 ordering
+    fs = FakeFS()
+    s, _ = run(tmp_path, fs, [newp(), child(E, (C, D)), couple(A, B)], execute=False)
+    assert [o.kind for o in s.outcomes] == ["add-couple", "add-child-parents", "create-person"]
+
+
 # ------------------------------------------------------------------ successes
 
 
@@ -320,7 +460,7 @@ def test_create_person_created(tmp_path):
     fs = FakeFS()
     s, led = run(tmp_path, fs, [newp()])
     assert statuses(s) == ["created"]
-    assert [c[0] for c in fs.calls].count("search") == 1
+    assert len(fs.search_calls) == 1
     body = json.loads(next(c for c in fs.calls if c[0] == "create_person")[1])
     assert body["gender"]["type"].endswith("Unknown") and body["living"] is False
     assert led.records()[-1]["created"] == {"person_id": "NNNN-001"}
@@ -328,8 +468,7 @@ def test_create_person_created(tmp_path):
 
 def test_rerun_is_noop(tmp_path):
     fs = FakeFS()
-    actions = [couple()]
-    run(tmp_path, fs, actions)
+    run(tmp_path, fs, [couple()])
     n = len(fs.writes())
     arch = tmp_path / "arch"
     pf = verify_tree_plan_for_execution(arch, arch / "_import" / "TreePlan.json",
@@ -350,6 +489,7 @@ def test_rerun_is_noop(tmp_path):
     (lambda fs: fs.people[B].update(status="redirected"), "redirected"),
     (lambda fs: fs.people.pop(B), "not-found"),
     (lambda fs: fs.couples.update(X=frozenset((A, B))), "already exists"),
+    (lambda fs: fs.cap.update(X=(A, (B,))), "contradictory"),
 ])
 def test_couple_prechecks(tmp_path, mutate, reason):
     fs = FakeFS()
@@ -363,17 +503,55 @@ def test_couple_refused_when_link_no_longer_confirmed(tmp_path):
     fs = FakeFS()
     arch, pf, _ = pf_for(tmp_path, [couple()], links=[A, C, D, E])
     s = run_tree_plan(pf, TreeServices(fs, fs, arch, "beta"), Ledger(arch / "_import" / "tree-ledger.jsonl"))
-    assert statuses(s) == ["skipped"] and "links.json" in s.outcomes[0].reason
+    assert statuses(s) == ["skipped"] and "link" in s.outcomes[0].reason
+    assert fs.writes() == []
+
+
+def test_link_checked_per_folder_not_pooled(tmp_path):  # M4 at execution time
+    fs = FakeFS()
+    arch, pf, _ = pf_for(tmp_path, [couple()])
+    imp = arch / "_import"
+    data = json.loads((imp / "approvals.json").read_text())
+    data["approved_links"] = {fk(A): "XXXX-009"}  # folder A re-pointed; AAAA-001 is still linked elsewhere? no
+    (imp / "approvals.json").write_text(json.dumps(data))
+    s = run_tree_plan(pf, TreeServices(fs, fs, arch, "beta"), Ledger(imp / "tree-ledger.jsonl"))
+    assert statuses(s) == ["skipped"] and "link changed" in s.outcomes[0].reason
+    assert fs.writes() == []
+
+
+def test_archive_status_living_blocks_write(tmp_path):  # minor 3
+    fs = FakeFS()
+    arch, pf, _ = pf_for(tmp_path, [couple()])
+    folder = arch / LINE / FOLDER[A]
+    (folder / "ImportRecord.json").write_text(json.dumps({"status": "living", "reviewed": True}))
+    s = run_tree_plan(pf, TreeServices(fs, fs, arch, "beta"), Ledger(arch / "_import" / "tree-ledger.jsonl"))
+    assert statuses(s) == ["skipped"]
+    assert "deceased" in s.outcomes[0].reason or "ImportRecord" in s.outcomes[0].reason
+    assert fs.writes() == []
+
+
+def test_archive_folder_missing_blocks_write(tmp_path):
+    fs = FakeFS()
+    arch, pf, _ = pf_for(tmp_path, [couple()])
+    import shutil
+    shutil.rmtree(arch / LINE / FOLDER[B])
+    s = run_tree_plan(pf, TreeServices(fs, fs, arch, "beta"), Ledger(arch / "_import" / "tree-ledger.jsonl"))
+    assert statuses(s) == ["skipped"] and "not found in archive" in s.outcomes[0].reason
 
 
 def test_couple_refused_without_negative_control(tmp_path):
-    fs = FakeFS()
-    s, _ = run(tmp_path, fs, [couple()], execute=False)  # sanity: controls exist
-    assert statuses(s) == ["would-create"]
     fs2 = FakeFS()
-    arch, pf, _ = pf_for(tmp_path / "two", [couple()], links=[A, B])
+    arch, pf, _ = pf_for(tmp_path, [couple()], links=[A, B])
     s2 = run_tree_plan(pf, TreeServices(fs2, fs2, arch, "beta"), Ledger(arch / "_import" / "tree-ledger.jsonl"))
     assert statuses(s2) == ["skipped"] and "negative control" in s2.outcomes[0].reason
+
+
+def test_living_control_people_are_not_used(tmp_path):
+    fs = FakeFS()
+    for pid in (C, D, E, F):
+        fs.people[pid]["living"] = True
+    s, _ = run(tmp_path, fs, [couple()])
+    assert statuses(s) == ["skipped"] and "negative control" in s.outcomes[0].reason
 
 
 @pytest.mark.parametrize("mutate,reason", [
@@ -381,6 +559,7 @@ def test_couple_refused_without_negative_control(tmp_path):
     (lambda fs: fs.people[C].update(living=True), "living"),
     (lambda fs: fs.people[A].update(living=True), "living"),
     (lambda fs: fs.people[B].update(status="deleted"), "deleted"),
+    (lambda fs: fs.couples.update(X=frozenset((C, A))), "contradictory"),
 ])
 def test_child_prechecks(tmp_path, mutate, reason):
     fs = FakeFS()
@@ -390,22 +569,82 @@ def test_child_prechecks(tmp_path, mutate, reason):
     assert fs.writes() == []
 
 
-def test_create_person_refuses_plausible_match(tmp_path):
+def test_strict_read_failure_stops_without_write(tmp_path):  # M2: missing section links fail closed
     fs = FakeFS()
-    fs.hits = [FsPerson("MMMM-111", "Zed Testname", 1850, 1910, False, "ok")]
-    s, led = run(tmp_path, fs, [newp()])
-    assert statuses(s) == ["skipped"] and "plausible match MMMM-111" in s.outcomes[0].reason
-    assert fs.writes() == [] and not led.path.exists()
+    fs.no_links = {A}
+    s, _ = run(tmp_path, fs, [couple()])
+    assert s.stopped and fs.writes() == []
 
 
 def test_read_failure_stops_without_write(tmp_path):
     fs = FakeFS()
 
-    def boom(pid):
+    def boom(pid, strict=False):
         raise ReadFailed("boom")
     fs.get_relatives = boom
     s, _ = run(tmp_path, fs, [couple()])
     assert s.stopped and fs.writes() == []
+
+
+# ------------------------------------------- create-person duplicate search (B1)
+
+
+def tree_person(pid="MMMM-111", given="Zed", surname="Testname", birth=1850, death=1910, living=False):
+    return dict(id=pid, given=given, surname=surname, birth=birth, death=death, living=living)
+
+
+def test_create_person_refuses_plausible_match(tmp_path):
+    fs = FakeFS()
+    fs.tree = [tree_person()]
+    s, led = run(tmp_path, fs, [newp()])
+    assert statuses(s) == ["skipped"] and "plausible match MMMM-111" in s.outcomes[0].reason
+    assert fs.writes() == [] and not led.path.exists()
+
+
+def test_search_results_depend_on_the_query(tmp_path):
+    fs = FakeFS()
+    fs.tree = [tree_person(surname="Otherfamily")]  # different surname: no hit
+    s, _ = run(tmp_path, fs, [newp()])
+    assert statuses(s) == ["created"]
+    assert fs.search_calls == [("Zed", "Testname", 1850, 1910)]
+
+
+def test_birth_year_off_by_four_still_a_match(tmp_path):
+    fs = FakeFS()
+    fs.tree = [tree_person(given="Johann", birth=1846, death=None)]  # other given name, birth off by 4
+    s, _ = run(tmp_path, fs, [newp(birth=1850, death=None)])
+    assert statuses(s) == ["skipped"] and "plausible match" in s.outcomes[0].reason
+
+
+def test_year_outside_range_is_not_a_match(tmp_path):
+    fs = FakeFS()
+    fs.tree = [tree_person(birth=1800, death=1860)]
+    s, _ = run(tmp_path, fs, [newp(birth=1850, death=1910)])
+    assert statuses(s) == ["created"]
+
+
+@pytest.mark.parametrize("name", ["Mary", "Mrs. Smith", "J. Smith", "Johann (Hans)"])
+def test_single_token_or_initial_names_are_not_created(tmp_path, name):
+    fs = FakeFS()
+    s, led = run(tmp_path, fs, [newp(name=name)])
+    assert statuses(s) == ["skipped"] and "given name and a surname" in s.outcomes[0].reason
+    assert fs.writes() == [] and fs.search_calls == []
+
+
+def test_duplicate_search_error_skips(tmp_path):
+    fs = FakeFS()
+    fs.search_error = ReadFailed("boom")
+    s, _ = run(tmp_path, fs, [newp()])
+    assert statuses(s) == ["skipped"] and "search failed" in s.outcomes[0].reason
+    assert fs.writes() == []
+
+
+def test_living_hit_ids_are_not_printed(tmp_path):
+    fs = FakeFS()
+    fs.tree = [tree_person("LIVE-001", living=True), tree_person("DEAD-001")]
+    s, _ = run(tmp_path, fs, [newp()])
+    reason = s.outcomes[0].reason
+    assert "DEAD-001" in reason and "LIVE-001" not in reason and "living" in reason
 
 
 # ------------------------------------------------------------- read-back / failure
@@ -424,13 +663,45 @@ def test_couple_not_visible_is_failed_readback_and_blocks(tmp_path):
     assert s2.stopped and "resolve" in s2.stop_reason and len(fs.writes()) == n
 
 
-def test_negative_control_failure(tmp_path):
+def test_double_couple_write_is_caught(tmp_path):  # M1
     fs = FakeFS()
-    fs.leak_to = E  # control picked is the first unrelated linked person (CCCC-003 here); leak into it
-    fs.leak_to = C
+    fs.double_write = True
     s, led = run(tmp_path, fs, [couple()])
-    assert statuses(s) == ["failed-readback"] and "negative control" in s.outcomes[0].reason
+    assert statuses(s) == ["failed-readback"] and "more than one couple" in s.outcomes[0].reason
+
+
+def test_leak_to_non_control_person_is_caught_by_subject_diff(tmp_path):  # M1/M2
+    fs = FakeFS()
+    fs.leak_to = E  # controls are C and D; the subject diff must catch it
+    s, led = run(tmp_path, fs, [couple()])
+    assert statuses(s) == ["failed-readback"]
     assert led.blocked_keys("beta")
+
+
+def test_control_full_relationship_set_is_compared(tmp_path):  # M2
+    fs = FakeFS()
+    orig = fs.create_couple
+
+    def sneaky(p1, p2, *, reason):
+        rid = orig(p1, p2, reason=reason)
+        fs.couples["SNEAK"] = frozenset((C, F))  # control C gains a link to a third person
+        return rid
+    fs.create_couple = sneaky
+    s, _ = run(tmp_path, fs, [couple()])
+    assert statuses(s) == ["failed-readback"] and "control" in s.outcomes[0].reason
+
+
+def test_child_extra_spouse_link_to_parent_fails_readback(tmp_path):  # M1: beta's ParentChild failure
+    fs = FakeFS()
+    orig = fs.create_parent_child
+
+    def extra(**kw):
+        rid = orig(**kw)
+        fs.couples["BAD"] = frozenset((kw["child_id"], kw["parent_ids"][0]))
+        return rid
+    fs.create_parent_child = extra
+    s, _ = run(tmp_path, fs, [child(C, (A, B))])
+    assert statuses(s) == ["failed-readback"]
 
 
 def test_child_extra_parent_fails_readback(tmp_path):
@@ -446,12 +717,51 @@ def test_child_extra_parent_fails_readback(tmp_path):
     assert statuses(s) == ["failed-readback"]
 
 
+def test_returned_id_must_name_the_planned_people(tmp_path):  # M6
+    fs = FakeFS()
+    fs.points_elsewhere = True
+    s, led = run(tmp_path, fs, [couple()])
+    assert statuses(s) == ["failed-readback"] and "does not name exactly" in s.outcomes[0].reason
+
+
+def test_derived_couple_is_recorded_and_allowed(tmp_path):  # M8
+    fs = FakeFS()
+    fs.derive_couple = True
+    s, led = run(tmp_path, fs, [child(C, (A, B))])
+    assert statuses(s) == ["created"]
+    created = led.records()[-1]["created"]
+    assert created["child_parents_id"] == "P1" and created["derived_couple_id"].startswith("D")
+    assert any(r["type"] == "progress" and "derived_couple_id" in r["created"] for r in led.records())
+
+
+def test_no_derived_couple_when_parents_already_a_couple(tmp_path):
+    fs = FakeFS()
+    fs.couples["X"] = frozenset((A, B))
+    fs.derive_couple = True
+    s, led = run(tmp_path, fs, [child(C, (A, B))])
+    assert statuses(s) == ["created"] and "derived_couple_id" not in led.records()[-1]["created"]
+
+
 def test_person_name_mismatch_fails_readback(tmp_path):
     fs = FakeFS()
     fs.new_name = "Someone Else"
     s, led = run(tmp_path, fs, [newp()])
     assert statuses(s) == ["failed-readback"]
     assert led.records()[-1]["created"] == {"person_id": "NNNN-001"}
+
+
+def test_new_person_with_unknown_living_status_fails_readback(tmp_path):  # minor 1
+    fs = FakeFS()
+    fs.new_living = None
+    s, _ = run(tmp_path, fs, [newp()])
+    assert statuses(s) == ["failed-readback"] and "deceased" in s.outcomes[0].reason
+
+
+def test_new_person_years_must_be_stored(tmp_path):  # minor 1
+    fs = FakeFS()
+    fs.new_years = False
+    s, _ = run(tmp_path, fs, [newp()])
+    assert statuses(s) == ["failed-readback"] and "year" in s.outcomes[0].reason
 
 
 def test_write_error_is_failed_and_blocks(tmp_path):
@@ -474,22 +784,16 @@ def test_invalid_returned_id_not_recorded(tmp_path):
 
 def test_keyboard_interrupt_records_partial(tmp_path):
     fs = FakeFS()
-
-    def boom(pid):
-        raise KeyboardInterrupt
     orig = fs.get_relatives
-    calls = {"n": 0}
 
-    def rels(pid):
-        # pre-check reads succeed; interrupt during read-back (after the write)
-        if fs.couples:
+    def rels(pid, strict=False):
+        if fs.couples:  # pre-check reads succeed; interrupt during read-back
             raise KeyboardInterrupt
-        return orig(pid)
+        return orig(pid, strict)
     fs.get_relatives = rels
     with pytest.raises(KeyboardInterrupt):
         run(tmp_path, fs, [couple()])
-    led = Ledger(tmp_path / "arch" / "_import" / "tree-ledger.jsonl")
-    last = led.records()[-1]
+    last = led_of(tmp_path).records()[-1]
     assert last["status"] == "partial" and last["created"] == {"couple_id": "R1"}
 
 
@@ -523,33 +827,82 @@ def test_crash_without_progress_is_ambiguous(tmp_path):
 # ----------------------------------------------------------------------- resolve
 
 
-def test_resolve_absent_lifts_block(tmp_path):
+def test_create_person_timeout_is_ambiguous_and_cannot_be_auto_resolved(tmp_path):  # B2
+    fs = FakeFS()
+    fs.write_error, fs.write_error_after_effect = 504, True  # the person WAS created, then the POST timed out
+    s, led = run(tmp_path, fs, [newp()])
+    assert statuses(s) == ["ambiguous"] and s.stopped
+    age_intents(led)
+    arch = tmp_path / "arch"
+    svc = TreeServices(fs, fs, arch, "beta")
+    key = newp().key
+    with RunLock(arch):
+        r = resolve_tree(led, svc, [key], execute=True)
+    assert statuses(r) == ["still-blocked"] and "--confirm-absent" in r.outcomes[0].reason
+    assert led.blocked_keys("beta") == {key: "ambiguous"}
+    # and a rerun is still blocked: no second person is created
+    fs.write_error = None
+    s2, _ = run(tmp_path, fs, [newp()])
+    assert s2.stopped and len([c for c in fs.calls if c[0] == "create_person"]) == 1
+
+
+def test_confirm_absent_lifts_a_create_person_block(tmp_path):
+    fs = FakeFS()
+    fs.write_error = 504
+    s, led = run(tmp_path, fs, [newp()])
+    assert statuses(s) == ["ambiguous"]
+    arch = tmp_path / "arch"
+    svc = TreeServices(fs, fs, arch, "beta")
+    key = newp().key
+    with RunLock(arch):
+        with pytest.raises(GateError, match="also be given as --key"):
+            resolve_tree(led, svc, [key], execute=True, confirm_absent=["create-person:other"])
+        r = resolve_tree(led, svc, [key], execute=True, confirm_absent=[key])
+    assert statuses(r) == ["resolved"] and led.blocked_keys("beta") == {}
+
+
+def test_confirm_absent_only_for_create_person(tmp_path):
     fs = FakeFS()
     fs.write_error = 500
     run(tmp_path, fs, [couple()])
     arch = tmp_path / "arch"
-    led = Ledger(arch / "_import" / "tree-ledger.jsonl")
-    # make the intent old enough to count as settled
-    lines = [json.loads(x) for x in led.path.read_text().splitlines()]
-    lines[0]["ts"] = "2020-01-01T00:00:00Z"
-    led.path.write_text("".join(json.dumps(x) + "\n" for x in lines))
-    svc = TreeServices(fs, fs, arch, "beta")
+    with pytest.raises(GateError, match="create-person keys only"):
+        resolve_tree(led_of(tmp_path), TreeServices(fs, fs, arch, "beta"), [couple().key],
+                     confirm_absent=[couple().key])
+
+
+def test_resolve_absent_couple_lifts_block(tmp_path):
+    fs = FakeFS()
+    fs.write_error = 500
+    _, led = run(tmp_path, fs, [couple()])
+    age_intents(led)
+    arch = tmp_path / "arch"
     with RunLock(arch):
-        s = resolve_tree(led, svc, [couple().key], execute=True)
+        s = resolve_tree(led, TreeServices(fs, fs, arch, "beta"), [couple().key], execute=True)
     assert statuses(s) == ["resolved"] and led.blocked_keys("beta") == {}
 
 
 def test_resolve_present_records_created(tmp_path):
     fs = FakeFS()
     fs.write_error = 500
-    run(tmp_path, fs, [couple()])
+    _, led = run(tmp_path, fs, [couple()])
     fs.couples["Q"] = frozenset((A, B))
     arch = tmp_path / "arch"
-    led = Ledger(arch / "_import" / "tree-ledger.jsonl")
     with RunLock(arch):
         s = resolve_tree(led, TreeServices(fs, fs, arch, "beta"), [couple().key], execute=True)
     assert statuses(s) == ["resolved-created"]
     assert couple().key in led.executed_keys("beta")
+
+
+def test_resolve_child_requires_exact_parent_set(tmp_path):  # minor 6
+    fs = FakeFS()
+    fs.write_error = 500
+    _, led = run(tmp_path, fs, [child(C, (A, B))])
+    fs.cap["Q"] = (C, (A,))  # someone else linked only one parent
+    age_intents(led)
+    arch = tmp_path / "arch"
+    s = resolve_tree(led, TreeServices(fs, fs, arch, "beta"), [child(C, (A, B)).key])
+    assert statuses(s) == ["would-resolve"]  # not "would-resolve-created"
 
 
 def test_resolve_refuses_key_with_id(tmp_path):
@@ -557,8 +910,7 @@ def test_resolve_refuses_key_with_id(tmp_path):
     fs.apply = False
     run(tmp_path, fs, [couple()])
     arch = tmp_path / "arch"
-    led = Ledger(arch / "_import" / "tree-ledger.jsonl")
-    s = resolve_tree(led, TreeServices(fs, fs, arch, "beta"), [couple().key])
+    s = resolve_tree(led_of(tmp_path), TreeServices(fs, fs, arch, "beta"), [couple().key])
     assert statuses(s) == ["still-blocked"] and "rollback" in s.outcomes[0].reason
 
 
@@ -567,8 +919,7 @@ def test_resolve_unblocked_key_refused(tmp_path):
     run(tmp_path, fs, [couple()])
     arch = tmp_path / "arch"
     with pytest.raises(GateError, match="not blocked"):
-        resolve_tree(Ledger(arch / "_import" / "tree-ledger.jsonl"), TreeServices(fs, fs, arch, "beta"),
-                     [couple().key])
+        resolve_tree(led_of(tmp_path), TreeServices(fs, fs, arch, "beta"), [couple().key])
 
 
 # ---------------------------------------------------------------------- rollback
@@ -590,10 +941,38 @@ def test_rollback_deletes_exactly_ledger_ids(tmp_path):
     deletes = [c for c in fs.writes() if c[0].startswith("delete")]
     assert sorted(deletes) == [("delete_cap", "P2"), ("delete_couple", "R1")]
     assert "FOREIGN" in fs.couples and not fs.cap
-    # idempotent: nothing left to roll back
     with RunLock(arch):
         again = rollback_tree(led, svc, [], True)
     assert again.outcomes == []
+
+
+def test_rollback_deletes_derived_couple_with_child_link(tmp_path):  # M8
+    fs = FakeFS()
+    fs.derive_couple = True
+    _, led = run(tmp_path, fs, [child(C, (A, B))])
+    assert len(fs.couples) == 1
+    arch = tmp_path / "arch"
+    with RunLock(arch):
+        rb = rollback_tree(led, TreeServices(fs, fs, arch, "beta"), [], True)
+    assert [o.status for o in rb.outcomes] == ["rolled-back", "rolled-back"]
+    assert [c[0] for c in fs.writes() if c[0].startswith("delete")] == ["delete_cap", "delete_couple"]
+    assert not fs.couples and not fs.cap
+
+
+def test_rollback_derived_couple_already_gone_is_ok(tmp_path):
+    fs = FakeFS()
+    fs.derive_couple = True
+    _, led = run(tmp_path, fs, [child(C, (A, B))])
+    orig = fs.delete_child_and_parents
+
+    def cascade(rid, *, reason):
+        orig(rid, reason=reason)
+        fs.couples.clear()  # FamilySearch removed the derived couple itself
+    fs.delete_child_and_parents = cascade
+    arch = tmp_path / "arch"
+    with RunLock(arch):
+        rb = rollback_tree(led, TreeServices(fs, fs, arch, "beta"), [], True)
+    assert [o.status for o in rb.outcomes] == ["rolled-back", "rolled-back"] and not rb.stopped
 
 
 def test_rollback_failed_absence_readback(tmp_path):
@@ -636,17 +1015,32 @@ def test_rollback_refuses_unknown_key_and_bad_id(tmp_path):
     assert ("delete_cap", "../x") not in fs.calls
 
 
+def test_rollback_checks_the_recorded_id_before_deleting(tmp_path):  # M6
+    fs = FakeFS()
+    _, led = run(tmp_path, fs, [couple()])
+    # the ledger's id now names a different couple (C, D); A and B are still spouses via R1
+    led._append({"type": "result", "intent_id": "y", "key": "spouse:" + A + ":" + B + "x", "kind": "add-couple",
+                 "env": "beta", "status": "created", "reason": "", "created": {"couple_id": "RX"},
+                 "params": {"a": A, "b": B}})
+    fs.couples["RX"] = frozenset((C, D))
+    arch = tmp_path / "arch"
+    with RunLock(arch):
+        rb = rollback_tree(led, TreeServices(fs, fs, arch, "beta"), [], True)
+    bad = [o for o in rb.outcomes if o.status == "rollback-failed"]
+    assert bad and "does not name this couple" in bad[0].reason
+    assert ("delete_couple", "RX") not in fs.calls
+
+
 def test_rollback_person_alone_ok_and_foreign_relationship_refused(tmp_path):
     fs = FakeFS()
     _, led = run(tmp_path, fs, [newp()])
     arch = tmp_path / "arch"
     svc = TreeServices(fs, fs, arch, "beta")
-    # someone else links the new person: refuse
     fs.couples["F1"] = frozenset(("NNNN-001", D))
     with RunLock(arch):
         rb = rollback_tree(led, svc, [], True)
     assert rb.outcomes[-1].status == "rollback-failed" and "not created by this ledger" in rb.outcomes[-1].reason
-    assert fs.writes()[-1][0] == "create_person"  # nothing deleted
+    assert fs.writes()[-1][0] == "create_person"
     del fs.couples["F1"]
     with RunLock(arch):
         rb = rollback_tree(led, svc, [], True)
@@ -654,20 +1048,57 @@ def test_rollback_person_alone_ok_and_foreign_relationship_refused(tmp_path):
     assert "NNNN-001" not in fs.people
 
 
+@pytest.mark.parametrize("setup,reason", [
+    (lambda fs: fs.sources.update({"NNNN-001": ["S1"]}), "sources or memories"),
+    (lambda fs: fs.memories.update({"NNNN-001": ["M1"]}), "sources or memories"),
+    (lambda fs: fs.changes.update({"NNNN-001": [("me", "create"), ("someone-else", "add fact")]}), "contributors"),
+    (lambda fs: fs.changes.update({"NNNN-001": [("me", "create"), ("me", "merge persons")]}), "merge"),
+    (lambda fs: fs.changes.update({"NNNN-001": []}), "contributors"),
+    (lambda fs: fs.people["NNNN-001"].update(name="Renamed Person"), "name changed"),
+])
+def test_rollback_person_refused_when_others_added_data(tmp_path, setup, reason):  # M7
+    fs = FakeFS()
+    _, led = run(tmp_path, fs, [newp()])
+    setup(fs)
+    arch = tmp_path / "arch"
+    with RunLock(arch):
+        rb = rollback_tree(led, TreeServices(fs, fs, arch, "beta"), [], True)
+    assert rb.outcomes[-1].status == "rollback-failed" and reason in rb.outcomes[-1].reason
+    assert not [c for c in fs.calls if c[0] == "delete_person"]
+
+
 def test_rollback_person_with_our_relationship_requires_relationship_first(tmp_path):
     fs = FakeFS()
     _, led = run(tmp_path, fs, [newp()])
     arch = tmp_path / "arch"
     svc = TreeServices(fs, fs, arch, "beta")
-    # second plan: a couple involving the new person, linked now
     led._append({"type": "result", "intent_id": "c", "key": "spouse:" + D + ":NNNN-001", "kind": "add-couple",
                  "env": "beta", "status": "created", "reason": "", "created": {"couple_id": "RX"},
                  "params": {"a": D, "b": "NNNN-001"}})
     fs.couples["RX"] = frozenset((D, "NNNN-001"))
     with RunLock(arch):
         rb = rollback_tree(led, svc, [], True)
-    assert [o.status for o in rb.outcomes] == ["rolled-back", "rolled-back"]  # newest first: couple, then person
+    assert [o.status for o in rb.outcomes] == ["rolled-back", "rolled-back"]
     assert [c[0] for c in fs.writes() if c[0].startswith("delete")] == ["delete_couple", "delete_person"]
+
+
+def test_rollback_of_progress_only_intent_then_rerun_is_not_stuck(tmp_path):  # minor 2
+    fs = FakeFS()
+    arch, pf, _ = pf_for(tmp_path, [couple()])
+    led = Ledger(arch / "_import" / "tree-ledger.jsonl")
+    fs.couples["R9"] = frozenset((A, B))
+    led._append({"type": "intent", "intent_id": "i1", "ts": "2020-01-01T00:00:00Z", "key": couple().key,
+                 "kind": "add-couple", "env": "beta", "params": couple().params})
+    led._append({"type": "progress", "intent_id": "i1", "key": couple().key, "env": "beta",
+                 "created": {"couple_id": "R9"}})
+    svc = TreeServices(fs, fs, arch, "beta")
+    with RunLock(arch):
+        rb = rollback_tree(led, svc, [couple().key], True)
+    assert [o.status for o in rb.outcomes] == ["rolled-back"]
+    with RunLock(arch):
+        s = run_tree_plan(pf, svc, led, execute=True)
+    assert not s.stopped and statuses(s) == ["created"]  # not re-blocked by reconcile
+    assert led.blocked_keys("beta") == {}
 
 
 def test_rollback_production_gates(tmp_path):
@@ -679,3 +1110,46 @@ def test_rollback_production_gates(tmp_path):
         rollback_tree(led, svc, [], False)
     with pytest.raises(GateError, match="--only"):
         rollback_tree(led, svc, [], False, allow_production=True)
+
+
+# ---------------------------------------------------------------- guarded writer (M9)
+
+
+class Recorder:
+    def __init__(self):
+        self.calls = []
+
+    def __getattr__(self, name):
+        def call(*a, **k):
+            self.calls.append(name)
+            return "ID-1"
+        return call
+
+
+CALLS = [("create_couple", (A, B)), ("create_parent_child", ()), ("create_person", ({},)),
+         ("delete_couple", ("R1",)), ("delete_child_and_parents", ("P1",)), ("delete_person", (A,))]
+
+
+@pytest.mark.parametrize("name,args", CALLS)
+def test_guarded_writer_blocks_production_without_allow(name, args):
+    inner = Recorder()
+    w = GuardedTreeWriter(inner, Environment.PRODUCTION, False)
+    with pytest.raises(OperationLockedError):
+        getattr(w, name)(*args, reason="r")
+    assert inner.calls == []
+
+
+@pytest.mark.parametrize("name,args", CALLS)
+def test_guarded_writer_passes_with_allow_and_on_beta(name, args):
+    for env, allow in ((Environment.PRODUCTION, True), (Environment.BETA, False)):
+        inner = Recorder()
+        w = GuardedTreeWriter(inner, env, allow)
+        getattr(w, name)(*args, reason="r")
+        assert inner.calls == [name]
+
+
+def test_guarded_writer_requires_literal_true():
+    inner = Recorder()
+    w = GuardedTreeWriter(inner, Environment.PRODUCTION, "yes")  # type: ignore[arg-type]
+    with pytest.raises(OperationLockedError):
+        w.delete_person(A, reason="r")

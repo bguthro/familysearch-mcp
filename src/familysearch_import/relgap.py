@@ -41,6 +41,8 @@ class EdgeResult:
     lines: tuple[str, ...]
     approved_ends: tuple[str, ...] = ()  # labels of ends whose link comes from approvals.json
     fs_found: tuple[str, ...] = ()  # conflict / partial: what FamilySearch has, living redacted
+    a_folder: str | None = None  # "<line>/<folder>" of each end's archive folder (mapped ends only)
+    b_folder: str | None = None
 
 
 @dataclass(frozen=True)
@@ -244,7 +246,13 @@ def evaluate_edges(
 
         def done(status: Status, extra: str = "", a_fs=None, b_fs=None, found=(), appr=()):
             text = "; ".join(x for x in (extra, note) if x)
-            results.append(EdgeResult(kind, a.label, b.label, a_fs, b_fs, status, text, lines, appr, found))
+            def folder(end: _End) -> str | None:
+                if end.mapped.living or end.mapped.unknown:  # folder names carry names: never for living people
+                    return None
+                return _pkey(end.mapped.person) if end.mapped.status == "mapped" and end.mapped.person else None
+
+            results.append(EdgeResult(kind, a.label, b.label, a_fs, b_fs, status, text, lines, appr, found,
+                                      folder(a), folder(b)))
 
         if a.mapped.living or b.mapped.living:
             living_skipped += 1

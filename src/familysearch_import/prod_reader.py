@@ -214,11 +214,12 @@ class ReadOnlyFS:
         except (requests.RequestException, ValueError) as e:
             raise ReadFailed(f"read failed for {person_id}: {type(e).__name__}") from e
 
-    def get_relatives(self, person_id: str) -> list[Relative]:
-        """Parents, children and spouses of a person; any failure is ReadFailed (never empty)."""
+    def get_relatives(self, person_id: str, strict: bool = False) -> list[Relative]:
+        """Parents, children and spouses of a person; any failure is ReadFailed (never empty).
+        ``strict``: a person without a parents/children/spouses link is ReadFailed, not empty."""
         self.last_response = None
         try:
-            data = self._call(lambda: self._tree.get_relatives(person_id))
+            data = self._call(lambda: self._tree.get_relatives(person_id, strict=strict))
         except FSHTTPError as e:
             raise ReadFailed(f"read failed for {person_id}: HTTP {e.status}") from e
         except FSError as e:
@@ -234,6 +235,114 @@ class ReadOnlyFS:
                     continue  # the spouses endpoint may echo the subject itself
                 out.append(Relative(fs_person_from_dict(p), rel))
         return out
+
+    def _get_json(self, url: str, what: str) -> dict | None:
+        """GET a relationship resource: dict, or None when it is gone (404/410). Else ReadFailed."""
+        self.last_response = None
+        try:
+            resp = self._call(lambda: self._client.get(url))
+        except FSHTTPError as e:
+            if e.status in (404, 410):
+                return None
+            raise ReadFailed(f"read failed for {what}: HTTP {e.status}") from e
+        except FSError as e:
+            if type(e) is not FSError:
+                raise
+            raise ReadFailed(f"read failed for {what}: {e}") from e
+        except requests.RequestException as e:
+            raise ReadFailed(f"read failed for {what}: {type(e).__name__}") from e
+        try:
+            data = resp.json()
+        except ValueError as e:
+            raise ReadFailed(f"read failed for {what}: not JSON") from e
+        return data if isinstance(data, dict) else {}
+
+    def get_couple(self, relationship_id: str) -> frozenset[str] | None:
+        """The two person ids of a couple relationship; None when it does not exist."""
+        from familysearch.tree import couple_url
+        data = self._get_json(couple_url(self._client.base_url, relationship_id), "couple relationship")
+        if data is None:
+            return None
+        rels = data.get("relationships")
+        if not (isinstance(rels, list) and len(rels) == 1 and isinstance(rels[0], dict)):
+            raise ReadFailed("read failed for couple relationship: unexpected shape")
+        r = rels[0]
+        ends = [(r.get(k) or {}).get("resourceId") for k in ("person1", "person2")]
+        if not all(isinstance(x, str) and x for x in ends):
+            raise ReadFailed("read failed for couple relationship: missing persons")
+        return frozenset(ends)
+
+    def get_child_and_parents(self, relationship_id: str) -> tuple[str, frozenset[str]] | None:
+        """(child id, parent ids) of a child-and-parents relationship; None when it does not exist."""
+        from familysearch.tree import child_and_parents_url
+        data = self._get_json(child_and_parents_url(self._client.base_url, relationship_id),
+                              "child-and-parents relationship")
+        if data is None:
+            return None
+        rels = data.get("childAndParentsRelationships")
+        if not (isinstance(rels, list) and len(rels) == 1 and isinstance(rels[0], dict)):
+            raise ReadFailed("read failed for child-and-parents relationship: unexpected shape")
+        r = rels[0]
+        child = (r.get("child") or {}).get("resourceId")
+        parents = [(r.get(k) or {}).get("resourceId") for k in ("parent1", "parent2") if r.get(k)]
+        if not (isinstance(child, str) and child and parents and all(isinstance(x, str) and x for x in parents)):
+            raise ReadFailed("read failed for child-and-parents relationship: missing persons")
+        return child, frozenset(parents)
+
+    def get_couple_ids(self, person_id: str, other_id: str) -> list[str]:
+        """Couple relationship ids between two people (read-only)."""
+        self.last_response = None
+        try:
+            return self._call(lambda: self._tree.get_couple_relationship_ids(person_id, other_id))
+        except FSHTTPError as e:
+            raise ReadFailed(f"read failed for {person_id}: HTTP {e.status}") from e
+        except FSError as e:
+            if type(e) is not FSError:
+                raise
+            raise ReadFailed(f"read failed for {person_id}: {e}") from e
+        except (requests.RequestException, ValueError) as e:
+            raise ReadFailed(f"read failed for {person_id}: {type(e).__name__}") from e
+
+    def get_change_summary(self, person_id: str) -> list[tuple[str, str]]:
+        """(contributor, operation text) per change-history entry; contributor "" when unknown."""
+        import json as _json
+        items = self._read_list(person_id, lambda: self._tree.get_changes(person_id))
+        out = []
+        for i in items:
+            contribs = i.get("contributors") if isinstance(i.get("contributors"), list) else []
+            who = ""
+            for c in contribs:
+                if isinstance(c, dict) and (c.get("resourceId") or c.get("name")):
+                    who = str(c.get("resourceId") or c.get("name"))
+                    break
+            text = (_json.dumps(i.get("changeInfo"), sort_keys=True, default=str) + " "
+                    + str(i.get("title") or "")).lower()
+            out.append((who, text))
+        return out
+
+    def search_duplicates(self, given: str, surname: str, birth: int | None,
+                          death: int | None) -> list[FsPerson]:
+        """UNFILTERED tree search for anyone who might be the same person: given+surname and
+        surname-only, each at birth and death years -10..+10 (steps of 5). Any entry returned is a hit
+        (no plausibility filter). Errors propagate; never an empty list for a failed search."""
+        queries = []
+        for kind, year in (("birth_date", birth), ("death_date", death)):
+            if year is None:
+                continue
+            for off in (-10, -5, 0, 5, 10):
+                for g in (given, None):
+                    queries.append({"given": g, "surname": surname, kind: str(year + off)})
+        if not queries:
+            raise ValueError("duplicate search needs a birth or death year")
+        hits: dict[str, FsPerson] = {}
+        for q in queries:
+            for entry in self._call(lambda q=q: self._search.tree_search(**q)):
+                fs = _entry_person(entry)
+                if fs is None:
+                    eid = entry.get("id") if isinstance(entry, dict) else None
+                    fs = FsPerson(str(eid or "(unparsed)"), "", None, None, None, "error")
+                hits.setdefault(fs.id, fs)
+        return list(hits.values())
 
     def get_memory_titles(self, person_id: str) -> list[str]:
         items = self._read_list(person_id, lambda: self._tree.get_memories(person_id))

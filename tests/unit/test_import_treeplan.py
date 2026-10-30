@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from familysearch_import import __main__ as cli
 from familysearch_import.treeplan import build_tree_plan, load_tree_approvals, write_tree_plan
 
@@ -12,12 +14,14 @@ def edge(kind, a, b, fa, fb, status="missing-in-familysearch", note=""):
     key = f"{kind}:{fa}:{fb}"
     if kind == "spouse":
         key = f"spouse:{min(fa, fb)}:{max(fa, fb)}"
+    back = {v: k for k, v in LINKS.items()}
     return {"key": key, "kind": kind, "a": a, "b": b, "a_fs": fa, "b_fs": fb, "status": status,
-            "note": note, "lines": ["Line A"], "approved_ends": [], "fs_found": []}
+            "note": note, "lines": ["Line A"], "approved_ends": [], "fs_found": [],
+            "a_folder": back.get(fa), "b_folder": back.get(fb)}
 
 
 def rel(*edges, cands=()):
-    return {"edges": list(edges), "create_candidates": list(cands)}
+    return {"edges": list(edges), "create_candidates": list(cands), "env": "beta"}
 
 
 def appr(rels=(), creations=()):
@@ -61,7 +65,7 @@ def test_link_mismatch_skipped():
     r = rel(edge("spouse", "Alpha Testname", "Beta Testname", "AAAA-001", "ZZZZ-999"))
     plan = build_tree_plan(r, appr(["spouse:AAAA-001:ZZZZ-999"]), LINKS, "beta")
     assert plan.actions[0].state == "skipped"
-    assert "links.json" in plan.actions[0].reason
+    assert "folder key" in plan.actions[0].reason  # ZZZZ-999 has no folder in LINKS
 
 
 def test_non_missing_status_is_not_planned():
@@ -94,7 +98,8 @@ def test_hash_changes_with_env_and_action():
     ap = appr(["spouse:AAAA-001:BBBB-002"])
     p1 = build_tree_plan(r, ap, LINKS, "beta")
     assert p1.plan_hash == build_tree_plan(r, ap, LINKS, "beta").plan_hash
-    assert p1.plan_hash != build_tree_plan(r, ap, LINKS, "production").plan_hash
+    rp = dict(r, env="production")
+    assert p1.plan_hash != build_tree_plan(rp, ap, LINKS, "production").plan_hash
     r2 = rel(edge("spouse", "Alpha Testname", "Beta Testname", "AAAA-001", "BBBB-002"),
              edge("spouse", "Gamma Testname", "Delta Testname", "CCCC-003", "DDDD-004"))
     p2 = build_tree_plan(r2, appr(["spouse:AAAA-001:BBBB-002", "spouse:CCCC-003:DDDD-004"]), LINKS, "beta")
@@ -152,3 +157,89 @@ def test_unmatched_approvals_warn_in_report():
 def test_matched_approvals_do_not_warn():
     r = rel(edge("spouse", "Alpha Testname", "Beta Testname", "AAAA-001", "BBBB-002"))
     assert build_tree_plan(r, appr(["spouse:AAAA-001:BBBB-002"]), LINKS, "beta").warnings == ()
+
+
+def test_relationships_env_required_and_must_match():
+    r = rel(edge("spouse", "Alpha Testname", "Beta Testname", "AAAA-001", "BBBB-002"))
+    no_env = {k: v for k, v in r.items() if k != "env"}
+    with pytest.raises(ValueError, match="does not record its environment"):
+        build_tree_plan(no_env, appr(["spouse:AAAA-001:BBBB-002"]), LINKS, "beta")
+    with pytest.raises(ValueError, match="built against beta"):
+        build_tree_plan(r, appr(["spouse:AAAA-001:BBBB-002"]), LINKS, "production")
+
+
+def test_tree_plan_cli_env_required_and_old_file_refused(tmp_path, capsys):
+    archive = tmp_path / "arch"
+    (archive / "_import").mkdir(parents=True)
+    with pytest.raises(SystemExit):
+        cli.main(["tree-plan", "--archive", str(archive)])
+    (archive / "_import" / "links.json").write_text(json.dumps({"people": []}))
+    (archive / "_import" / "relationships.json").write_text(json.dumps({"edges": [], "create_candidates": []}))
+    assert cli.main(["tree-plan", "--archive", str(archive), "--env", "beta"]) == 2
+    assert "environment" in capsys.readouterr().err
+
+
+def test_overridden_link_is_checked_per_folder_not_pooled():
+    # links.json says alpha=AAAA-001, but approved_links re-points that folder to a different id.
+    r = rel(edge("spouse", "Alpha Testname", "Beta Testname", "AAAA-001", "BBBB-002"))
+    ap = dict(appr(["spouse:AAAA-001:BBBB-002"]), approved_links={"Line A/alpha": "XXXX-009"})
+    plan = build_tree_plan(r, ap, LINKS, "beta")
+    assert plan.actions[0].state == "skipped" and "current link" in plan.actions[0].reason
+
+
+def test_edge_without_folder_key_is_skipped():
+    e = edge("spouse", "Alpha Testname", "Beta Testname", "AAAA-001", "BBBB-002")
+    e.pop("a_folder")
+    plan = build_tree_plan(rel(e), appr(["spouse:AAAA-001:BBBB-002"]), LINKS, "beta")
+    assert plan.actions[0].state == "skipped" and "folder key" in plan.actions[0].reason
+
+
+def test_folders_carried_in_params():
+    r = rel(edge("spouse", "Beta Testname", "Alpha Testname", "BBBB-002", "AAAA-001"))
+    p = build_tree_plan(r, appr(["spouse:AAAA-001:BBBB-002"]), LINKS, "beta").actions[0].params
+    assert (p["a"], p["a_folder"], p["b"], p["b_folder"]) == ("AAAA-001", "Line A/alpha", "BBBB-002", "Line A/beta")
+
+
+def cand(label, birth=1850, death=1910):
+    return {"label": label, "birth": birth, "death": death, "reason": "no folder", "lines": ["Line A"],
+            "related_to": []}
+
+
+def test_same_label_candidates_are_manual_and_keys_differ():
+    r = rel(cands=[cand("John Smith", 1850, 1910), cand("John Smith", 1880, 1950)])
+    plan = build_tree_plan(r, appr(creations=["John Smith"]), LINKS, "beta")
+    assert [a.state for a in plan.actions] == ["manual", "manual"]
+    assert len({a.key for a in plan.actions}) == 2
+    assert all("share this name" in a.reason for a in plan.actions)
+
+
+def test_same_label_can_be_approved_by_key():
+    r = rel(cands=[cand("John Smith", 1850, 1910), cand("John Smith", 1880, 1950)])
+    from familysearch_import.treeplan import creation_key
+    k = creation_key("John Smith", 1880, 1950)
+    plan = build_tree_plan(r, appr(creations=[k]), LINKS, "beta")
+    assert [(a.state, a.params["birth"]) for a in plan.actions] == [("planned", 1880)]
+    assert plan.warnings == ()
+
+
+def test_plan_order_couples_then_children_then_people():
+    r = rel(edge("parent-child", "Alpha Testname", "Gamma Testname", "AAAA-001", "CCCC-003", note=NOPAR),
+            edge("spouse", "Alpha Testname", "Beta Testname", "AAAA-001", "BBBB-002"),
+            cands=[cand("Zed Testname")])
+    plan = build_tree_plan(r, appr(["parent-child:AAAA-001:CCCC-003", "spouse:AAAA-001:BBBB-002"],
+                                   ["Zed Testname"]), LINKS, "beta")
+    assert [a.kind for a in plan.actions] == ["add-couple", "add-child-parents", "create-person"]
+
+
+def test_unapproved_other_parent_warns():
+    r = rel(edge("parent-child", "Alpha Testname", "Gamma Testname", "AAAA-001", "CCCC-003", note=NOPAR),
+            edge("parent-child", "Beta Testname", "Gamma Testname", "BBBB-002", "CCCC-003", note=NOPAR))
+    plan = build_tree_plan(r, appr(["parent-child:AAAA-001:CCCC-003"]), LINKS, "beta")
+    assert any("BBBB-002" in w for w in plan.warnings)
+
+
+def test_approved_links_values_validated(tmp_path):
+    p = tmp_path / "approvals.json"
+    p.write_text(json.dumps({"approved_links": {"Line A/x": ["bad"]}}))
+    with pytest.raises(ValueError, match="approved_links"):
+        load_tree_approvals(p)

@@ -126,6 +126,16 @@ def test_cli_writes_report_and_json_without_living_names(tmp_path, fake_reader):
     assert fake_reader.calls == ["CCCC-111"]
 
 
+def test_json_records_env_and_end_folders(tmp_path, fake_reader):
+    root = make_archive(tmp_path)
+    assert cli.main(["relationships", "--archive", str(root), "--env", "beta"]) == 0
+    data = json.loads((root / "_import" / "relationships.json").read_text())
+    assert data["env"] == "beta"
+    pc = next(e for e in data["edges"] if e["key"] == "parent-child:AAAA-111:CCCC-111")
+    assert pc["a_folder"].count("/") == 1 and pc["b_folder"].count("/") == 1
+    assert pc["a_folder"] != pc["b_folder"]
+
+
 def test_cli_max_reads_partial(tmp_path, fake_reader):
     root = make_archive(tmp_path)
     assert cli.main(["relationships", "--archive", str(root), "--env", "production", "--max-reads", "0"]) == 0

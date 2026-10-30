@@ -68,21 +68,24 @@ def write_inputs(import_dir: Path, *, ids: dict[str, str], with_people: bool = T
         for k, (name, _g, b, d) in PEOPLE.items():
             people.append({"line": LINE, "folder": folder_of(name, b, d), "verdict": "confirmed",
                            "chosen_id": ids[k]})
+            (import_dir.parent / LINE / folder_of(name, b, d)).mkdir(parents=True, exist_ok=True)  # archive side
+        fk = {k: f"{LINE}/{folder_of(v[0], v[2], v[3])}" for k, v in PEOPLE.items()}
         x, y = sorted((ids["p1"], ids["p2"]))
         spouse_key = f"spouse:{x}:{y}"
         edges.append({"key": spouse_key, "kind": "spouse", "a": nm["p1"], "b": nm["p2"],
-                      "a_fs": ids["p1"], "b_fs": ids["p2"], "status": "missing-in-familysearch", "note": ""})
+                      "a_fs": ids["p1"], "b_fs": ids["p2"], "status": "missing-in-familysearch", "note": "",
+                      "a_folder": fk["p1"], "b_folder": fk["p2"]})
         approved_rel.append(spouse_key)
         for par in ("p1", "p2"):
             k = f"parent-child:{ids[par]}:{ids['child']}"
             edges.append({"key": k, "kind": "parent-child", "a": nm[par], "b": nm["child"],
                           "a_fs": ids[par], "b_fs": ids["child"], "status": "missing-in-familysearch",
-                          "note": NO_PARENTS_NOTE})
+                          "note": NO_PARENTS_NOTE, "a_folder": fk[par], "b_folder": fk["child"]})
             approved_rel.append(k)
     cand = dict(NEW_PERSON)
     (import_dir / "links.json").write_text(json.dumps({"people": people}, indent=2) + "\n", encoding="utf-8")
     (import_dir / "relationships.json").write_text(
-        json.dumps({"edges": edges, "create_candidates": [cand]}, indent=2) + "\n", encoding="utf-8")
+        json.dumps({"edges": edges, "create_candidates": [cand], "env": "beta"}, indent=2) + "\n", encoding="utf-8")
     write_approvals(import_dir, approved_rel, [cand["label"]], None)
     return {"approved_relationships": approved_rel}
 

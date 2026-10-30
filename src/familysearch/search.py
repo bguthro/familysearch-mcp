@@ -74,13 +74,14 @@ class Search:
 
     def tree_search(
         self, *, given=None, surname=None, birth_date=None, birth_place=None,
-        count: int = 20,
+        count: int = 20, death_date=None,
     ) -> list[dict]:
         # The rel is a URI template (".../search?flag=fst{&access_token}"); drop the template part.
         url = self._discovery.href("person-search").split("{", 1)[0]
         params = _clean({
             "q.givenName": given, "q.surname": surname,
             "q.birthLikeDate": normalize_search_date(birth_date), "q.birthLikePlace": birth_place,
+            "q.deathLikeDate": normalize_search_date(death_date),
             "count": count,
         })
         resp = self._client.get(url, accept=ATOM_ACCEPT, params=params)

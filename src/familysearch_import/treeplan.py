@@ -37,6 +37,15 @@ class TreePlan:
     warnings: tuple[str, ...] = ()  # report only; not part of the hash
 
 
+KIND_RANK = {"add-couple": 0, "add-child-parents": 1, "create-person": 2}
+
+
+def creation_key(label: str, birth: int | None, death: int | None) -> str:
+    """Action key of a create-person: label AND years, so same-named people never share a key."""
+    blob = json.dumps([label, birth, death], ensure_ascii=False, separators=(",", ":"))
+    return "create-person:" + hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+
 def compute_tree_plan_hash(actions: Sequence[TreeAction], env: str) -> str:
     planned = sorted((asdict(a) for a in actions if a.state == "planned"), key=lambda d: d["key"])
     blob = json.dumps({"env": env, "actions": planned}, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
@@ -61,7 +70,10 @@ def load_tree_approvals(path: Path) -> dict:
             raise ValueError(f'"{name}" must be a list of strings: {path}')
         out[name] = list(v)
     links = data.get("approved_links", {})
-    out["approved_links"] = dict(links) if isinstance(links, dict) else {}
+    if not isinstance(links, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) and v for k, v in links.items()):
+        raise ValueError(f'"approved_links" must map "<line>/<folder>" to a FamilySearch id: {path}')
+    out["approved_links"] = dict(links)
     return out
 
 
@@ -72,9 +84,10 @@ def _canonical_key(kind: str, a: str, b: str) -> str:
 
 
 def _linked_ids(links: Mapping[str, str | None], approvals: Mapping) -> frozenset[str]:
-    ids = {v for v in links.values() if v}
-    ids |= {v for v in (approvals.get("approved_links") or {}).values() if v}
-    return frozenset(ids)
+    """Every id currently linked to a folder (the planner's current_link rule, per folder)."""
+    from .planner import current_link
+    approved = approvals.get("approved_links") or {}
+    return frozenset(i for i in (current_link(k, approved, links) for k in set(links) | set(approved)) if i)
 
 
 def _label(e: Mapping, side: str) -> str:
@@ -83,25 +96,37 @@ def _label(e: Mapping, side: str) -> str:
 
 def build_tree_plan(relationships: Mapping, approvals: Mapping, links: Mapping[str, str | None],
                     env: str) -> TreePlan:
+    from .planner import current_link
+    built_for = relationships.get("env")
+    if built_for is None:
+        raise ValueError("relationships.json does not record its environment (older file); "
+                         "re-run the relationships command with --env")
+    if built_for != env:
+        raise ValueError(f"relationships.json was built against {built_for}, but --env is {env}")
     approved_rel = set(approvals.get("approved_relationships") or [])
     approved_new = set(approvals.get("approved_creations") or [])
-    linked = _linked_ids(links, approvals)
+    approved_links = approvals.get("approved_links") or {}
     actions: list[TreeAction] = []
     matched_rel: set[str] = set()
     matched_new: set[str] = set()
 
-    def link_problem(e: Mapping) -> str | None:
-        a, b = e.get("a_fs"), e.get("b_fs")
-        if not a or not b:
-            return "an end has no FamilySearch id"
-        for x in (a, b):
-            if x not in linked:
-                return "edge id does not match a confirmed link in links.json"
+    def link_problem(pairs: Sequence[tuple[str, str | None]]) -> str | None:
+        """pairs: (FamilySearch id, folder key) per end; each must equal that folder's CURRENT link."""
+        for fs, folder in pairs:
+            if not fs:
+                return "an end has no FamilySearch id"
+            if not folder:
+                return "an end has no folder key in relationships.json; re-run the relationships command"
+            if current_link(folder, approved_links, links) != fs:
+                return "an end's id does not match its folder's current link (links.json / approved_links)"
         return None
 
     spouse_seen: set[str] = set()
     by_child: dict[str, list[Mapping]] = {}
+    all_parent_edges: dict[str, list[Mapping]] = {}
     for e in relationships.get("edges", []):
+        if e.get("kind") == "parent-child" and e.get("b_fs"):
+            all_parent_edges.setdefault(e["b_fs"], []).append(e)
         kind = e.get("kind")
         if kind not in ("spouse", "parent-child"):
             continue
@@ -123,11 +148,10 @@ def build_tree_plan(relationships: Mapping, approvals: Mapping, links: Mapping[s
             if ckey in spouse_seen:
                 continue
             spouse_seen.add(ckey)
-            problem = link_problem(e)
-            x, y = sorted((a, b))
-            names = {x: _label(e, "a") if a == x else _label(e, "b"),
-                     y: _label(e, "a") if a == y else _label(e, "b")}
-            params = {"a": x, "b": y, "a_label": names[x], "b_label": names[y]}
+            problem = link_problem([(a, e.get("a_folder")), (b, e.get("b_folder"))])
+            ends = sorted([(a, _label(e, "a"), e.get("a_folder")), (b, _label(e, "b"), e.get("b_folder"))])
+            params = {"a": ends[0][0], "b": ends[1][0], "a_label": ends[0][1], "b_label": ends[1][1],
+                      "a_folder": ends[0][2], "b_folder": ends[1][2]}
             if problem:
                 actions.append(TreeAction("add-couple", ckey, params, "skipped", problem))
             else:
@@ -136,19 +160,24 @@ def build_tree_plan(relationships: Mapping, approvals: Mapping, links: Mapping[s
         else:
             by_child.setdefault(b, []).append(e)
 
+    warnings: list[str] = []
     for child in sorted(by_child):
         edges = by_child[child]
-        parents: list[str] = []
-        labels: dict[str, str] = {}
+        pinfo: dict[str, tuple[str, str | None]] = {}
         for e in edges:
-            if e["a_fs"] not in parents:
-                parents.append(e["a_fs"])
-            labels[e["a_fs"]] = _label(e, "a")
-        parents.sort()
-        params = {"child": child, "child_label": _label(edges[0], "b"), "parents": parents,
-                  "parent_labels": [labels[p] for p in parents]}
+            pinfo.setdefault(e["a_fs"], (_label(e, "a"), e.get("a_folder")))
+        parents = sorted(pinfo)
+        params = {"child": child, "child_label": _label(edges[0], "b"), "child_folder": edges[0].get("b_folder"),
+                  "parents": parents, "parent_labels": [pinfo[p][0] for p in parents],
+                  "parent_folders": [pinfo[p][1] for p in parents]}
         key = f"child-parents:{child}"
-        problem = next((p for p in (link_problem(e) for e in edges) if p), None)
+        problem = link_problem([(child, edges[0].get("b_folder"))] + [(p, pinfo[p][1]) for p in parents])
+        approved_parents = {e["a_fs"] for e in edges}
+        others = sorted({e["a_fs"] for e in all_parent_edges.get(child, []) if e["a_fs"] not in approved_parents
+                         and e.get("status") != "present"})
+        if others:
+            warnings.append(f"child {child} also has archive parent(s) {', '.join(others)} that are not "
+                            "approved; adding only some parents now makes the rest manual on the website")
         if problem:
             actions.append(TreeAction("add-child-parents", key, params, "skipped", problem))
         elif len(parents) > 2:
@@ -162,26 +191,39 @@ def build_tree_plan(relationships: Mapping, approvals: Mapping, links: Mapping[s
             actions.append(TreeAction("add-child-parents", key, params, "planned",
                                       "child has no parents on FamilySearch; approved"))
 
-    for c in relationships.get("create_candidates", []):
+    cands = list(relationships.get("create_candidates", []))
+    label_counts: dict[str, int] = {}
+    for c in cands:
+        label_counts[c.get("label")] = label_counts.get(c.get("label"), 0) + 1
+    seen_keys: set[str] = set()
+    for c in cands:
         label = c.get("label")
-        if label not in approved_new:
-            continue
-        matched_new.add(label)
         birth, death = c.get("birth"), c.get("death")
+        key = creation_key(str(label), birth, death)
+        by_label, by_key = label in approved_new, key in approved_new
+        if not (by_label or by_key):
+            continue
+        matched_new.update(k for k in (label, key) if k in approved_new)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
         params = {"name": label, "birth": birth, "death": death, "gender": "Unknown"}
-        key = "create-person:" + hashlib.sha256(str(label).encode("utf-8")).hexdigest()[:16]
         if birth is None and death is None:
             actions.append(TreeAction("create-person", key, params, "skipped", "no birth or death year"))
         elif death is None and birth is not None and birth >= LIVING_CUTOFF:
             actions.append(TreeAction("create-person", key, params, "skipped",
                                       "born 1900 or later with no death year (living rule)"))
+        elif by_label and not by_key and label_counts[label] > 1:
+            actions.append(TreeAction("create-person", key, params, "manual",
+                                      f"{label_counts[label]} candidates share this name; approve this one "
+                                      f"by its key {key} in approved_creations"))
         else:
             actions.append(TreeAction("create-person", key, params, "planned",
                                       "approved creation; search before create at execution"))
 
-    warnings = [f"approved relationship matches no edge: {k}" for k in sorted(approved_rel - matched_rel)]
-    warnings += [f"approved creation matches no candidate: {k}" for k in sorted(approved_new - matched_new)]
-    actions.sort(key=lambda a: (a.kind, a.key))
+    warnings = [f"approved relationship matches no edge: {k}" for k in sorted(approved_rel - matched_rel)] + \
+        [f"approved creation matches no candidate: {k}" for k in sorted(approved_new - matched_new)] + warnings
+    actions.sort(key=lambda a: (KIND_RANK[a.kind], a.key))
     return TreePlan(env, tuple(actions), compute_tree_plan_hash(actions, env), tuple(warnings))
 
 
@@ -207,7 +249,7 @@ def render_tree_plan_report(plan: TreePlan) -> str:
                 what = f"child {p.get('child_label') or ''} ({p['child']}) with parents {parents}"
             else:
                 what = f"new person {p['name']} (b. {p.get('birth')}, d. {p.get('death')}, gender {p['gender']})"
-            out.append(f"- {a.kind}: {what} - {a.reason}")
+            out.append(f"- {a.kind}: {what} - {a.reason}" + (f" [key {a.key}]" if a.kind == "create-person" else ""))
         out.append("")
     return "\n".join(out)
 

@@ -1,38 +1,42 @@
 """Tree executor: writes approved couples, parent links and new deceased people to FamilySearch.
 
 Mirrors execute.py's safety model (dry run by default, plan hash + approval, run lock, ledger with
-intent/progress/result, fresh pre-checks, read-back with a negative control, rollback by recorded
-ids only). Every gate runs before network I/O and before any ledger line.
+intent/progress/result, fresh pre-checks, read-back, rollback by recorded ids only). Every gate runs
+before network I/O and before any ledger line.
 
 Tree runs use their own ledger file (``tree-ledger.jsonl``) so upload reconciliation never sees tree
 intents (and vice versa); the run lock ``execute.lock`` is shared, so the two never run together.
 
-Known limitation: a two-parent child-and-parents relationship makes FamilySearch derive a couple link
-between the parents. That derived couple is a side effect we did not create by id; rollback deletes the
-child-and-parents relationship only and does not touch the derived couple.
+Proof model: before each write the executor snapshots the (relationship, id) set of every involved
+person plus up to two unrelated, deceased, linked control people. After the write the snapshots are
+taken again and the difference must equal EXACTLY the expected change. The new relationship id is also
+read by id and must name exactly the planned people. A two-parent child link may make FamilySearch
+derive a couple between the parents; that derived couple is detected, recorded in the ledger as
+``derived_couple_id`` and rolled back with the child link.
 """
 
 from __future__ import annotations
 
-import hashlib
 import hmac
 import json
 import re
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, fields
 from pathlib import Path
 
 from .execute import (
     DEFAULT_MAX_ACTIONS, ENVS, MIN_SETTLE_SECONDS, PRODUCTION_HARD_CAP, REASON, GateError, Ledger,
-    Outcome, RunSummary, _forbid_repo, _http_status, _warn, check_run_gates, intent_age_seconds,
-    utc_now, valid_object_id,
+    Outcome, RollbackSummary, RunSummary, _Archive, _forbid_repo, _http_status, _warn, check_run_gates,
+    intent_age_seconds, utc_now, valid_object_id,
 )
-from .execute import RollbackSummary
 from .prod_reader import ReadFailed
-from .record import is_inside
+from .record import is_inside, record_state_and_status
 from .scan import Person
-from .treeplan import LIVING_CUTOFF, TreeAction, compute_tree_plan_hash, load_tree_approvals, _linked_ids
+from .treeplan import (
+    KIND_RANK, LIVING_CUTOFF, TreeAction, _linked_ids, compute_tree_plan_hash, creation_key,
+    load_tree_approvals,
+)
 
 ROLLBACK_REASON = "Rolled back import from family research archive"
 TREE_KINDS = ("add-couple", "add-child-parents", "create-person")
@@ -43,7 +47,10 @@ _ACTION_FIELDS = tuple(f.name for f in fields(TreeAction))
 _RESULT_STATUSES = ("created", "skipped", "failed", "failed-readback", "partial", "ambiguous")
 LEDGER_NAME = "tree-ledger.jsonl"
 GX = "http://gedcomx.org/"
-CREATED_FIELD = {"add-couple": "couple_id", "add-child-parents": "child_parents_id", "create-person": "person_id"}
+ALLOWED_FIELDS = {"add-couple": ("couple_id",), "add-child-parents": ("child_parents_id", "derived_couple_id"),
+                  "create-person": ("person_id",)}
+ROLLBACK_ORDER = ("child_parents_id", "derived_couple_id", "couple_id", "person_id")
+N_CONTROLS = 2
 
 
 # --------------------------------------------------------------------------- plan
@@ -58,7 +65,8 @@ class TreePlanFile:
     verified: bool = False  # set only by verify_tree_plan_for_execution
 
     def planned(self) -> tuple[TreeAction, ...]:
-        return tuple(a for a in self.actions if a.state == "planned")
+        return tuple(sorted((a for a in self.actions if a.state == "planned"),
+                            key=lambda a: (KIND_RANK[a.kind], a.key)))
 
 
 def _norm(s: str | None) -> str:
@@ -74,6 +82,18 @@ def _is_id(v) -> bool:
     return isinstance(v, str) and bool(_ID_RE.match(v))
 
 
+def _is_folder(v) -> bool:
+    if not isinstance(v, str) or v.count("/") != 1:
+        return False
+    return all(p and p not in (".", "..") and "\\" not in p and "\0" not in p for p in v.split("/"))
+
+
+def _deceased_by_rule(birth, death) -> bool:
+    if death is not None:
+        return True
+    return birth is not None and birth < LIVING_CUTOFF
+
+
 def _validate_runnable(a: TreeAction) -> None:
     """Structural checks for a planned action; re-derives the key from the params."""
     tag = a.key[:12]
@@ -84,6 +104,8 @@ def _validate_runnable(a: TreeAction) -> None:
         x, y = p.get("a"), p.get("b")
         if not (_is_id(x) and _is_id(y)) or x == y or x > y:
             raise GateError(f"planned action {tag} has malformed couple ids")
+        if not (_is_folder(p.get("a_folder")) and _is_folder(p.get("b_folder"))):
+            raise GateError(f"planned action {tag} has malformed folder keys")
         if a.key != f"spouse:{x}:{y}":
             raise GateError(f"planned action {tag} key does not match its content")
     elif a.kind == "add-child-parents":
@@ -92,6 +114,10 @@ def _validate_runnable(a: TreeAction) -> None:
                 or not all(_is_id(x) for x in parents) or len(set(parents)) != len(parents) \
                 or child in parents:
             raise GateError(f"planned action {tag} has malformed child/parent ids")
+        folders = p.get("parent_folders")
+        if not _is_folder(p.get("child_folder")) or not isinstance(folders, list) \
+                or len(folders) != len(parents) or not all(_is_folder(f) for f in folders):
+            raise GateError(f"planned action {tag} has malformed folder keys")
         if a.key != f"child-parents:{child}":
             raise GateError(f"planned action {tag} key does not match its content")
     elif a.kind == "create-person":
@@ -104,16 +130,20 @@ def _validate_runnable(a: TreeAction) -> None:
             raise GateError(f"planned action {tag} gender must be Unknown")
         if not _deceased_by_rule(p.get("birth"), p.get("death")):
             raise GateError(f"planned action {tag} person is not deceased by the archive rule")
-        if a.key != "create-person:" + hashlib.sha256(name.encode("utf-8")).hexdigest()[:16]:
+        if a.key != creation_key(name, p.get("birth"), p.get("death")):
             raise GateError(f"planned action {tag} key does not match its content")
     else:
         raise GateError(f"planned action {tag} has non-runnable kind {a.kind!r}")
 
 
-def _deceased_by_rule(birth, death) -> bool:
-    if death is not None:
-        return True
-    return birth is not None and birth < LIVING_CUTOFF
+def _still_approved(a: TreeAction, approvals: dict) -> bool:
+    rel, new = set(approvals["approved_relationships"]), set(approvals["approved_creations"])
+    p = a.params
+    if a.kind == "add-couple":
+        return a.key in rel
+    if a.kind == "add-child-parents":
+        return all(f"parent-child:{par}:{p['child']}" in rel for par in p["parents"])
+    return a.key in new or p["name"] in new
 
 
 def verify_tree_plan_for_execution(archive: Path, plan_path: Path, confirm_hash: str, env: str) -> TreePlanFile:
@@ -156,7 +186,7 @@ def verify_tree_plan_for_execution(archive: Path, plan_path: Path, confirm_hash:
     if not approvals_path.is_file():
         raise GateError("approvals.json not found; the tree plan has not been approved")
     try:
-        load_tree_approvals(approvals_path)  # validates shape
+        approvals = load_tree_approvals(approvals_path)  # validates shape
         approved = json.loads(approvals_path.read_text(encoding="utf-8")).get("approved_tree_plan_hash")
     except (OSError, ValueError) as e:
         raise GateError(f"approvals.json is unreadable or malformed: {type(e).__name__}") from e
@@ -170,6 +200,8 @@ def verify_tree_plan_for_execution(archive: Path, plan_path: Path, confirm_hash:
     for a in actions:
         if a.state == "planned":
             _validate_runnable(a)
+            if not _still_approved(a, approvals):
+                raise GateError(f"planned action {a.key[:40]} is no longer in approvals.json; re-plan")
     return TreePlanFile(data["plan_hash"], plan_env, tuple(actions), plan_path, verified=True)
 
 
@@ -198,9 +230,11 @@ def check_tree_run_gates(env: str, allow_production: bool, only: Sequence[str], 
 
 @dataclass
 class TreeServices:
-    """reader: get_fs_person(id), get_relatives(id), search_candidates(person, limit);
+    """reader: get_fs_person(id), get_relatives(id, strict), search_duplicates(given, surname, birth,
+    death), get_couple(id), get_child_and_parents(id), get_couple_ids(a, b), get_source_ids(id),
+    get_memory_ids(id), get_change_summary(id)  (see ReadOnlyFS);
     writer: create_couple, create_parent_child, create_person, delete_couple,
-    delete_child_and_parents, delete_person (see familysearch.tree.TreeWriter)."""
+    delete_child_and_parents, delete_person (see GuardedTreeWriter / familysearch.tree.TreeWriter)."""
     reader: object
     writer: object
     archive: Path
@@ -236,10 +270,12 @@ def _result(ledger: Ledger, *, intent_id: str, key: str, kind: str, env: str, st
 
 
 def _progress_for(recs: list[dict], intent_id: str) -> dict:
+    """All ids recorded for an intent (progress lines merged in order)."""
+    out: dict = {}
     for r in recs:
         if r.get("type") == "progress" and r.get("intent_id") == intent_id and isinstance(r.get("created"), dict):
-            return r["created"]
-    return {}
+            out.update(r["created"])
+    return out
 
 
 def _tree_intents(ledger: Ledger, env: str) -> list[dict]:
@@ -257,8 +293,16 @@ class _Skip(Exception):
     """Internal: a fresh pre-check refused this action; no write."""
 
 
-def _linked_now(archive: Path) -> frozenset[str]:
-    """All currently linked FamilySearch ids (links.json confirmed + approved_links). Fail closed."""
+@dataclass
+class _State:
+    """Current link state, read once per run."""
+    approved_links: dict
+    links: dict
+    archive: _Archive
+    linked: frozenset[str]
+
+
+def _load_state(archive: Path) -> _State:
     from .planreport import load_links
     imp = Path(archive) / "_import"
     try:
@@ -271,7 +315,35 @@ def _linked_now(archive: Path) -> frozenset[str]:
         links = load_links(imp / "links.json")
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
         raise GateError(f"links.json unreadable: {type(e).__name__}") from e
-    return _linked_ids(links, approvals)
+    return _State(approvals["approved_links"], links, _Archive(Path(archive)),
+                  _linked_ids(links, approvals))
+
+
+def _ends(a: TreeAction) -> list[tuple[str, str]]:
+    """(FamilySearch id, folder key) of every archive person the action touches."""
+    p = a.params
+    if a.kind == "add-couple":
+        return [(p["a"], p["a_folder"]), (p["b"], p["b_folder"])]
+    return [(p["child"], p["child_folder"])] + list(zip(p["parents"], p["parent_folders"]))
+
+
+def _check_archive_side(a: TreeAction, state: _State) -> None:
+    """Per person: the folder's CURRENT link equals the planned id, and the archive still says deceased."""
+    from .planner import current_link
+    for fs_id, folder in _ends(a):
+        link = current_link(folder, state.approved_links, state.links)
+        if link != fs_id:
+            raise _Skip("link revoked or changed since planning; re-plan" if not link
+                        else "link changed since planning; re-plan")
+        line, _, name = folder.partition("/")
+        person = state.archive.person(line, name)
+        if person is None:
+            raise _Skip("person folder not found in archive")
+        status, rec_state = record_state_and_status(person)
+        if rec_state == "invalid":
+            raise _Skip("ImportRecord.json is unreadable or invalid")
+        if status != "deceased":
+            raise _Skip("archive status is no longer deceased")
 
 
 def _check_person(reader, pid: str, what: str) -> None:
@@ -287,56 +359,94 @@ def _check_person(reader, pid: str, what: str) -> None:
         raise _Skip(f"{what} is living or living status unknown on FamilySearch")
 
 
-def _rels(reader, pid: str) -> list[tuple[str, str]]:
-    return [(r.relationship, r.fs.id) for r in reader.get_relatives(pid)]
+def _rels(reader, pid: str, strict: bool = True) -> list[tuple[str, str]]:
+    return [(r.relationship, r.fs.id) for r in reader.get_relatives(pid, strict=strict)]
 
 
-def _pick_control(reader, linked: frozenset[str], exclude: set[str]) -> str:
-    """An unrelated, deceased, linked person for the negative control. Raises _Skip if none."""
-    for cid in sorted(linked - exclude)[:8]:
+def _snap(reader, ids: Sequence[str]) -> dict[str, frozenset]:
+    return {i: frozenset(_rels(reader, i)) for i in ids}
+
+
+def _pick_controls(reader, linked: frozenset[str], exclude: set[str], before: dict) -> list[str]:
+    """Up to N_CONTROLS deceased, linked people unrelated to every subject. Raises _Skip if none."""
+    related = {rid for rels in before.values() for _, rid in rels}
+    out: list[str] = []
+    for cid in sorted(linked - exclude - related)[:8]:
         try:
             _check_person(reader, cid, "control person")
         except _Skip:
             continue
-        if not any(rid in exclude for _, rid in _rels(reader, cid)):
-            return cid
-    raise _Skip("no unrelated linked person available for the negative control")
+        snap = frozenset(_rels(reader, cid))
+        if any(rid in exclude for _, rid in snap):
+            continue
+        before[cid] = snap
+        out.append(cid)
+        if len(out) == N_CONTROLS:
+            break
+    if not out:
+        raise _Skip("no unrelated deceased linked person available as a negative control")
+    return out
 
 
-def _precheck(a: TreeAction, services: TreeServices, linked: frozenset[str]) -> dict:
+def _search_hits(reader, p: dict):
+    """Unfiltered duplicate search for a planned person. Raises _Skip when it cannot be trusted."""
+    from .linking import _parse_name
+    parsed = _parse_name(p["name"])
+    if not parsed.given or not parsed.surname:
+        raise _Skip("name lacks a given name and a surname; cannot search for duplicates; create it by hand")
+    if p.get("birth") is None and p.get("death") is None:
+        raise _Skip("no usable year for the duplicate search")
+    try:
+        return reader.search_duplicates(parsed.shown_given, parsed.shown_surname, p.get("birth"), p.get("death"))
+    except Exception as e:
+        raise _Skip(f"duplicate search failed ({type(e).__name__}); nothing created") from e
+
+
+def _hit_text(hits) -> str:
+    ids = sorted({h.id for h in hits if h.living is False})
+    hidden = len(hits) - len([h for h in hits if h.living is False])
+    return ", ".join(ids) + (f" (+{hidden} living or unknown-status)" if hidden else "")
+
+
+def _precheck(a: TreeAction, services: TreeServices, state: _State) -> dict:
     """Fresh reads right before the write. Returns context for the read-back; raises _Skip/_Stop."""
     r, p = services.reader, a.params
+    if a.kind == "create-person":
+        if not _deceased_by_rule(p.get("birth"), p.get("death")):
+            raise _Skip("person is not deceased by the archive rule")
+        if p.get("gender") != "Unknown":
+            raise _Skip("gender must be Unknown")
+        hits = _search_hits(r, p)
+        if hits:
+            raise _Skip("plausible match " + _hit_text(hits))
+        return {}
+    _check_archive_side(a, state)
     if a.kind == "add-couple":
         x, y = p["a"], p["b"]
-        for pid in (x, y):
-            if pid not in linked:
-                raise _Skip("an end is no longer a confirmed link in links.json")
-        for pid in (x, y):
+        subjects = [x, y]
+        for pid in subjects:
             _check_person(r, pid, f"person {pid}")
-        if ("spouse", y) in _rels(r, x) or ("spouse", x) in _rels(r, y):
+        before = _snap(r, subjects)
+        if ("spouse", y) in before[x] or ("spouse", x) in before[y]:
             raise _Skip("a couple relationship between them already exists on FamilySearch")
-        return {"control": _pick_control(r, linked, {x, y})}
-    if a.kind == "add-child-parents":
+        if any(rid == y for _, rid in before[x]) or any(rid == x for _, rid in before[y]):
+            raise _Skip("they already have a contradictory relationship on FamilySearch")
+    else:
         child, parents = p["child"], list(p["parents"])
-        for pid in [child, *parents]:
-            if pid not in linked:
-                raise _Skip("an id is no longer a confirmed link in links.json")
-        for pid in [child, *parents]:
+        subjects = [child, *parents]
+        for pid in subjects:
             _check_person(r, pid, f"person {pid}")
-        if any(rel == "parent" for rel, _ in _rels(r, child)):
+        before = _snap(r, subjects)
+        if any(rel == "parent" for rel, _ in before[child]):
             raise _Skip("child already has a parent relationship on FamilySearch")
-        return {"control": _pick_control(r, linked, {child, *parents})}
-    # create-person
-    if not _deceased_by_rule(p.get("birth"), p.get("death")):
-        raise _Skip("person is not deceased by the archive rule")
-    if p.get("gender") != "Unknown":
-        raise _Skip("gender must be Unknown")
-    person = Person(line="", folder="", path=Path("."), birth=p.get("birth"), death=p.get("death"),
-                    display_name=p["name"], files=(), familysearch_ids=(), book_excluded=frozenset())
-    found = r.search_candidates(person, 10)
-    if found:
-        raise _Skip("plausible match " + ", ".join(sorted({c.id for c in found})))
-    return {}
+        if any(rid in parents for _, rid in before[child]) or any(rid == child for par in parents
+                                                                   for _, rid in before[par]):
+            raise _Skip("child already has a contradictory relationship with a parent")
+        if len(parents) == 2 and any(rel in ("parent", "child") and rid == parents[1]
+                                     for rel, rid in before[parents[0]]):
+            raise _Skip("the two parents are parent and child of each other on FamilySearch")
+    controls = _pick_controls(r, state.linked, set(subjects), before)
+    return {"subjects": subjects, "controls": controls, "before": before}
 
 
 # ---------------------------------------------------------------------- writes
@@ -363,36 +473,82 @@ def _do_write(a: TreeAction, services: TreeServices) -> str:
     return w.create_person(_person_body(p), reason=REASON)
 
 
-def _readback(a: TreeAction, new_id: str, ctx: dict, services: TreeServices) -> str | None:
-    """None when the new state is proven AND the negative control is untouched; else a reason."""
-    r, p = services.reader, a.params
+def _expected(a: TreeAction, before: dict) -> dict:
+    exp = {k: set(v) for k, v in before.items()}
+    p = a.params
     if a.kind == "add-couple":
-        x, y = p["a"], p["b"]
-        if ("spouse", y) not in _rels(r, x) or ("spouse", x) not in _rels(r, y):
-            return "read-back: the two people do not list each other as spouse"
-        if any(rid in (x, y) for _, rid in _rels(r, ctx["control"])):
-            return "negative control failed: an unrelated person now lists one of them"
+        exp[p["a"]].add(("spouse", p["b"]))
+        exp[p["b"]].add(("spouse", p["a"]))
+    else:
+        for par in p["parents"]:
+            exp[p["child"]].add(("parent", par))
+            exp[par].add(("child", p["child"]))
+    return exp
+
+
+def _diff(after: dict, exp: dict, derived_pair: tuple[str, str] | None) -> tuple[str | None, bool]:
+    """(problem, derived-couple-seen). The after snapshot must equal the expected one exactly; the
+    only tolerated extra is a spouse link between the two parents (FamilySearch's derived couple)."""
+    seen = []
+    for pid, want in exp.items():
+        got = set(after[pid])
+        if got == want:
+            continue
+        if derived_pair and pid in derived_pair:
+            other = derived_pair[1] if pid == derived_pair[0] else derived_pair[0]
+            if got == want | {("spouse", other)}:
+                seen.append(pid)
+                continue
+        who = "an unrelated control person" if pid not in after.get("_subjects", ()) else "an involved person"
+        return f"read-back: {who} has a relationship change beyond the planned one", False
+    if seen and len(seen) != 2:
+        return "read-back: the derived couple is one-sided", False
+    return None, bool(seen)
+
+
+def _readback(a: TreeAction, new_id: str, ctx: dict, services: TreeServices, created: dict,
+              ledger: Ledger, intent_id: str) -> str | None:
+    """None when the new state is proven exactly; else a reason."""
+    r, p = services.reader, a.params
+    if a.kind == "create-person":
+        fs = r.get_fs_person(new_id)
+        if fs.status != "ok" or fs.id != new_id:
+            return "read-back: the new person is not readable"
+        if _norm(fs.name) != _norm(p["name"]):
+            return "read-back: the new person's name does not match"
+        if fs.living is not False:
+            return "read-back: the new person is not marked deceased"
+        if (p.get("birth") is not None and fs.birth_year != p["birth"]) \
+                or (p.get("death") is not None and fs.death_year != p["death"]):
+            return "read-back: the new person's birth/death year does not match"
+        if _rels(r, new_id, strict=False):
+            return "read-back: the new person already has relationships"
         return None
-    if a.kind == "add-child-parents":
-        child, parents = p["child"], set(p["parents"])
-        got = {rid for rel, rid in _rels(r, child) if rel == "parent"}
-        if got != parents:
-            return "read-back: child's parents are not exactly the expected parents"
-        for par in parents:
-            if ("child", child) not in _rels(r, par):
-                return "read-back: a parent does not list the child"
-        if any(rid == child or rid in parents for _, rid in _rels(r, ctx["control"])):
-            return "negative control failed: an unrelated person now lists the child or a parent"
+    before = ctx["before"]
+    after = _snap(r, list(before))
+    after["_subjects"] = tuple(ctx["subjects"])  # type: ignore[assignment]
+    pair = tuple(p["parents"]) if a.kind == "add-child-parents" and len(p["parents"]) == 2 else None
+    if pair and (("spouse", pair[1]) in before[pair[0]]):
+        pair = None  # already a couple: no derived couple can appear
+    problem, derived = _diff(after, _expected(a, before), pair)
+    if problem:
+        return problem
+    if a.kind == "add-couple":
+        if r.get_couple(new_id) != frozenset((p["a"], p["b"])):
+            return "read-back: the new relationship id does not name exactly these two people"
+        if r.get_couple_ids(p["a"], p["b"]) != [new_id]:  # sets of person ids cannot show a duplicate
+            return "read-back: more than one couple relationship exists between them now"
         return None
-    fs = r.get_fs_person(new_id)
-    if fs.status != "ok" or fs.id != new_id:
-        return "read-back: the new person is not readable"
-    if _norm(fs.name) != _norm(p["name"]):
-        return "read-back: the new person's name does not match"
-    if fs.living is True:
-        return "read-back: the new person is marked living"
-    if _rels(r, new_id):
-        return "read-back: the new person already has relationships"
+    if r.get_child_and_parents(new_id) != (p["child"], frozenset(p["parents"])):
+        return "read-back: the new relationship id does not name exactly this child and these parents"
+    if derived:
+        ids = r.get_couple_ids(pair[0], pair[1])
+        if len(ids) != 1 or not valid_object_id(ids[0]):
+            return "read-back: a derived couple appeared but its id could not be determined"
+        if r.get_couple(ids[0]) != frozenset(pair):
+            return "read-back: the derived couple id does not name the two parents"
+        created["derived_couple_id"] = ids[0]
+        _progress(ledger, key=a.key, env=services.env, intent_id=intent_id, created=created)
     return None
 
 
@@ -412,14 +568,15 @@ def _write_one(a: TreeAction, who: str, ctx: dict, plan_hash: str, services: Tre
     try:
         try:
             new_id = _do_write(a, services)
-        except Exception as e:  # any write error: record and stop; never retry blindly
-            fail("failed", f"write error: {_http_status(e)}")
+        except Exception as e:
+            # A person create that raised may still have happened (timeout after the POST): ambiguous.
+            fail("ambiguous" if a.kind == "create-person" else "failed", f"write error: {_http_status(e)}")
         if not valid_object_id(new_id):
             fail("failed-readback", "write returned a missing or invalid id")
-        created[CREATED_FIELD[a.kind]] = new_id
+        created[ALLOWED_FIELDS[a.kind][0]] = new_id
         _progress(ledger, key=a.key, env=env, intent_id=intent_id, created=created)  # crash window
         try:
-            problem = _readback(a, new_id, ctx, services)
+            problem = _readback(a, new_id, ctx, services, created, ledger, intent_id)
         except Exception as e:  # incl. expired token: the created id is already on disk
             fail("failed-readback", f"read-back failed: {_http_status(e)}")
         if problem:
@@ -488,7 +645,7 @@ def run_tree_plan(plan: TreePlanFile, services: TreeServices, ledger: Ledger, *,
     unknown = scope - {a.key for a in planned}
     if unknown:
         raise GateError(f"--only key is not a planned action: {sorted(unknown)[0][:40]}")
-    linked = _linked_now(services.archive)
+    state = _load_state(services.archive)
 
     out: list[Outcome] = []
     summary = RunSummary(execute, out)
@@ -523,7 +680,7 @@ def run_tree_plan(plan: TreePlanFile, services: TreeServices, ledger: Ledger, *,
                 summary.truncated = True
                 break
             try:
-                ctx = _precheck(a, services, linked)
+                ctx = _precheck(a, services, state)
             except _Skip as e:
                 skip(a, str(e))
                 continue
@@ -541,7 +698,7 @@ def run_tree_plan(plan: TreePlanFile, services: TreeServices, ledger: Ledger, *,
     except Exception as e:  # unexpected (e.g. expired token): stop, never crash past the ledger
         summary.stopped, summary.stop_reason = True, f"unexpected error: {_http_status(e)}"
     _warn(summary, ledger)
-    if out and out[-1].status in ("failed", "failed-readback", "partial"):
+    if out and out[-1].status in ("failed", "failed-readback", "partial", "ambiguous"):
         summary.stopped = True
         summary.stop_reason = summary.stop_reason or out[-1].reason
     return summary
@@ -569,27 +726,33 @@ def _tree_rollback_targets(ledger: Ledger, env: str, keys: Sequence[str]) -> lis
     if wanted - known:
         raise GateError(f"key not in the tree ledger for {env}: {sorted(wanted - known)[0][:40]}")
     done_intents = {r.get("intent_id") for r in recs if r.get("type") == "result"}
+    intents = {i.get("intent_id"): i for i in recs if i.get("type") == "intent"}
     out: list[dict] = []
+    seen_progress: set[str] = set()
     for r in recs:
         if r.get("env") != env:
             continue
+        progress_only = False
         if r.get("type") == "result" and isinstance(r.get("created"), dict) and r["created"]:
             if not wanted and r.get("status") != "created":
                 continue
             created, params = r["created"], r.get("params") or {}
         elif r.get("type") == "progress" and r.get("intent_id") not in done_intents and wanted:
-            created = r.get("created") or {}
-            params = next((i.get("params") or {} for i in recs
-                           if i.get("type") == "intent" and i.get("intent_id") == r.get("intent_id")), {})
+            if r.get("intent_id") in seen_progress:
+                continue
+            seen_progress.add(r.get("intent_id"))
+            created = _progress_for(recs, r.get("intent_id"))
+            params = (intents.get(r.get("intent_id")) or {}).get("params") or {}
+            progress_only = True
         else:
             continue
         if wanted and r.get("key") not in wanted:
             continue
-        kind = r.get("kind") or next((i.get("kind") for i in recs if i.get("intent_id") == r.get("intent_id")
-                                      and i.get("type") == "intent"), None)
+        kind = r.get("kind") or (intents.get(r.get("intent_id")) or {}).get("kind")
         pending = {k: v for k, v in created.items() if (r.get("key"), k, v) not in rolled}
         if pending:
-            out.append({"key": r.get("key"), "kind": kind, "params": params, "created": pending})
+            out.append({"key": r.get("key"), "kind": kind, "params": params, "created": pending,
+                        "intent_id": r.get("intent_id") if progress_only else None})
     out.reverse()  # newest first: relationships go before the person they hang on
     return out
 
@@ -607,7 +770,22 @@ def _owned_pairs(recs: list[dict], env: str) -> set[frozenset[str]]:
         if "child_parents_id" in created and (r["key"], "child_parents_id", created["child_parents_id"]) not in rolled:
             for par in p.get("parents") or []:
                 pairs.add(frozenset((p.get("child"), par)))
+        if "derived_couple_id" in created and (r["key"], "derived_couple_id", created["derived_couple_id"]) not in rolled:
+            pairs.add(frozenset(p.get("parents") or []))
     return pairs
+
+
+def _person_rollback_refusal(r, oid: str, p: dict) -> str | None:
+    """Why this created person must NOT be deleted by us (None when it holds only our own work)."""
+    if r.get_source_ids(oid) or r.get_memory_ids(oid):
+        return "person has sources or memories added by someone; manual on the website"
+    summary = r.get_change_summary(oid)
+    who = {w for w, _ in summary}
+    if not summary or "" in who or len(who) != 1:
+        return "person's change history has other contributors or unknown ones; manual on the website"
+    if any("merge" in text for _, text in summary):
+        return "person's change history shows a merge; manual on the website"
+    return None
 
 
 def rollback_tree(ledger: Ledger, services: TreeServices, keys: Sequence[str] = (), execute: bool = False,
@@ -628,7 +806,13 @@ def rollback_tree(ledger: Ledger, services: TreeServices, keys: Sequence[str] = 
 
     for t in targets:
         key, kind, p = t["key"], t["kind"], t["params"]
-        for field_, oid in t["created"].items():
+        if execute and t.get("intent_id"):
+            # a crash left progress ids with no result: give the intent one so reconcile cannot re-block it
+            _result(ledger, intent_id=t["intent_id"], key=key, kind=kind or "", env=env, status="partial",
+                    reason="interrupted after the write returned an id (recorded at rollback)",
+                    created=t["created"], params=p, reconciled=True)
+        for field_ in sorted(t["created"], key=lambda f: ROLLBACK_ORDER.index(f) if f in ROLLBACK_ORDER else 99):
+            oid = t["created"][field_]
             who = _who(TreeAction(kind or "", key, p, "planned", ""))
 
             def done(status: str, reason: str) -> None:
@@ -638,40 +822,47 @@ def rollback_tree(ledger: Ledger, services: TreeServices, keys: Sequence[str] = 
                                     "status": "rolled-back" if status == "rolled-back" else "rollback-failed",
                                     "reason": reason, "created": {field_: oid}})
 
-            if not valid_object_id(oid) or field_ not in CREATED_FIELD.values() \
-                    or CREATED_FIELD.get(kind or "") != field_:
+            if not valid_object_id(oid) or field_ not in ALLOWED_FIELDS.get(kind or "", ()):
                 out.append(Outcome(key, kind or "", who, "cannot-rollback", "invalid id or kind in ledger"))
                 continue
             try:
-                if field_ == "couple_id":
-                    a_, b_ = p.get("a"), p.get("b")
-                    if not (_is_id(a_) and _is_id(b_)):
+                if field_ in ("couple_id", "derived_couple_id"):
+                    pair = ((p.get("a"), p.get("b")) if field_ == "couple_id" else tuple(p.get("parents") or []))
+                    if len(pair) != 2 or not all(_is_id(x) for x in pair):
                         out.append(Outcome(key, kind, who, "cannot-rollback", "invalid person ids in ledger"))
                         continue
-                    if ("spouse", b_) not in _rels(r, a_):
-                        done("rollback-failed", "couple not found on FamilySearch; verify by id manually")
+                    a_, b_ = pair
+                    got = r.get_couple(oid)
+                    if got is None and field_ == "derived_couple_id":
+                        done("rolled-back", "derived couple already gone")
+                        continue
+                    if got != frozenset(pair):
+                        done("rollback-failed", "recorded id does not name this couple (or is gone); "
+                                                "verify by id manually")
                         continue
                     if not execute:
                         out.append(Outcome(key, kind, who, "would-rollback", "dry run"))
                         continue
                     _delete(w.delete_couple, oid, done)
-                    if ("spouse", b_) in _rels(r, a_) or ("spouse", a_) in _rels(r, b_):
-                        done("rollback-failed", "absence read-back mismatch: couple still listed")
+                    if r.get_couple(oid) is not None or ("spouse", b_) in _rels(r, a_) \
+                            or ("spouse", a_) in _rels(r, b_):
+                        done("rollback-failed", "absence read-back mismatch: couple still present")
                         raise _Stop("read-back mismatch")
                 elif field_ == "child_parents_id":
                     child, parents = p.get("child"), p.get("parents") or []
                     if not (_is_id(child) and parents and all(_is_id(x) for x in parents)):
                         out.append(Outcome(key, kind, who, "cannot-rollback", "invalid person ids in ledger"))
                         continue
-                    got = {rid for rel, rid in _rels(r, child) if rel == "parent"}
-                    if got != set(parents):
-                        done("rollback-failed", "child's parents differ from what we created; verify manually")
+                    if r.get_child_and_parents(oid) != (child, frozenset(parents)):
+                        done("rollback-failed", "recorded id does not name this child and these parents "
+                                                "(or is gone); verify by id manually")
                         continue
                     if not execute:
                         out.append(Outcome(key, kind, who, "would-rollback", "dry run"))
                         continue
                     _delete(w.delete_child_and_parents, oid, done)
-                    if any(rel == "parent" and rid in parents for rel, rid in _rels(r, child)):
+                    if r.get_child_and_parents(oid) is not None \
+                            or any(rel == "parent" and rid in parents for rel, rid in _rels(r, child)):
                         done("rollback-failed", "absence read-back mismatch: parents still listed")
                         raise _Stop("read-back mismatch")
                 else:
@@ -679,15 +870,22 @@ def rollback_tree(ledger: Ledger, services: TreeServices, keys: Sequence[str] = 
                     if fs.status != "ok" or fs.id != oid:
                         done("rollback-failed", f"person not readable ({fs.status}); verify by id manually")
                         continue
+                    if _norm(fs.name) != _norm(p.get("name")):
+                        done("rollback-failed", "person's name changed since we created it; manual on the website")
+                        continue
                     owned = _owned_pairs(recs, env)
-                    rels = _rels(r, oid)
+                    rels = _rels(r, oid, strict=False)
                     foreign = [rid for _, rid in rels if frozenset((oid, rid)) not in owned]
                     if foreign:
                         done("rollback-failed", "person has a relationship not created by this ledger; "
-                                                "refusing to delete")
+                                                "refusing to delete (manual on the website)")
                         continue
                     if rels and execute:
                         done("rollback-failed", "person still has our relationships; roll those back first")
+                        continue
+                    refusal = _person_rollback_refusal(r, oid, p)
+                    if refusal:
+                        done("rollback-failed", refusal)
                         continue
                     if not execute:
                         out.append(Outcome(key, kind, who, "would-rollback", "dry run"))
@@ -724,12 +922,14 @@ def _delete(fn, oid: str, done) -> None:
 
 
 def resolve_tree(ledger: Ledger, services: TreeServices, keys: Sequence[str], execute: bool = False,
-                 *, only: Sequence[str] = (), allow_production: bool = False) -> RunSummary:
+                 *, only: Sequence[str] = (), allow_production: bool = False,
+                 confirm_absent: Sequence[str] = ()) -> RunSummary:
     """Operator path out of a blocked key that carries no id.
 
-    Couple / child-parents: the relationship now exists -> recorded ``created (reconciled)`` (no id, so
-    not rollbackable by id); absent, intent at least 15 minutes old -> ``resolved``. Create-person: a
-    search that still finds nothing and a settled intent -> ``resolved``; any match -> stays blocked.
+    Couple / child-parents: the exact relationship now exists -> recorded ``created (reconciled)`` (no id,
+    so not rollbackable by id); absent, intent at least 15 minutes old -> ``resolved``.
+    Create-person: NEVER lifted by a search (index lag, ambiguous timeouts): only a key passed in
+    ``confirm_absent`` (you checked FamilySearch by hand) is resolved; otherwise the raw search hits are shown.
     """
     scope = check_tree_run_gates(services.env, allow_production, only, 1)
     if execute and not (ledger.path.parent / "execute.lock").is_file():
@@ -737,6 +937,9 @@ def resolve_tree(ledger: Ledger, services: TreeServices, keys: Sequence[str], ex
     keys = list(dict.fromkeys(keys))
     if not keys:
         raise GateError("tree-resolve needs at least one --key")
+    confirm = set(confirm_absent)
+    if confirm - set(keys):
+        raise GateError("--confirm-absent keys must also be given as --key")
     env = services.env
     if env == "production" and len(keys) > PRODUCTION_HARD_CAP:
         raise GateError(f"refusing to resolve more than {PRODUCTION_HARD_CAP} keys in production")
@@ -744,6 +947,9 @@ def resolve_tree(ledger: Ledger, services: TreeServices, keys: Sequence[str], ex
     for k in keys:
         if k not in blocked:
             raise GateError(f"key is not blocked in {env}: {k[:40]}")
+    for k in confirm:
+        if not k.startswith("create-person:"):
+            raise GateError("--confirm-absent applies to create-person keys only")
     recs = ledger.records()
     rolled = _rolled_ids(recs, env)
     out: list[Outcome] = []
@@ -764,45 +970,103 @@ def resolve_tree(ledger: Ledger, services: TreeServices, keys: Sequence[str], ex
         if not isinstance(iid, str):
             out.append(Outcome(k, kind, who, "still-blocked", "intent has no intent_id; check by hand"))
             continue
-        has_id = _progress_for(recs, iid) or any(
-            r.get("type") == "result" and r.get("key") == k and Ledger._env_ok(r, env)
-            and any((k, f_, v) not in rolled for f_, v in (r.get("created") or {}).items()) for r in recs)
+        has_id = any((k, f_, v) not in rolled
+                     for r in recs if r.get("key") == k and r.get("type") in ("result", "progress")
+                     and Ledger._env_ok(r, env)
+                     for f_, v in (r.get("created") or {}).items())
         if has_id:
             out.append(Outcome(k, kind, who, "still-blocked", "carries an object id; use tree-rollback --key"))
             continue
         common = dict(intent_id=iid, key=k, kind=kind, env=env, params=p)
+        if kind == "create-person":
+            if k in confirm:
+                if execute:
+                    ledger.resolved(key=k, env=env, reason="operator confirmed the person is not on FamilySearch")
+                out.append(Outcome(k, kind, who, "resolved" if execute else "would-resolve",
+                                   "block lifted on your confirmation that the person is absent"))
+                continue
+            try:
+                hits = _search_hits(reader, p)
+                detail = f"raw search hits: {_hit_text(hits) or 'none'}"
+            except Exception as e:
+                detail = f"search unavailable ({type(e).__name__})"
+            out.append(Outcome(k, kind, who, "still-blocked",
+                               f"check FamilySearch by hand, then pass --confirm-absent {k}; {detail}"))
+            continue
         try:
             if kind == "add-couple":
                 present = ("spouse", p.get("b")) in _rels(reader, p["a"])
-            elif kind == "add-child-parents":
-                present = any(rel == "parent" and rid in (p.get("parents") or [])
-                              for rel, rid in _rels(reader, p["child"]))
             else:
-                person = Person(line="", folder="", path=Path("."), birth=p.get("birth"), death=p.get("death"),
-                                display_name=p["name"], files=(), familysearch_ids=(),
-                                book_excluded=frozenset())
-                present = bool(reader.search_candidates(person, 10))
+                present = {rid for rel, rid in _rels(reader, p["child"]) if rel == "parent"} == set(p["parents"])
         except Exception as e:
             summary.stopped, summary.stop_reason = True, f"read failed: {_http_status(e)}"
             break
-        if present and kind != "create-person":
+        if present:
             if execute:
                 _result(ledger, status="created", reason="created (reconciled)", reconciled=True, **common)
             out.append(Outcome(k, kind, who, "resolved-created" if execute else "would-resolve-created",
                                "found on FamilySearch; recorded as created (no id)"))
-        elif not present and intent_age_seconds(rec) >= MIN_SETTLE_SECONDS:
+        elif intent_age_seconds(rec) >= MIN_SETTLE_SECONDS:
             if execute:
                 ledger.resolved(key=k, env=env, reason="absent on FamilySearch, intent settled")
             out.append(Outcome(k, kind, who, "resolved" if execute else "would-resolve",
                                "absent on FamilySearch; block lifted"))
         else:
             out.append(Outcome(k, kind, who, "still-blocked",
-                               "check FamilySearch by hand (present, or intent too recent)"))
+                               "check FamilySearch by hand (intent too recent)"))
     _warn(summary, ledger)
     return summary
 
 
 # ---------------------------------------------------------------- real services
+
+
+class GuardedTreeWriter:
+    """TreeWriter behind the generated-API registry lock: every call runs ``check_call`` for its
+    operation first (verified-on-beta ops need ``allow_production`` against production; deletes need
+    ``confirm_destructive``, which this wrapper supplies only for its own delete methods)."""
+
+    OPS = {"create_couple": "createRelationship", "create_parent_child": "createRelationship",
+           "create_person": "createPerson", "delete_couple": "deleteCoupleRelationship",
+           "delete_child_and_parents": "deleteChildAndParentsRelationship", "delete_person": "deletePerson"}
+
+    def __init__(self, inner, environment, allow_production: bool, registry: dict | None = None):
+        from familysearch.api import OPERATIONS
+        from familysearch.api.registry import load_registry
+        self._inner = inner
+        self._env = environment
+        self._allow = allow_production is True
+        self._registry = registry if registry is not None else load_registry()
+        self._ops = OPERATIONS
+
+    def _guard(self, name: str) -> None:
+        from familysearch.api.registry import check_call
+        check_call(self._ops[self.OPS[name]], self._env, self._registry, allow_production=self._allow,
+                   confirm_destructive=name.startswith("delete_"))
+
+    def create_couple(self, *a, **k):
+        self._guard("create_couple")
+        return self._inner.create_couple(*a, **k)
+
+    def create_parent_child(self, *a, **k):
+        self._guard("create_parent_child")
+        return self._inner.create_parent_child(*a, **k)
+
+    def create_person(self, *a, **k):
+        self._guard("create_person")
+        return self._inner.create_person(*a, **k)
+
+    def delete_couple(self, *a, **k):
+        self._guard("delete_couple")
+        return self._inner.delete_couple(*a, **k)
+
+    def delete_child_and_parents(self, *a, **k):
+        self._guard("delete_child_and_parents")
+        return self._inner.delete_child_and_parents(*a, **k)
+
+    def delete_person(self, *a, **k):
+        self._guard("delete_person")
+        return self._inner.delete_person(*a, **k)
 
 
 def build_tree_services(archive: Path, env: str, allow_production: bool) -> TreeServices:
@@ -822,5 +1086,5 @@ def build_tree_services(archive: Path, env: str, allow_production: bool) -> Tree
     token = extract_brave_token()
     reader = ReadOnlyFS.for_environment(environment, token_fn=lambda: token)  # session must match env
     client = FSClient(token, environment)  # separate client: the reader's is locked read-only
-    return TreeServices(reader=reader, writer=TreeWriter(client, Discovery(client)),
-                        archive=Path(archive), env=env)
+    writer = GuardedTreeWriter(TreeWriter(client, Discovery(client)), environment, allow_production)
+    return TreeServices(reader=reader, writer=writer, archive=Path(archive), env=env)

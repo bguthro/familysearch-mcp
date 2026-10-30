@@ -61,6 +61,25 @@ def test_get_relatives_missing_links_gives_empty_lists():
 
 
 @responses.activate
+def test_get_relatives_strict_raises_on_missing_section_link():
+    _add(PERSON, {"persons": [{"id": "X", "links": {"parents": {"href": PERSON + "/parents"}}}]})
+    _add(PERSON + "/parents", {})
+    with pytest.raises(FSError, match="children link"):
+        _reader().get_relatives("BMXM-2HZ", strict=True)
+
+
+@responses.activate
+def test_get_couple_relationship_ids_from_spouses_section():
+    _add(PERSON, {"persons": [{"id": "X", "links": {"spouses": {"href": PERSON + "/spouses"}}}]})
+    _add(PERSON + "/spouses", {"relationships": [
+        {"id": "R1", "type": "http://gedcomx.org/Couple", "person1": {"resourceId": "BMXM-2HZ"},
+         "person2": {"resourceId": "AAAA-111"}},
+        {"id": "R2", "type": "http://gedcomx.org/Couple", "person1": {"resourceId": "BMXM-2HZ"},
+         "person2": {"resourceId": "BBBB-222"}}]})
+    assert _reader().get_couple_relationship_ids("BMXM-2HZ", "AAAA-111") == ["R1"]
+
+
+@responses.activate
 def test_get_memories_sources_changes_return_lists():
     _add(PERSON, _load("person.json"))
     _add(PERSON + "/memories", {"sourceDescriptions": [{"id": "M1"}]})

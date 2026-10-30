@@ -137,6 +137,8 @@ def relgap_json(result: RelGapResult) -> dict:
                 "lines": list(e.lines),
                 "approved_ends": list(e.approved_ends),
                 "fs_found": list(e.fs_found),
+                "a_folder": e.a_folder,
+                "b_folder": e.b_folder,
             }
             for e in result.edges
         ],

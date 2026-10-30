@@ -82,3 +82,12 @@ def test_tree_search_outbound_birth_like_date(raw, expected):
         assert q["q.birthLikeDate"] == [expected]
     assert q["q.birthLikePlace"] == ["Ontario, Canada"]
     assert q["q.givenName"] == ["John"] and q["q.surname"] == ["Smith"]
+
+
+@responses.activate
+def test_tree_search_death_date_and_optional_given():
+    s = _search()
+    responses.add(responses.GET, BASE + "/platform/tree/search", json=_load("tree_search.json"))
+    s.tree_search(surname="Smith", death_date="1910")
+    q = parse_qs(urlparse(responses.calls[-1].request.url).query)
+    assert q["q.deathLikeDate"] == ["1910"] and "q.givenName" not in q and q["q.surname"] == ["Smith"]

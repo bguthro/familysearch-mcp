@@ -153,7 +153,9 @@ def _relationships(args, repo: Path) -> int:
     import_dir.mkdir(parents=True, exist_ok=True)
     report_path, json_path = import_dir / "RelationshipReport.md", import_dir / "relationships.json"
     report_path.write_text(render_relgap_report(result), encoding="utf-8")
-    json_path.write_text(json.dumps(relgap_json(result), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    data = relgap_json(result)
+    data["env"] = args.env  # tree-plan refuses a file built against another environment
+    json_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"wrote {report_path} and {json_path}" + (" (PARTIAL)" if result.partial else ""))
     return 0
 
@@ -304,17 +306,20 @@ def _tree_plan(args, repo: Path) -> int:
         approvals = load_tree_approvals(import_dir / "approvals.json")
     except FileNotFoundError as e:
         return _err(f"{Path(e.filename).name} not found in {import_dir}; run the earlier commands first")
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
+        return _err(f"bad input file: {e}")
+    try:
+        plan = build_tree_plan(relationships, approvals, links, args.env)
     except ValueError as e:
         return _err(str(e))
-    plan = build_tree_plan(relationships, approvals, links, args.env)
     path = write_tree_plan(args.archive, plan)
     print(f"wrote {path} and its report (plan hash {plan.plan_hash})")
     return 0
 
 
-def _print_outcomes(summary) -> None:
+def _print_outcomes(summary, full_keys: bool = False) -> None:
     for o in summary.outcomes:
-        print(f"{o.status}: {o.kind} {o.person} [{o.key[:8]}] {o.reason}")
+        print(f"{o.status}: {o.kind} {o.person} [{o.key if full_keys else o.key[:8]}] {o.reason}")
     stats: dict[str, int] = {}
     for o in summary.outcomes:
         stats[o.status] = stats.get(o.status, 0) + 1
@@ -460,7 +465,7 @@ def _tree_execute(args, repo: Path) -> int:
                                        execute=args.execute, allow_production=args.allow_production)
             print(("EXECUTED" if args.execute else "DRY RUN (nothing written; pass --execute)")
                   + f" env={args.env} plan={plan.plan_hash[:12]}")
-            _print_outcomes(summary)
+            _print_outcomes(summary, True)
             return 3 if summary.stopped else 0
         return _tree_locked(args, ex, go)
     return _tree_run(args, repo, body)
@@ -480,7 +485,7 @@ def _tree_rollback(args, repo: Path) -> int:
                                        only=args.only, allow_production=args.allow_production)
             print(("ROLLED BACK" if args.execute else "DRY RUN (nothing deleted; pass --execute)")
                   + f" env={args.env}")
-            _print_outcomes(summary)
+            _print_outcomes(summary, True)
             bad = any(o.status in ("rollback-failed", "cannot-rollback") for o in summary.outcomes)
             return 3 if summary.stopped or bad else 0
         return _tree_locked(args, ex, go)
@@ -498,10 +503,11 @@ def _tree_resolve(args, repo: Path) -> int:
         def go() -> int:
             services = te.build_tree_services(args.archive, args.env, args.allow_production)
             summary = te.resolve_tree(ledger, services, args.key, args.execute,
-                                      only=args.only, allow_production=args.allow_production)
+                                      only=args.only, allow_production=args.allow_production,
+                                      confirm_absent=args.confirm_absent)
             print(("RESOLVED" if args.execute else "DRY RUN (nothing recorded; pass --execute)")
                   + f" env={args.env}")
-            _print_outcomes(summary)
+            _print_outcomes(summary, True)
             return 3 if summary.stopped or any(o.status == "still-blocked" for o in summary.outcomes) else 0
         return _tree_locked(args, ex, go)
     return _tree_run(args, repo, body)
@@ -527,7 +533,7 @@ def main(argv: list[str] | None = None) -> int:
     pl.add_argument("--limit", type=int)
     tp = sub.add_parser("tree-plan", help="plan approved couples, parent links and new people (read-only)")
     tp.add_argument("--archive", required=True, type=Path)
-    tp.add_argument("--env", default="production", choices=("production", "beta"))
+    tp.add_argument("--env", required=True, choices=("production", "beta"))
     rl = sub.add_parser("relatives", help="find candidates for unlinked people through relatives of linked "
                         "people (read-only)")
     rl.add_argument("--archive", required=True, type=Path)
@@ -593,6 +599,9 @@ def main(argv: list[str] | None = None) -> int:
     tr_.add_argument("--env", required=True, choices=("production", "beta"))
     tr_.add_argument("--key", action="append", required=True)
     tr_.add_argument("--only", action="append", default=[], metavar="ACTION_KEY")
+    tr_.add_argument("--confirm-absent", action="append", default=[], metavar="KEY",
+                     help="a create-person key you have CHECKED BY HAND is not on FamilySearch "
+                          "(search alone never lifts a create-person block)")
     tr_.add_argument("--execute", action="store_true")
     tr_.add_argument("--allow-production", action="store_true")
     tr_.add_argument("--break-lock", action="store_true")

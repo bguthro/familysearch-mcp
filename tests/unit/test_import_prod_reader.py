@@ -429,3 +429,104 @@ def test_get_relatives_error_is_read_failed_and_retries_transient():
               "/r/AAAA-111/children": [Resp(200, {})], "/r/AAAA-111/spouses": [Resp(200, {})]}
     fs, _, sleeps = make(routes)
     assert fs.get_relatives("AAAA-111") == [] and sleeps
+
+
+# ------------------------------------------------ tree-write support (strict reads, relationships by id)
+
+
+def test_get_relatives_strict_fails_on_missing_section_link():
+    body = Resp(200, {"persons": [{"id": "AAAA-111", "links": {"parents": {"href": "/r/AAAA-111/parents"}}}]})
+    routes = {P + "AAAA-111": [body], "/r/AAAA-111/parents": [Resp(200, {})]}
+    fs, _, _ = make(routes)
+    assert fs.get_relatives("AAAA-111") == []  # lenient mode: a missing link reads as empty
+    fs, _, _ = make(routes)
+    with pytest.raises(prod_reader.ReadFailed):
+        fs.get_relatives("AAAA-111", strict=True)
+
+
+COUPLE = "/platform/tree/couple-relationships/R-1"
+CAP = "/platform/tree/child-and-parents-relationships/P-1"
+
+
+def _url(path):
+    return Environment.PRODUCTION.base_url + path
+
+
+def test_get_couple_reads_by_id_and_maps_404_to_none():
+    body = Resp(200, {"relationships": [{"type": "http://gedcomx.org/Couple",
+                                         "person1": {"resourceId": "AAAA-111"}, "person2": {"resourceId": "BBBB-111"}}]})
+    fs, _, _ = make({_url(COUPLE): [body]})
+    assert fs.get_couple("R-1") == frozenset(("AAAA-111", "BBBB-111"))
+    fs, _, _ = make({_url(COUPLE): [Resp(404)]})
+    assert fs.get_couple("R-1") is None
+    fs, _, _ = make({_url(COUPLE): [Resp(200, {"relationships": []})]})
+    with pytest.raises(prod_reader.ReadFailed):
+        fs.get_couple("R-1")
+    fs, _, _ = make({_url(COUPLE): [Resp(403)]})
+    with pytest.raises(prod_reader.ReadFailed):
+        fs.get_couple("R-1")
+
+
+def test_get_child_and_parents_reads_by_id():
+    body = Resp(200, {"childAndParentsRelationships": [{
+        "child": {"resourceId": "CCCC-111"}, "parent1": {"resourceId": "AAAA-111"},
+        "parent2": {"resourceId": "BBBB-111"}}]})
+    fs, _, _ = make({_url(CAP): [body]})
+    assert fs.get_child_and_parents("P-1") == ("CCCC-111", frozenset(("AAAA-111", "BBBB-111")))
+    fs, _, _ = make({_url(CAP): [Resp(410)]})
+    assert fs.get_child_and_parents("P-1") is None
+
+
+def test_get_couple_ids_between_two_people():
+    rels = {"relationships": [
+        {"id": "R-1", "type": "http://gedcomx.org/Couple", "person1": {"resourceId": "AAAA-111"},
+         "person2": {"resourceId": "BBBB-111"}},
+        {"id": "R-2", "type": "http://gedcomx.org/Couple", "person1": {"resourceId": "AAAA-111"},
+         "person2": {"resourceId": "CCCC-111"}}]}
+    routes = {P + "AAAA-111": [rel_links_body("AAAA-111")], "/r/AAAA-111/spouses": [Resp(200, rels)]}
+    fs, _, _ = make(routes)
+    assert fs.get_couple_ids("AAAA-111", "BBBB-111") == ["R-1"]
+
+
+def test_get_change_summary_contributors_and_operations():
+    items = {"entries": [{"title": "Create person", "contributors": [{"resourceId": "USER-1"}],
+                          "changeInfo": [{"operation": "http://familysearch.org/v1/Create"}]},
+                         {"title": "Merge", "contributors": [{"name": "Someone"}], "changeInfo": []}]}
+    routes = {P + "AAAA-111": [Resp(200, {"persons": [{"id": "AAAA-111", "links": {
+        "change-history": {"href": "/r/AAAA-111/changes"}}}]})], "/r/AAAA-111/changes": [Resp(200, items)]}
+    fs, _, _ = make(routes)
+    got = fs.get_change_summary("AAAA-111")
+    assert [w for w, _ in got] == ["USER-1", "Someone"] and "merge" in got[1][1]
+
+
+def test_search_duplicates_is_unfiltered_and_queries_years_and_surname_only():
+    fs, _, _ = make({})
+    calls = []
+
+    def fake_search(**q):
+        calls.append(q)
+        if q.get("birth_date") == "1850" and q.get("given") is None:
+            return [{"id": "XXXX-111", "content": {"gedcomx": {"persons": [
+                {"display": {"name": "Totally Different", "birthDate": "1861"}, "living": False}]}}}]
+        return []
+    fs._search.tree_search = fake_search
+    hits = fs.search_duplicates("Zed", "Testname", 1850, 1910)
+    assert [h.id for h in hits] == ["XXXX-111"]  # no compare() filtering: a different name still counts
+    assert {q.get("birth_date") for q in calls} >= {"1840", "1845", "1850", "1855", "1860"}
+    assert {q.get("death_date") for q in calls} >= {"1900", "1910", "1920"}
+    assert any(q.get("given") is None and q["surname"] == "Testname" for q in calls)
+    assert any(q.get("given") == "Zed" for q in calls)
+
+
+def test_search_duplicates_counts_unparseable_entries_and_errors_propagate():
+    fs, _, _ = make({})
+    fs._search.tree_search = lambda **q: [{"id": "ODD-1", "content": {}}]
+    assert [h.id for h in fs.search_duplicates("Zed", "Testname", 1850, None)] == ["ODD-1"]
+
+    def boom(**q):
+        raise requests.ConnectionError("x")
+    fs._search.tree_search = boom
+    with pytest.raises(requests.RequestException):
+        fs.search_duplicates("Zed", "Testname", 1850, None)
+    with pytest.raises(ValueError):
+        fs.search_duplicates("Zed", "Testname", None, None)
