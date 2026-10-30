@@ -376,3 +376,56 @@ def test_read_401_stays_fatal():
     fs, _, _ = make({P + "ABCD-123": [Resp(401)]})
     with pytest.raises(TokenExpiredError):
         fs.get_source_refs("ABCD-123")
+
+
+# ---- relatives ----
+
+def rel_links_body(pid):
+    return Resp(200, {"persons": [{"id": pid, "links": {
+        "parents": {"href": f"/r/{pid}/parents"},
+        "children": {"href": f"/r/{pid}/children"},
+        "spouses": {"href": f"/r/{pid}/spouses"},
+    }}]})
+
+
+def rel_person(pid, name, living=False, birth="1850", death="1920"):
+    return {"id": pid, "living": living, "display": {"name": name, "birthDate": birth, "deathDate": death}}
+
+
+def test_get_relatives_maps_sections_living_and_skips_self():
+    routes = {
+        P + "AAAA-111": [rel_links_body("AAAA-111")],
+        "/r/AAAA-111/parents": [Resp(200, {"persons": [rel_person("PPPP-111", "Parent One")]})],
+        "/r/AAAA-111/children": [Resp(200, {"persons": [rel_person("CCCC-111", "Kid One", living=True, death=None)]})],
+        "/r/AAAA-111/spouses": [Resp(200, {"persons": [rel_person("AAAA-111", "Pat Example"), rel_person("SSSS-111", "Spouse One")]})],
+    }
+    fs, _, _ = make(routes)
+    rels = fs.get_relatives("AAAA-111")
+    got = {(r.relationship, r.fs.id): r.fs for r in rels}
+    assert set(got) == {("parent", "PPPP-111"), ("child", "CCCC-111"), ("spouse", "SSSS-111")}
+    assert got[("child", "CCCC-111")].living is True
+    assert got[("parent", "PPPP-111")].birth_year == 1850 and got[("parent", "PPPP-111")].status == "ok"
+
+
+def test_get_relatives_follows_paging():
+    first = Resp(200, {"persons": [rel_person("CCCC-111", "Kid One")], "links": {"next": {"href": "/r/AAAA-111/children?p=2"}}})
+    routes = {
+        P + "AAAA-111": [rel_links_body("AAAA-111")],
+        "/r/AAAA-111/parents": [Resp(200, {})],
+        "/r/AAAA-111/children": [first],
+        "/r/AAAA-111/children?p=2": [Resp(200, {"persons": [rel_person("CCCC-222", "Kid Two")]})],
+        "/r/AAAA-111/spouses": [Resp(200, {})],
+    }
+    fs, _, _ = make(routes)
+    assert [r.fs.id for r in fs.get_relatives("AAAA-111")] == ["CCCC-111", "CCCC-222"]
+
+
+def test_get_relatives_error_is_read_failed_and_retries_transient():
+    routes = {P + "AAAA-111": [rel_links_body("AAAA-111")], "/r/AAAA-111/parents": [Resp(404)]}
+    fs, _, _ = make(routes)
+    with pytest.raises(prod_reader.ReadFailed):
+        fs.get_relatives("AAAA-111")
+    routes = {P + "AAAA-111": [rel_links_body("AAAA-111")], "/r/AAAA-111/parents": [Resp(503), Resp(200, {})],
+              "/r/AAAA-111/children": [Resp(200, {})], "/r/AAAA-111/spouses": [Resp(200, {})]}
+    fs, _, sleeps = make(routes)
+    assert fs.get_relatives("AAAA-111") == [] and sleeps

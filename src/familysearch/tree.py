@@ -81,7 +81,7 @@ class TreeReader:
 
     def get_relatives(self, person_id: str) -> dict:
         links = self._discovery.person_links(person_id)
-        return {rel: self._fetch(links, rel, "persons") for rel in ("parents", "children", "spouses")}
+        return {rel: self._fetch_all(links, rel, "persons") for rel in ("parents", "children", "spouses")}
 
     def get_memories(self, person_id: str) -> list[dict]:
         links = self._discovery.person_links(person_id)

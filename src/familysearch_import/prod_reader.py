@@ -6,7 +6,7 @@ import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 import requests
 
@@ -42,6 +42,12 @@ class ReadFailed(FSError):
 class SourceRef:
     title: str
     url: str | None
+
+
+@dataclass(frozen=True)
+class Relative:
+    fs: FsPerson
+    relationship: Literal["parent", "child", "spouse"]
 
 
 def _title(item: dict) -> str:
@@ -207,6 +213,27 @@ class ReadOnlyFS:
             raise ReadFailed(f"read failed for {person_id}: {e}") from e
         except (requests.RequestException, ValueError) as e:
             raise ReadFailed(f"read failed for {person_id}: {type(e).__name__}") from e
+
+    def get_relatives(self, person_id: str) -> list[Relative]:
+        """Parents, children and spouses of a person; any failure is ReadFailed (never empty)."""
+        self.last_response = None
+        try:
+            data = self._call(lambda: self._tree.get_relatives(person_id))
+        except FSHTTPError as e:
+            raise ReadFailed(f"read failed for {person_id}: HTTP {e.status}") from e
+        except FSError as e:
+            if type(e) is not FSError:  # token / link errors are fatal
+                raise
+            raise ReadFailed(f"read failed for {person_id}: {e}") from e
+        except (requests.RequestException, ValueError) as e:
+            raise ReadFailed(f"read failed for {person_id}: {type(e).__name__}") from e
+        out: list[Relative] = []
+        for section, rel in (("parents", "parent"), ("children", "child"), ("spouses", "spouse")):
+            for p in data.get(section) or []:
+                if not isinstance(p, dict) or not p.get("id") or p["id"] == person_id:
+                    continue  # the spouses endpoint may echo the subject itself
+                out.append(Relative(fs_person_from_dict(p), rel))
+        return out
 
     def get_memory_titles(self, person_id: str) -> list[str]:
         items = self._read_list(person_id, lambda: self._tree.get_memories(person_id))
