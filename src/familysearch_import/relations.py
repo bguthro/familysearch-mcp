@@ -155,6 +155,25 @@ def load_relations(path: Path, valid_folders: set[str]) -> RelationsFile:
     return RelationsFile(line, reviewed, tuple(nodes), tuple(edges))  # type: ignore[arg-type]
 
 
+def _years_agree(a: int | None, b: int | None) -> bool:
+    return a is None or b is None or abs(a - b) <= 2
+
+
+def cross_check(rel: RelationsFile, regex_tree: ParsedTree) -> list[str]:
+    """Deceased people the regex parser found in the diagram that the file lacks (name + years)."""
+    from .linking import name_matches
+
+    missing: list[str] = []
+    for n in regex_tree.nodes:
+        if n.death is None and not n.deceased:
+            continue
+        if any(name_matches(n.name, r.name) and _years_agree(n.birth, r.birth) and _years_agree(n.death, r.death)
+               for r in rel.nodes):
+            continue
+        missing.append(f"{n.name} ({n.birth or '?'}-{n.death or '?'})")
+    return missing
+
+
 def to_parsed_tree(rel: RelationsFile) -> ParsedTree:
     index = {n.id: i for i, n in enumerate(rel.nodes)}
     nodes = tuple(

@@ -160,3 +160,91 @@ def test_cli_fs_error_returns_2(tmp_path, monkeypatch):
     root = make_archive(tmp_path)
     assert cli.main(["relationships", "--archive", str(root), "--env", "production"]) == 2
     assert not (root / "_import" / "RelationshipReport.md").exists()
+
+
+# ---- reviewed relations files ----
+
+def rel_doc(reviewed=True, nodes=None):
+    return {"version": 1, "line": "Example Line", "reviewed": reviewed,
+            "nodes": nodes or [
+                {"id": "p", "name": "Pat E.", "birth": 1844, "death": 1915, "status": "deceased",
+                 "folder": "Example Line/1844-1915 Pat Example", "source": "Pat Example (1844-1915)"},
+                {"id": "c", "name": "Cal E.", "birth": 1875, "death": 1940, "status": "deceased",
+                 "folder": "Example Line/1875-1940 Cal Example", "source": "Cal Example (1875-1940)"}],
+            "edges": [{"kind": "parent-child", "a": "p", "b": "c", "order": None, "marriage_year": None}]}
+
+
+def write_rel(root, doc):
+    d = root / "_import" / "relations"
+    d.mkdir(exist_ok=True)
+    (d / "Example Line.json").write_text(json.dumps(doc))
+
+
+def run_rel(root):
+    assert cli.main(["relationships", "--archive", str(root), "--env", "production"]) == 0
+    return (root / "_import" / "RelationshipReport.md").read_text(), json.loads(
+        (root / "_import" / "relationships.json").read_text())
+
+
+def test_report_lists_sources():
+    from dataclasses import replace
+    r = replace(sample(), sources=(("Line A", "reviewed relations file"), ("Line B", "awaiting review"),
+                                   ("Line C", "regex parser (fallback)")))
+    text = render_relgap_report(r)
+    assert "- Line A: reviewed relations file" in text and "- Line C: regex parser (fallback)" in text
+    assert "Awaiting review (the regex parser was used meanwhile): Line B" in text
+    assert relgap_json(r)["sources"]["Line B"] == "awaiting review"
+
+
+def test_cli_uses_reviewed_relations_file(tmp_path, fake_reader):
+    root = make_archive(tmp_path)
+    write_rel(root, rel_doc())
+    text, data = run_rel(root)
+    assert "- Example Line: reviewed relations file" in text and data["sources"] == {
+        "Example Line": "reviewed relations file"}
+    assert "Pat E. -> Cal E." in text and "Sue Sample" not in text  # names come from the file, not the diagram
+
+
+def test_cli_falls_back_without_file_and_waits_for_unreviewed(tmp_path, fake_reader):
+    root = make_archive(tmp_path)
+    text, _ = run_rel(root)
+    assert "- Example Line: regex parser (fallback)" in text
+    write_rel(root, rel_doc(reviewed=False))
+    text, data = run_rel(root)
+    assert data["sources"] == {"Example Line": "awaiting review"}
+    assert "Pat Example -> Cal Example" in text  # the regex parser was used meanwhile
+
+
+def test_cli_invalid_relations_file_names_the_file(tmp_path, fake_reader, capsys):
+    root = make_archive(tmp_path)
+    bad = rel_doc()
+    bad["nodes"][0]["folder"] = "Example Line/Nobody"
+    write_rel(root, bad)
+    assert cli.main(["relationships", "--archive", str(root), "--env", "production"]) == 2
+    err = capsys.readouterr().err
+    assert "Example Line.json" in err and "nodes[0]" in err and "folder" in err
+    assert not (root / "_import" / "RelationshipReport.md").exists()
+
+
+def test_relations_check_validates_and_cross_checks(tmp_path, capsys):
+    root = make_archive(tmp_path)
+    write_rel(root, rel_doc())
+    assert cli.main(["relations-check", "--archive", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert "ok: Example Line.json: 2 nodes, 1 edges, reviewed" in out
+    assert "deceased Sue Sample (1846-1920) that the file lacks" in out
+    assert "Liv Secret" not in out
+    bad = rel_doc(reviewed=False)
+    bad["edges"][0]["b"] = "zz"
+    write_rel(root, bad)
+    assert cli.main(["relations-check", "--archive", str(root)]) == 2
+    assert "edges[0]: b does not reference" in capsys.readouterr().out
+
+
+def test_relations_check_reports_unreviewed_and_empty(tmp_path, capsys):
+    root = make_archive(tmp_path)
+    assert cli.main(["relations-check", "--archive", str(root)]) == 0
+    assert "no relations files" in capsys.readouterr().out
+    write_rel(root, rel_doc(reviewed=False))
+    assert cli.main(["relations-check", "--archive", str(root)]) == 0
+    assert "awaiting review" in capsys.readouterr().out

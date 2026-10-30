@@ -72,6 +72,7 @@ class RelGapResult:
     living_nodes: int = 0
     failed_reads: int = 0
     unknown_nodes: int = 0  # no dates, not known deceased: counted, never named
+    sources: tuple[tuple[str, str], ...] = ()  # (line, where its nodes and edges came from)
 
 
 def _pkey(p: Person) -> str:
@@ -165,6 +166,7 @@ def evaluate_edges(
     *,
     max_reads: int = 600,
     record_status: Callable[[Person], tuple[str, str]] = record_state_and_status,
+    sources: Mapping[str, str] | None = None,
 ) -> RelGapResult:
     mapped = map_nodes(parsed_by_line, people, record_status)
 
@@ -327,4 +329,4 @@ def evaluate_edges(
     results.sort(key=lambda r: (order[r.status], r.kind, r.a_label, r.b_label))
     unparsed = tuple((ln, raw) for ln, t in parsed_by_line.items() for raw in t.unparsed_lines)
     return RelGapResult(tuple(results), tuple(cands), tuple(unmapped), reads, partial, living_skipped,
-                        unparsed, living_nodes, failed, unknown_nodes)
+                        unparsed, living_nodes, failed, unknown_nodes, tuple(sorted((sources or {}).items())))

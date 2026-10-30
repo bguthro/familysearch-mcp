@@ -8,6 +8,9 @@ import re
 
 from .relgap import EdgeResult, RelGapResult
 
+REVIEWED = "reviewed relations file"
+FALLBACK = "regex parser (fallback)"
+AWAITING = "awaiting review"
 STATUSES = ("conflict", "missing-in-familysearch", "blocked", "present", "skipped-living")
 _YEAR_RE = re.compile(r"\b(\d{4})\b")
 _DEATH_RE = re.compile(r"[–-]\s*\d{4}|\bd\.\s*\d{4}")
@@ -55,6 +58,13 @@ def render_relgap_report(result: RelGapResult) -> str:
     if result.partial:
         out += [f"WARNING: PARTIAL RESULT. Reads stopped early ({result.reads} reads, "
                 f"{result.failed_reads} failed). Blocked edges below were not checked.", ""]
+    if result.sources:
+        out += ["## Sources", ""]
+        out += [f"- {line}: {src}" for line, src in result.sources]
+        waiting = [line for line, src in result.sources if src == AWAITING]
+        if waiting:
+            out += ["", "Awaiting review (the regex parser was used meanwhile): " + ", ".join(waiting)]
+        out.append("")
     out += ["## Totals", ""]
     out += [f"- {s}: {counts[s]}" for s in STATUSES if s != "skipped-living"]
     out += [f"- creation candidates (deceased, no folder or no link): {len(result.create_candidates)}",
@@ -113,6 +123,7 @@ def relgap_json(result: RelGapResult) -> dict:
         "living_skipped": result.living_skipped,
         "living_nodes": result.living_nodes,
         "unknown_nodes": result.unknown_nodes,
+        "sources": dict(result.sources),
         "edges": [
             {
                 "key": edge_key(e),

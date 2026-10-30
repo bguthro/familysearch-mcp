@@ -104,7 +104,8 @@ def _relationships(args, repo: Path) -> int:
     from familysearch.errors import FSError
     from .planreport import load_approvals, load_links
     from .relgap import evaluate_edges
-    from .relgapreport import relgap_json, render_relgap_report
+    from .relations import RelationsError, load_relations, to_parsed_tree
+    from .relgapreport import AWAITING, FALLBACK, REVIEWED, relgap_json, render_relgap_report
     from .treeparse import parse_family_tree
 
     import_dir = args.archive / "_import"
@@ -120,18 +121,33 @@ def _relationships(args, repo: Path) -> int:
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         return _err(f"bad input file: {e}")
     people = scan_archive(args.archive)
+    valid_folders = {f"{p.line}/{p.folder}" for p in people}
     parsed = {}
+    sources: dict[str, str] = {}
     for line_dir in sorted({p.path.parent for p in people}, key=lambda d: nfc(d.name)):
-        tree_file = line_dir / "FamilyTree.md"
+        name = nfc(line_dir.name)
+        awaiting = False
+        rel_file = import_dir / "relations" / f"{line_dir.name}.json"
+        if rel_file.is_file():
+            try:
+                rel = load_relations(rel_file, valid_folders)
+            except RelationsError as e:
+                return _err("; ".join(e.errors))
+            if rel.reviewed:
+                parsed[name] = to_parsed_tree(rel)
+                sources[name] = REVIEWED
+                continue
+            awaiting = True
         try:
-            parsed[nfc(line_dir.name)] = parse_family_tree(nfc(line_dir.name), tree_file.read_text(encoding="utf-8"))
+            parsed[name] = parse_family_tree(name, (line_dir / "FamilyTree.md").read_text(encoding="utf-8"))
+            sources[name] = AWAITING if awaiting else FALLBACK
         except FileNotFoundError:
-            print(f"note: no FamilyTree.md for line {nfc(line_dir.name)}")
+            print(f"note: no FamilyTree.md for line {name}")
         except (OSError, UnicodeDecodeError):
-            print(f"note: could not read FamilyTree.md for line {nfc(line_dir.name)}")
+            print(f"note: could not read FamilyTree.md for line {name}")
     kw = {} if args.max_reads is None else {"max_reads": args.max_reads}
     try:
-        result = evaluate_edges(parsed, people, links, approvals, _make_reader(args.env), **kw)
+        result = evaluate_edges(parsed, people, links, approvals, _make_reader(args.env), sources=sources, **kw)
     except FSError as e:
         return _err(str(e))
     import_dir.mkdir(parents=True, exist_ok=True)
@@ -140,6 +156,44 @@ def _relationships(args, repo: Path) -> int:
     json_path.write_text(json.dumps(relgap_json(result), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"wrote {report_path} and {json_path}" + (" (PARTIAL)" if result.partial else ""))
     return 0
+
+
+def _relations_check(args, repo: Path) -> int:
+    """Validate every relations file (no network, nothing written) and cross-check the regex parser."""
+    from .relations import RelationsError, cross_check, load_relations
+    from .treeparse import parse_family_tree
+
+    rel_dir = args.archive / "_import" / "relations"
+    files = sorted(rel_dir.glob("*.json")) if rel_dir.is_dir() else []
+    if not files:
+        print(f"no relations files in {rel_dir}")
+        return 0
+    people = scan_archive(args.archive)
+    valid_folders = {f"{p.line}/{p.folder}" for p in people}
+    line_dirs = {nfc(p.path.parent.name): p.path.parent for p in people}
+    bad = 0
+    for f in files:
+        try:
+            rel = load_relations(f, valid_folders)
+        except RelationsError as e:
+            bad += 1
+            for msg in e.errors:
+                print(f"error: {msg}")
+            continue
+        print(f"ok: {f.name}: {len(rel.nodes)} nodes, {len(rel.edges)} edges, "
+              + ("reviewed" if rel.reviewed else "warning: awaiting review (not used yet)"))
+        line_dir = line_dirs.get(nfc(rel.line))
+        if line_dir is None:
+            print(f"warning: {f.name}: no line folder named {rel.line!r} in the archive")
+            continue
+        try:
+            tree = parse_family_tree(rel.line, (line_dir / "FamilyTree.md").read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError):
+            print(f"warning: {f.name}: no readable FamilyTree.md to cross-check")
+            continue
+        for item in cross_check(rel, tree):
+            print(f"warning: {f.name}: the regex parser found deceased {item} that the file lacks")
+    return 2 if bad else 0
 
 
 def _plan(args, repo: Path) -> int:
@@ -322,6 +376,9 @@ def main(argv: list[str] | None = None) -> int:
     rg.add_argument("--archive", required=True, type=Path)
     rg.add_argument("--env", required=True, choices=("production", "beta"))
     rg.add_argument("--max-reads", type=int, default=None)
+    rc = sub.add_parser("relations-check", help="validate reviewed relations files and cross-check them "
+                        "against the regex parser (offline)")
+    rc.add_argument("--archive", required=True, type=Path)
     ex = sub.add_parser("execute", help="WRITE approved documents/sources to FamilySearch (dry run by default)")
     ex.add_argument("--archive", required=True, type=Path)
     ex.add_argument("--env", required=True, choices=("production", "beta"))
@@ -374,6 +431,8 @@ def main(argv: list[str] | None = None) -> int:
         return _relatives(args, repo)
     if args.cmd == "relationships":
         return _relationships(args, repo)
+    if args.cmd == "relations-check":
+        return _relations_check(args, repo)
 
     if args.cmd == "report":
         import_dir = args.archive / "_import"
