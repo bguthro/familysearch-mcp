@@ -62,7 +62,9 @@ def render_relgap_report(result: RelGapResult) -> str:
             f"- unparsed diagram lines: {len(result.unparsed_lines)}",
             f"- FamilySearch reads: {result.reads}",
             f"- living people skipped (counted only, never listed): edges {result.living_skipped}, "
-            f"nodes {result.living_nodes}", ""]
+            f"nodes {result.living_nodes}",
+            f"- nodes with no dates and no death marker (unknown, counted only, never listed): "
+            f"{result.unknown_nodes}", ""]
     titles = {
         "conflict": "Conflicts (FamilySearch already differs; not proposed)",
         "missing-in-familysearch": "Missing in FamilySearch",
@@ -110,6 +112,7 @@ def relgap_json(result: RelGapResult) -> dict:
         "failed_reads": result.failed_reads,
         "living_skipped": result.living_skipped,
         "living_nodes": result.living_nodes,
+        "unknown_nodes": result.unknown_nodes,
         "edges": [
             {
                 "key": edge_key(e),

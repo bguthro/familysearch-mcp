@@ -26,6 +26,7 @@ class MappedNode:
     person: Person | None
     status: Literal["mapped", "unmapped", "ambiguous"]
     living: bool
+    unknown: bool = False  # living is a precaution: no dates and no death marker
 
 
 @dataclass(frozen=True)
@@ -70,16 +71,20 @@ class RelGapResult:
     unparsed_lines: tuple[tuple[str, str], ...] = ()  # (line, raw diagram text)
     living_nodes: int = 0
     failed_reads: int = 0
+    unknown_nodes: int = 0  # no dates, not known deceased: counted, never named
 
 
 def _pkey(p: Person) -> str:
     return f"{p.line}/{p.folder}"
 
 
-def _node_living_by_rule(node: Node) -> bool:
-    if node.death is not None:
-        return False
-    return node.birth is None or node.birth >= 1900  # unknown counts as living
+def _node_state(node: Node) -> tuple[bool, bool]:
+    """(living, unknown). Unknown (no dates and no death marker) is held back like living."""
+    if node.death is not None or node.deceased:
+        return False, False
+    if node.birth is None:
+        return True, True
+    return node.birth >= 1900, False
 
 
 def _fits(person: Person, node: Node) -> bool:
@@ -101,7 +106,8 @@ def map_nodes(
         for node in tree.nodes:
             key = (line, node.index)
             if node.birth is None and node.death is None:
-                out[key] = MappedNode(None, "unmapped", True)  # nothing to corroborate the name
+                living, unknown = _node_state(node)  # nothing to corroborate the name
+                out[key] = MappedNode(None, "unmapped", living, unknown)
                 continue
             chosen: MappedNode | None = None
             for pool in (same, other):
@@ -111,9 +117,9 @@ def map_nodes(
                     chosen = MappedNode(p, "mapped", record_status(p)[0] != "deceased")
                     break
                 if len(fits) > 1:
-                    chosen = MappedNode(None, "ambiguous", _node_living_by_rule(node))
+                    chosen = MappedNode(None, "ambiguous", *_node_state(node))
                     break
-            out[key] = chosen or MappedNode(None, "unmapped", _node_living_by_rule(node))
+            out[key] = chosen or MappedNode(None, "unmapped", *_node_state(node))
     return out
 
 
@@ -126,6 +132,8 @@ class _End:
 
     @property
     def label(self) -> str:
+        if self.mapped.unknown:
+            return "(unknown)"
         return LIVING if self.mapped.living else self.node.name
 
 
@@ -225,7 +233,7 @@ def evaluate_edges(
 
         if a.mapped.living or b.mapped.living:
             living_skipped += 1
-            done("skipped-living", "an end is living; counted only")
+            done("skipped-living", "an end is living or of unknown status; counted only")
             continue
         names = ("parent", "child") if kind == "parent-child" else ("first spouse", "second spouse")
         blocked = ""
@@ -283,9 +291,12 @@ def evaluate_edges(
                 linked_deceased_neighbours.setdefault(x.ident, set()).add(y.node.name)
     cands: list[CreateCandidate] = []
     unmapped: list[UnmappedNode] = []
-    living_nodes = 0
+    living_nodes = unknown_nodes = 0
     for ident, end in sorted(ends.items(), key=lambda kv: (kv[1].node.name, repr(kv[0]))):
         lines = tuple(sorted(node_lines[ident]))
+        if end.mapped.unknown:
+            unknown_nodes += 1
+            continue
         if end.mapped.living:
             living_nodes += 1
             continue
@@ -303,4 +314,4 @@ def evaluate_edges(
     results.sort(key=lambda r: (order[r.status], r.kind, r.a_label, r.b_label))
     unparsed = tuple((ln, raw) for ln, t in parsed_by_line.items() for raw in t.unparsed_lines)
     return RelGapResult(tuple(results), tuple(cands), tuple(unmapped), reads, partial, living_skipped,
-                        unparsed, living_nodes, failed)
+                        unparsed, living_nodes, failed, unknown_nodes)

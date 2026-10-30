@@ -154,3 +154,78 @@ def test_fallback_block_without_heading_and_empty_input():
 def test_m_line_without_owner_is_unparsed():
     t = parse_family_tree("L", "## Tree diagram\n```\nm1. 1900, Orphan Spouse\n```\n")
     assert t.nodes == () and len(t.unparsed_lines) == 1
+
+
+# ---- richer real-world shapes (fictional names) ----
+
+RICH = """## Tree diagram
+```
+Hans Beispiel (c.1733/38–1802, Langnau, Bern, Switzerland) m. 1758, Anna Muster (abt.1624–aft.1693)
+ ├─ immigrated 1754, ship Example, Philadelphia
+ └─ Jakob Beispiel (b.~1708/09, Hamburg NS)
+       ├─ m. 1858 Greta Probe (1862–1932; her father was Karl)
+       ├─ m. 1799, Springfield, Ohio, Lena Sample (1780-1850)
+       │  └─ Otto Beispiel (1800–1870) — immigrated 1890 (ship Example, likely match)
+       ├─ m1. c.1760, Marta "Mattie" Beispiel (1740–1800)
+       │  └─ Emil Probe — the immigrant, arrived 2 July 1857; naturalized 1861/1864 Ohio (1824-1898)
+       └─ m2. ~1948, Rosa Zwei
+          └─ (stepchildren, not blood relations: Max and Mia)
+Paul Wurzel (d.1967)
+ ├─ m. Catherine (surname unknown, d.1809)
+ ├─ m. Ida Late (the late Ida)
+ └─ no children carried into this line
+```
+"""
+
+
+def test_rich_shapes_parse_with_zero_unparsed():
+    t = parse_family_tree("L", RICH)
+    assert t.unparsed_lines == ()
+    n = by_name(t)
+    hans = n["Hans Beispiel"]
+    assert hans.birth == 1733 and hans.death == 1802 and hans.approx and hans.deceased
+    anna = n["Anna Muster"]
+    assert anna.birth == 1624 and anna.death == 1693 and anna.approx
+    assert n["Jakob Beispiel"].birth == 1708 and n["Jakob Beispiel"].approx and n["Jakob Beispiel"].death is None
+    assert not n["Jakob Beispiel"].deceased
+    assert n["Greta Probe"].birth == 1862 and n["Greta Probe"].death == 1932
+    spouse_notes = {e.note for e in t.edges if e.kind == "spouse" and t.nodes[e.b].name == "Greta Probe"}
+    assert spouse_notes == {"m. 1858"}
+    assert n["Lena Sample"].birth == 1780  # places before the name are dropped
+    assert 'Marta "Mattie" Beispiel' in n and "Rosa Zwei" in n
+    otto = n["Otto Beispiel"]
+    assert otto.birth == 1800 and otto.death == 1870 and any("immigrated 1890" in x for x in otto.notes)
+    emil = n["Emil Probe"]
+    assert emil.birth == 1824 and emil.death == 1898 and any("naturalized" in x for x in emil.notes)
+    assert n["Paul Wurzel"].death == 1967 and n["Paul Wurzel"].birth is None and n["Paul Wurzel"].deceased
+    assert n["Catherine"].death == 1809 and n["Catherine"].deceased
+    assert n["Ida Late"].deceased and n["Ida Late"].death is None
+    # annotation lines are notes on the node they sit under, never nodes
+    assert any("immigrated 1754" in x for x in hans.notes)
+    assert any("stepchildren" in x for x in n["Rosa Zwei"].notes)
+    assert any("no children" in x for x in n["Paul Wurzel"].notes)
+    assert not any("ship" in x.name for x in t.nodes)
+    sp = edges(t, "spouse")
+    assert ("Paul Wurzel", "Catherine") in sp and ("Paul Wurzel", "Ida Late") in sp
+    assert ("Jakob Beispiel", "Greta Probe") in sp and ("Jakob Beispiel", "Rosa Zwei") in sp
+    marriage = [e for e in t.edges if e.kind == "spouse" and t.nodes[e.b].name.startswith("Marta")][0]
+    assert marriage.order == 1 and "c.1760" in marriage.note
+    pc = edges(t, "parent-child")
+    assert ("Jakob Beispiel", "Otto Beispiel") in pc and ("Lena Sample", "Otto Beispiel") in pc
+    assert ('Marta "Mattie" Beispiel', "Emil Probe") in pc and ("Jakob Beispiel", "Emil Probe") in pc
+
+
+def test_children_nested_under_a_note_are_unparsed_not_guessed():
+    body = ("## Tree diagram\n```\nAdam Example (1800–1860)\n └─ (note: see other line)\n"
+            "       └─ Kid Example (1830–1900)\n```\n")
+    t = parse_family_tree("L", body)
+    assert len(t.unparsed_lines) == 1 and "Kid" in t.unparsed_lines[0]
+    assert edges(t, "parent-child") == set()
+    assert any("see other line" in x for x in t.nodes[0].notes)
+
+
+def test_death_only_group_and_lone_year_are_not_guessed():
+    t = parse_family_tree("L", "## Tree diagram\n```\nAdam Example (1884)\n └─ Bo Example (d.1920)\n```\n")
+    n = by_name(t)
+    assert n["Adam Example"].birth is None and n["Adam Example"].death is None and not n["Adam Example"].deceased
+    assert n["Bo Example"].death == 1920 and n["Bo Example"].birth is None

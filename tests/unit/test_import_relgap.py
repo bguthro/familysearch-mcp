@@ -79,6 +79,32 @@ def test_two_folders_in_the_same_line_are_ambiguous_and_dateless_nodes_unmapped(
     assert m[("Line A", 1)].status == "unmapped"
 
 
+def test_accents_and_nickname_quotes_map_via_compare():
+    agnes = person("Line A", "Agnes Dupont", 1850, 1920)
+    parsed = {"Line A": parse_family_tree("Line A", diagram('Agnès "Nan" Dupont (1850–1920)'))}
+    m = map_nodes(parsed, [agnes])
+    assert m[("Line A", 0)].person is agnes
+    nick = person("Line A", 'Elizabeth "Bessie" Vale', 1860, 1930)
+    parsed = {"Line A": parse_family_tree("Line A", diagram("Bessie Vale (1860–1930)"))}
+    assert map_nodes(parsed, [nick])[("Line A", 0)].person is nick
+
+
+def test_dateless_nodes_are_unknown_unless_marked_deceased():
+    body = diagram("Cal Example (1825–1890)\n ├─ Nodate Person\n ├─ Gone Person (the late Gone)\n"
+                   " └─ Death Only (d.1901)")
+    parsed = {"Line A": parse_family_tree("Line A", body)}
+    m = map_nodes(parsed, [CAL])
+    nd, gone, donly = m[("Line A", 1)], m[("Line A", 2)], m[("Line A", 3)]
+    assert nd.unknown and nd.living and nd.status == "unmapped"
+    assert not gone.living and not gone.unknown
+    assert not donly.living and not donly.unknown
+    res, _ = run(body, [CAL], {"Line A/Cal Example": "CCCC-1"}, {})
+    assert res.unknown_nodes == 1
+    labels = {c.label for c in res.create_candidates}
+    assert "Nodate Person" not in labels and {"Gone Person", "Death Only"} <= labels
+    assert "Nodate" not in repr([(e.a_label, e.b_label) for e in res.edges])
+
+
 def test_living_rule_and_folder_override():
     kid = person("Line A", "Kay Example", 2005, None)
     parsed = {"Line A": parse_family_tree("Line A", diagram("Cal Example (1825–1890)\n └─ Kay Example (b.2005)"))}
