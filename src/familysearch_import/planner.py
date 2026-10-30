@@ -109,7 +109,53 @@ def build_plan(
     env: str = "",
 ) -> Plan:
     out = [_plan_person(p, links, approved, reader, ledger_keys, max_bytes, force_upload) for p in people]
+    out = _dedupe_shared_files(out)
     return Plan(tuple(out), compute_plan_hash(out, env), env)
+
+
+def _person_sort_key(line: str, folder: str) -> tuple[str, str]:
+    return nfc(line), nfc(folder)
+
+
+def _dedupe_shared_files(people: list[PersonPlan]) -> list[PersonPlan]:
+    """FamilySearch stores an identical file once (HTTP 409 otherwise), even across people.
+
+    Across all people, when one sha256 would be uploaded under more than one action key, only the
+    action of the person sorting first by (line, folder) stays; the rest become skipped. Winner
+    choice ignores the ledger, so the plan does not depend on run progress. The same person under
+    two lines shares one key and is left alone.
+    """
+    live = ("planned", "likely-covered", "already-present")
+    groups: dict[str, list[Action]] = {}
+    for p in people:
+        for a in p.actions:
+            if a.kind == "upload-document" and a.sha256 and a.state in live:
+                groups.setdefault(a.sha256, []).append(a)
+    demote: dict[tuple[str, str, str], str] = {}
+    for acts in groups.values():
+        if len({a.key for a in acts}) < 2:
+            continue
+        win = min(acts, key=lambda a: (_person_sort_key(a.person_line, a.person_folder), a.key))
+        for a in acts:
+            if a.key != win.key and a.state in ("planned", "likely-covered"):
+                demote[(a.person_line, a.person_folder, a.key)] = (
+                    f"same file already planned for {nfc(win.person_line)}/{nfc(win.person_folder)} "
+                    "(FamilySearch stores an identical image once; attach manually)")
+    if not demote:
+        return people
+    out = []
+    for p in people:
+        acts = tuple(
+            _with(a, state="skipped", reason=demote[(a.person_line, a.person_folder, a.key)])
+            if (a.person_line, a.person_folder, a.key) in demote else a
+            for a in p.actions)
+        if acts != p.actions:
+            status = p.status
+            if p.status == "planned" and not any(a.state == "planned" for a in acts):
+                status = "nothing-to-do"
+            p = PersonPlan(p.line, p.folder, p.fs_id, status, acts, p.note)
+        out.append(p)
+    return out
 
 
 def _plan_person(person, links, approved, reader, ledger_keys, max_bytes, force_upload=frozenset()) -> PersonPlan:

@@ -258,3 +258,80 @@ def test_hash_covers_likely_covered(tmp_path):
     p1, _, _ = one(tmp_path / "a", {"Census 1900.pdf": b"a"}, reader=FakeReader(sources=[SourceRef("Census 1900", None)]))
     p2, _, _ = one(tmp_path / "b", {"Census 1900.pdf": b"b"}, reader=FakeReader(sources=[SourceRef("Census 1900", None)]))
     assert p1.plan_hash != p2.plan_hash
+
+
+# --- cross-person dedupe: FamilySearch stores an identical file once ---
+
+SAM = "1846-1920 Sam Example"
+LEE = "1850-1925 Lee Example"
+KIN = "1852-1930 Kim Example"
+
+
+def multi(tmp_path, folders, ids=None, **kw):
+    people = make_archive(tmp_path, folders)
+    ids = ids or {f: f"ID{i}-123" for i, f in enumerate(folders)}
+    links = {f"Example Line/{f}": v for f, v in ids.items()}
+    return build_plan(people, links, {}, FakeReader(), **kw)
+
+
+def ups(plan):
+    return [(p.folder, a) for p in plan.people for a in p.actions if a.kind == "upload-document"]
+
+
+def test_shared_file_across_two_people_planned_once(tmp_path):
+    plan = multi(tmp_path, {SAM: {"Marriage.pdf": b"same"}, PAT: {"Marriage.pdf": b"same"}})
+    got = {f: a for f, a in ups(plan)}
+    first = min(SAM, PAT)
+    other = max(SAM, PAT)
+    assert got[first].state == "planned"
+    assert got[other].state == "skipped"
+    assert f"same file already planned for Example Line/{first}" in got[other].reason
+    assert "attach manually" in got[other].reason
+    status = {p.folder: p.status for p in plan.people}
+    assert status[first] == "planned" and status[other] == "nothing-to-do"
+
+
+def test_three_people_one_planned_two_skipped(tmp_path):
+    plan = multi(tmp_path, {SAM: {"M.pdf": b"x"}, PAT: {"M.pdf": b"x"}, LEE: {"M.pdf": b"x"}})
+    states = sorted(a.state for _, a in ups(plan))
+    assert states == ["planned", "skipped", "skipped"]
+    assert next(f for f, a in ups(plan) if a.state == "planned") == min(SAM, PAT, LEE)
+
+
+def test_same_person_two_lines_stays_planned(tmp_path):
+    root = tmp_path / "arch"
+    for line in ("Line A", "Line B"):
+        d = root / line / PAT
+        d.mkdir(parents=True)
+        (d / "M.pdf").write_bytes(b"x")
+    people = scan_archive(root)
+    links = {f"Line A/{PAT}": "SAME-123", f"Line B/{PAT}": "SAME-123"}
+    plan = build_plan(people, links, {}, FakeReader())
+    assert [a.state for _, a in ups(plan)] == ["planned", "planned"]
+    assert len({a.key for _, a in ups(plan)}) == 1
+
+
+def test_different_files_unaffected(tmp_path):
+    plan = multi(tmp_path, {SAM: {"M.pdf": b"one"}, PAT: {"M.pdf": b"two"}})
+    assert [a.state for _, a in ups(plan)] == ["planned", "planned"]
+
+
+def test_dedupe_independent_of_input_order(tmp_path):
+    folders = {SAM: {"M.pdf": b"x"}, PAT: {"M.pdf": b"x"}}
+    people = make_archive(tmp_path, folders)
+    links = {f"Example Line/{f}": f"ID{i}-123" for i, f in enumerate(folders)}
+    a = build_plan(people, links, {}, FakeReader())
+    b = build_plan(tuple(reversed(people)), links, {}, FakeReader())
+    sa = {p.folder: [x.state for x in p.actions] for p in a.people}
+    sb = {p.folder: [x.state for x in p.actions] for p in b.people}
+    assert sa == sb
+    assert a.plan_hash == b.plan_hash
+
+
+def test_dedupe_does_not_depend_on_ledger(tmp_path):
+    folders = {SAM: {"M.pdf": b"x"}, PAT: {"M.pdf": b"x"}}
+    base = multi(tmp_path / "a", folders)
+    winner = next(a for _, a in ups(base) if a.state == "planned")
+    again = multi(tmp_path / "b", folders, ledger_keys=frozenset({winner.key}))
+    # the loser stays skipped even once the winner is in the ledger
+    assert sorted(a.state for _, a in ups(again)) == ["already-present", "skipped"]

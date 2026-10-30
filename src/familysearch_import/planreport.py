@@ -10,6 +10,7 @@ from pathlib import Path
 from .planner import Plan
 
 NON_NAMED_NOTES = ("living", "unknown status")
+SHARED_PREFIX = "same file already planned for "
 
 
 def load_links(path: Path) -> dict[str, str | None]:
@@ -120,6 +121,12 @@ def render_plan_report(plan: Plan) -> str:
     if reasons:
         lines += ["", "## Skipped files, by reason", ""]
         lines += [f"- {r}: {n}" for r, n in sorted(reasons.items())]
+
+    shared = [(p, a) for p in plan.people for a in p.actions
+              if a.state == "skipped" and a.reason.startswith(SHARED_PREFIX)]
+    if shared:
+        lines += ["", "## Skipped: identical file shared with another person (attach manually)", ""]
+        lines += [f"- {p.line} / {p.folder}: {a.file} ({a.reason})" for p, a in shared]
 
     lines += ["", "## Deceased people", ""]
     shown = False

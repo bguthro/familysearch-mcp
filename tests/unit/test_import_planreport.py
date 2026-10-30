@@ -178,3 +178,13 @@ def test_report_totals_show_likely_covered_separately():
                     (act("a", "planned"), act("b", "likely-covered"), act("c", "already-present")), "")
     text = render_plan_report(Plan((pp,), "h" * 64))
     assert "- planned: 1" in text and "- likely-covered: 1" in text and "- already-present: 1" in text
+
+
+def test_report_lists_shared_file_skips_in_own_section():
+    reason = ("same file already planned for L/A Person (FamilySearch stores an identical image "
+              "once; attach manually)")
+    a = Action("k", "upload-document", "L", "B Person", "ABCD-123", "M.pdf", "M", None, "skipped", reason, "s")
+    pp = PersonPlan("L", "B Person", "ABCD-123", "nothing-to-do", (a,), "")
+    text = render_plan_report(Plan((pp,), "h" * 64))
+    head, _, rest = text.partition("## Skipped: identical file shared with another person")
+    assert rest and "- L / B Person: M.pdf" in rest.split("## Deceased people")[0]
