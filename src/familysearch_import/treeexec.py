@@ -493,15 +493,14 @@ def _precheck(a: TreeAction, services: TreeServices, state: _State,
 
 
 def _person_body(p: dict) -> dict:
-    facts = []
-    for kind, year in (("Birth", p.get("birth")), ("Death", p.get("death"))):
-        if year is not None:
-            facts.append({"type": GX + kind, "date": {"original": str(year)}})
-    body: dict = {"living": False, "gender": {"type": GX + "Unknown"},
-                  "names": [{"nameForms": [{"fullText": p["name"]}]}]}
-    if facts:
-        body["facts"] = facts
-    return body
+    """GEDCOM X person via the verified builders (FamilySearch rejects names without parts)."""
+    import re
+    from familysearch.models import FACT_BIRTH, FACT_DEATH, build_fact, build_person
+    words = re.sub(r"\([^)]*\)", " ", p["name"]).split()  # drop parenthesised maiden/alternate names
+    given, surname = " ".join(words[:-1]), words[-1]
+    facts = [build_fact(kind, date=str(year))
+             for kind, year in ((FACT_BIRTH, p.get("birth")), (FACT_DEATH, p.get("death"))) if year is not None]
+    return build_person(given=given, surname=surname, gender="Unknown", living=False, facts=facts or None)
 
 
 def _do_write(a: TreeAction, services: TreeServices) -> str:

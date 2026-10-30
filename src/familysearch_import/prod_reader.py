@@ -236,11 +236,11 @@ class ReadOnlyFS:
                 out.append(Relative(fs_person_from_dict(p), rel))
         return out
 
-    def _get_json(self, url: str, what: str) -> dict | None:
+    def _get_json(self, url: str, what: str, accept: str | None = None) -> dict | None:
         """GET a relationship resource: dict, or None when it is gone (404/410). Else ReadFailed."""
         self.last_response = None
         try:
-            resp = self._call(lambda: self._client.get(url))
+            resp = self._call(lambda: self._client.get(url, accept=accept))
         except FSHTTPError as e:
             if e.status in (404, 410):
                 return None
@@ -312,8 +312,8 @@ class ReadOnlyFS:
             contribs = i.get("contributors") if isinstance(i.get("contributors"), list) else []
             who = ""
             for c in contribs:
-                if isinstance(c, dict) and (c.get("resourceId") or c.get("name")):
-                    who = str(c.get("resourceId") or c.get("name"))
+                who = _contributor_id(c)
+                if who:
                     break
             text = (_json.dumps(i.get("changeInfo"), sort_keys=True, default=str) + " "
                     + str(i.get("title") or "")).lower()
@@ -352,6 +352,8 @@ class ReadOnlyFS:
                 if fs is None:
                     eid = entry.get("id") if isinstance(entry, dict) else None
                     fs = FsPerson(str(eid or "(unparsed)"), "", None, None, None, "error")
+                if not _surname_plausible(fs.name, surnames):
+                    continue  # phonetic search pads results with unrelated names
                 hits.setdefault(fs.id, fs)
         return list(hits.values())
 
@@ -388,15 +390,15 @@ class ReadOnlyFS:
             if href in seen or len(seen) >= 50:
                 raise ReadFailed("read failed for couple relationship: change-history paging loop")
             seen.add(href)
-            page = self._get_json(href, "couple change history")
+            page = self._get_json(href, "couple change history", accept="application/x-gedcomx-atom+json")
             if page is None:
                 raise ReadFailed("read failed for couple relationship: change history gone")
             for i in page.get("entries") or []:
                 contribs = i.get("contributors") if isinstance(i.get("contributors"), list) else []
                 who = ""
                 for c in contribs:
-                    if isinstance(c, dict) and (c.get("resourceId") or c.get("name")):
-                        who = str(c.get("resourceId") or c.get("name"))
+                    who = _contributor_id(c)
+                    if who:
                         break
                 out_changes.append((who, (_json.dumps(i.get("changeInfo"), sort_keys=True, default=str) + " "
                                           + str(i.get("title") or "")).lower()))
@@ -454,6 +456,32 @@ class ReadOnlyFS:
                 scored.append((0 if verdict == "confirmed" else 1, i, fs))
         scored.sort(key=lambda t: t[:2])
         return [fs for _, _, fs in scored[:limit]]
+
+
+def _contributor_id(c: Any) -> str:
+    """A change-history contributor's id: ``resourceId``, else the last path segment of ``uri``
+    (entries carry ``{name, uri}``), else the display name as a label that never matches an id."""
+    if not isinstance(c, dict):
+        return ""
+    if c.get("resourceId"):
+        return str(c["resourceId"])
+    uri = c.get("uri")
+    if isinstance(uri, str) and uri.strip("/"):
+        return uri.split("?")[0].rstrip("/").rsplit("/", 1)[-1]
+    return str(c.get("name") or "")
+
+
+def _surname_plausible(name: str, surnames: Sequence[str], threshold: float = 0.72) -> bool:
+    """True unless the hit's name clearly shares no token with any searched surname.
+
+    Deliberately loose (fuzzy token match; given names and years ignored) so nickname and year
+    differences still count as a possible duplicate. Unnamed hits always count."""
+    import difflib
+    tokens = [t for t in re.split(r"[^\w]+", (name or "").casefold()) if t]
+    if not tokens:
+        return True
+    wanted = [w for s in surnames for w in re.split(r"[^\w]+", s.casefold()) if w]
+    return any(difflib.SequenceMatcher(None, t, w).ratio() >= threshold for t in tokens for w in wanted)
 
 
 def _strip_parens(name: str) -> str:

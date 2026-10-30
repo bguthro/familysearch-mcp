@@ -1476,3 +1476,11 @@ def test_guarded_writer_requires_literal_true():
     w = GuardedTreeWriter(inner, Environment.PRODUCTION, "yes")  # type: ignore[arg-type]
     with pytest.raises(OperationLockedError):
         w.delete_person(A, reason="r")
+
+
+def test_person_body_uses_name_parts_and_facts():
+    from familysearch_import.treeexec import _person_body
+    body = _person_body({"name": "Alpha (Maiden) Testname", "birth": 1850, "death": 1920})
+    form = body["names"][0]["nameForms"][0]
+    assert form["fullText"] == "Alpha Testname" and form["parts"]
+    assert body["living"] is False and len(body["facts"]) == 2

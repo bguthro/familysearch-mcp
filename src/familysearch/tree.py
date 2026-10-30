@@ -60,7 +60,7 @@ class TreeReader:
             return []
         return _items(_json(self._client.get(href, accept=accept)), *keys)
 
-    def _fetch_all(self, links: dict[str, str], rel: str, *keys: str) -> list[dict]:
+    def _fetch_all(self, links: dict[str, str], rel: str, *keys: str, accept=None) -> list[dict]:
         """Like _fetch but follows paging links until exhausted. Never returns a truncated list:
         more than MAX_PAGES pages, or a paging loop, raises FSError."""
         href = links.get(rel)
@@ -74,7 +74,7 @@ class TreeReader:
             pages += 1
             if pages > MAX_PAGES:
                 raise FSError(f"list has more than {MAX_PAGES} pages; refusing to treat it as complete")
-            body = _json(self._client.get(href))
+            body = _json(self._client.get(href, accept=accept))
             out.extend(_items(body, *keys))
             href = _next_href(body)
         return out
@@ -119,7 +119,7 @@ class TreeReader:
         links = self._discovery.person_links(person_id)
         if not links.get("change-history"):
             raise FSError("person has no change-history link")
-        return self._fetch_all(links, "change-history", "entries")
+        return self._fetch_all(links, "change-history", "entries", accept=ATOM_ACCEPT)
 
     def get_matches(self, person_id: str) -> list[dict]:
         links = self._discovery.person_links(person_id)

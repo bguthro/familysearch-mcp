@@ -499,6 +499,16 @@ def test_get_change_summary_contributors_and_operations():
     assert [w for w, _ in got] == ["USER-1", "Someone"] and "merge" in got[1][1]
 
 
+def test_search_duplicates_keeps_similar_surnames_and_drops_unrelated_names():
+    fs, _, _ = make({})
+
+    def entry(i, name):
+        return {"id": i, "content": {"gedcomx": {"persons": [{"display": {"name": name, "birthDate": "1861"}, "living": False}]}}}
+    fs._search.tree_search_strict = lambda **q: [
+        entry("NEAR-1", "Zedd Testnam"), entry("FAR-1", "Totally Different"), entry("NICK-1", "Hans Testname")]
+    assert sorted(h.id for h in fs.search_duplicates("Zed", "Testname", 1850, None)) == ["NEAR-1", "NICK-1"]
+
+
 def test_search_duplicates_is_unfiltered_and_queries_years_and_surname_only():
     fs, _, _ = make({})
     calls = []
@@ -507,11 +517,11 @@ def test_search_duplicates_is_unfiltered_and_queries_years_and_surname_only():
         calls.append(q)
         if q.get("birth_date") == "1850" and q.get("given") is None:
             return [{"id": "XXXX-111", "content": {"gedcomx": {"persons": [
-                {"display": {"name": "Totally Different", "birthDate": "1861"}, "living": False}]}}}]
+                {"display": {"name": "Zed Testnames", "birthDate": "1861"}, "living": False}]}}}]
         return []
     fs._search.tree_search_strict = fake_search
     hits = fs.search_duplicates("Zed", "Testname", 1850, 1910)
-    assert [h.id for h in hits] == ["XXXX-111"]  # no compare() filtering: a different name still counts
+    assert [h.id for h in hits] == ["XXXX-111"]  # no compare() filtering: a different given name or year still counts
     assert {q.get("birth_date") for q in calls} >= {"1840", "1845", "1850", "1855", "1860"}
     assert {q.get("death_date") for q in calls} >= {"1900", "1910", "1920"}
     assert any(q.get("given") is None and q["surname"] == "Testname" for q in calls)
@@ -591,3 +601,11 @@ def test_current_user_ids_and_couple_extras():
     fs, _, _ = make({_url(COUPLE): [Resp(200, {"relationships": [{"links": {}}]})]})
     with pytest.raises(prod_reader.ReadFailed):
         fs.get_couple_extras("R-1")
+
+
+def test_contributor_id_prefers_resource_id_then_uri_tail_never_name_as_id():
+    from familysearch_import.prod_reader import _contributor_id
+    assert _contributor_id({"resourceId": "AGENT-1", "name": "x"}) == "AGENT-1"
+    assert _contributor_id({"name": "Some Name", "uri": "https://h/platform/users/agents/AGENT-2"}) == "AGENT-2"
+    assert _contributor_id({"name": "Some Name"}) == "Some Name"
+    assert _contributor_id(None) == ""

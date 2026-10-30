@@ -40,7 +40,7 @@ PEOPLE = {
     "child": ("Drillthird Drilltestname", "Male", 1880, 1950),
     "control": ("Drillcontrol Drilltestname", "Female", 1860, 1930),
 }
-NEW_PERSON = {"label": "Drillfifth Drillcreated", "birth": 1855, "death": 1925}
+NEW_PERSON = {"label": "Drillfifth Qzxwvkj", "birth": 1855, "death": 1925}
 _PLAN_HASH = re.compile(r"wrote (\S+) and .*\(plan hash ([0-9a-f]{64})\)")
 
 
@@ -55,7 +55,8 @@ def parse_tree_plan_output(out: str) -> tuple[str, str] | None:
     return (m.group(1), m.group(2)) if m else None
 
 
-def write_inputs(import_dir: Path, *, ids: dict[str, str], with_people: bool = True) -> dict:
+def write_inputs(import_dir: Path, *, ids: dict[str, str], with_people: bool = True,
+                 candidate: dict | None = None) -> dict:
     """Write links.json, relationships.json and approvals.json for the scratch archive.
 
     With ``with_people`` the edges are: p1+p2 spouse, p1->child and p2->child parent-child; the
@@ -82,7 +83,7 @@ def write_inputs(import_dir: Path, *, ids: dict[str, str], with_people: bool = T
                           "a_fs": ids[par], "b_fs": ids["child"], "status": "missing-in-familysearch",
                           "note": NO_PARENTS_NOTE, "a_folder": fk[par], "b_folder": fk["child"]})
             approved_rel.append(k)
-    cand = dict(NEW_PERSON)
+    cand = dict(candidate or NEW_PERSON)
     (import_dir / "links.json").write_text(json.dumps({"env": "beta", "people": people}, indent=2) + "\n",
                                            encoding="utf-8")
     (import_dir / "relationships.json").write_text(
@@ -218,7 +219,8 @@ class Drill:
         return self.r.step("3 dry run writes nothing",
                            rc == 0 and count_outcomes(out, "would-create") == 3 and untouched and intents == 0,
                            f"rc={rc}; would-create={count_outcomes(out, 'would-create')}; "
-                           f"setup people still unrelated={untouched}; ledger intents={intents}")
+                           f"setup people still unrelated={untouched}; ledger intents={intents}; "
+                           f"{scrub(out.strip()[-600:])}")
 
     def step3b_not_a_couple(self) -> bool:
         """A two-parent child link whose parents are NOT a couple on FamilySearch must be skipped.
@@ -317,16 +319,31 @@ class Drill:
                            f"rc={rc}; ledger lines {before[0]}->{after[0]}; created={count_outcomes(out, 'created')}; "
                            f"relationships unchanged={before[1] == after[1]}")
 
+    def existing_beta_person(self) -> dict | None:
+        """A deceased record already in beta's search index (read-only; never written)."""
+        from familysearch.discovery import Discovery as _D
+        from familysearch.search import Search
+        from familysearch_import.prod_reader import _entry_person
+        for e in Search(self.client, _D(self.client)).tree_search_strict(surname="Smith", birth_date="1850"):
+            fs = _entry_person(e)
+            if fs and fs.living is False and fs.birth_year and len(fs.name.split()) >= 2 and "(" not in fs.name:
+                return {"label": fs.name, "birth": fs.birth_year, "death": fs.death_year}
+        return None
+
     def step7_name_exists(self) -> bool:
-        """A fresh scratch archive (own ledger) approves a create-person for the name that now exists."""
+        """A fresh scratch archive (own ledger) approves a create-person for a name already in beta's search
+        index (new people are not searchable for minutes, so a record of ours would not be found)."""
+        cand = self.existing_beta_person()
+        if cand is None:
+            return self.r.step("7 existing name refused", False, "no indexed beta person found to use")
         self.root2 = Path(tempfile.mkdtemp(prefix="tree-drill2-"))
         imp = self.root2 / "_import"
-        write_inputs(imp, ids={}, with_people=False)
+        write_inputs(imp, ids={}, with_people=False, candidate=cand)
         rc, out = self.cli("tree-plan", "--env", "beta", root=self.root2)
         parsed = parse_tree_plan_output(out)
         if rc != 0 or not parsed:
-            return self.r.step("7 existing name refused", False, f"plan rc={rc}")
-        write_approvals(imp, [], [NEW_PERSON["label"]], parsed[1])
+            return self.r.step("7 existing name refused", False, f"plan rc={rc}; {scrub(out.strip()[-200:])}")
+        write_approvals(imp, [], [cand["label"]], parsed[1])
         name = Path(parsed[0]).name
         # Dry run only (never executes a create that could duplicate); search indexing may lag, so poll.
         result = poll(lambda: self.cli("tree-execute", *self.exec_args(name, parsed[1], execute=False),
