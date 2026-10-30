@@ -509,7 +509,7 @@ def test_search_duplicates_is_unfiltered_and_queries_years_and_surname_only():
             return [{"id": "XXXX-111", "content": {"gedcomx": {"persons": [
                 {"display": {"name": "Totally Different", "birthDate": "1861"}, "living": False}]}}}]
         return []
-    fs._search.tree_search = fake_search
+    fs._search.tree_search_strict = fake_search
     hits = fs.search_duplicates("Zed", "Testname", 1850, 1910)
     assert [h.id for h in hits] == ["XXXX-111"]  # no compare() filtering: a different name still counts
     assert {q.get("birth_date") for q in calls} >= {"1840", "1845", "1850", "1855", "1860"}
@@ -520,13 +520,69 @@ def test_search_duplicates_is_unfiltered_and_queries_years_and_surname_only():
 
 def test_search_duplicates_counts_unparseable_entries_and_errors_propagate():
     fs, _, _ = make({})
-    fs._search.tree_search = lambda **q: [{"id": "ODD-1", "content": {}}]
+    fs._search.tree_search_strict = lambda **q: [{"id": "ODD-1", "content": {}}]
     assert [h.id for h in fs.search_duplicates("Zed", "Testname", 1850, None)] == ["ODD-1"]
 
     def boom(**q):
         raise requests.ConnectionError("x")
-    fs._search.tree_search = boom
+    fs._search.tree_search_strict = boom
     with pytest.raises(requests.RequestException):
         fs.search_duplicates("Zed", "Testname", 1850, None)
     with pytest.raises(ValueError):
         fs.search_duplicates("Zed", "Testname", None, None)
+
+
+def _dup_routes(resp):
+    return {
+        COLLECTION: [Resp(200, {"collections": [{"links": {"person-search": {"template": SEARCH_URL + "{?q}"}}}]})],
+        SEARCH_URL: [resp],
+    }
+
+
+@pytest.mark.parametrize("resp", [
+    Resp(200, {"error": "x"}),
+    Resp(200, {"entries": None}),
+    Resp(200, {}),                                    # absent entries key is not accepted
+    Resp(200, None),                                  # 200 but not JSON
+    Resp(200, {"entries": [], "results": 3}),         # says there are results, shows none
+    Resp(200, {"entries": []}, headers={"Content-Type": "text/html"}),
+    Resp(202, {"entries": []}),
+    Resp(204, None, headers={}),                      # replaced below with a body
+])
+def test_search_duplicates_fails_closed_on_unrecognised_responses(resp):
+    if resp.status_code == 204:
+        resp.text = "<html>challenge</html>"
+    fs, _, _ = make(_dup_routes(resp))
+    with pytest.raises(prod_reader.ReadFailed):
+        fs.search_duplicates("Zed", "Testname", 1850, None)
+
+
+def test_search_duplicates_accepts_204_and_empty_feed_and_returns_hits():
+    fs, _, _ = make(_dup_routes(Resp(204, None)))
+    assert fs.search_duplicates("Zed", "Testname", 1850, None) == []
+    fs, _, _ = make(_dup_routes(Resp(200, {"entries": []}, headers={"Content-Type": "application/x-gedcomx-atom+json"})))
+    assert fs.search_duplicates("Zed", "Testname", 1850, None) == []
+    fs, _, _ = make(_dup_routes(Resp(200, {"entries": [entry("XXXX-111", "Zed Testname", "1850", None)]})))
+    assert [h.id for h in fs.search_duplicates("Zed", "Testname", 1850, None)] == ["XXXX-111"]
+
+
+def test_search_duplicates_queries_every_alternative_surname():
+    fs, _, _ = make({})
+    seen = []
+    fs._search.tree_search_strict = lambda **q: seen.append(q) or []
+    fs.search_duplicates("Elizabeth", "McDonough", 1850, None, alt_surnames=["vaganis"])
+    assert {q["surname"] for q in seen} == {"McDonough", "vaganis"}
+
+
+def test_current_user_ids_and_couple_extras():
+    fs, _, _ = make({_url("/platform/users/current"): [Resp(200, {"users": [{"id": "U-1", "contributorId": "C-1"}]})]})
+    assert fs.current_user_ids() == frozenset(("U-1", "C-1"))
+    couple = Resp(200, {"relationships": [{"facts": [{}], "links": {"change-history": {"href": "/c/hist"}}}]})
+    routes = {_url(COUPLE): [couple], "/c/hist": [Resp(200, {"entries": [
+        {"title": "Create", "contributors": [{"resourceId": "C-1"}]}]})]}
+    fs, _, _ = make(routes)
+    ex = fs.get_couple_extras("R-1")
+    assert ex["facts"] == 1 and ex["sources"] == 0 and ex["changes"][0][0] == "C-1"
+    fs, _, _ = make({_url(COUPLE): [Resp(200, {"relationships": [{"links": {}}]})]})
+    with pytest.raises(prod_reader.ReadFailed):
+        fs.get_couple_extras("R-1")

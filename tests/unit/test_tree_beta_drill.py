@@ -66,3 +66,14 @@ def test_ledger_helpers():
 @pytest.mark.parametrize("name", [n for n, *_ in d.PEOPLE.values()] + [d.NEW_PERSON["label"]])
 def test_invented_names(name):
     assert name.startswith("Drill")
+
+
+def test_drill_covers_the_not_a_couple_scenario_and_shape_capture():
+    import inspect
+    assert "step3b_not_a_couple" in inspect.getsource(d.run)
+    assert hasattr(d.Drill, "capture_shapes") and "not yet a couple" in inspect.getsource(d.Drill.step3b_not_a_couple)
+
+
+def test_scratch_links_json_records_env(tmp_path):
+    d.write_inputs(tmp_path / "_import", ids=IDS)
+    assert json.loads((tmp_path / "_import" / "links.json").read_text())["env"] == "beta"

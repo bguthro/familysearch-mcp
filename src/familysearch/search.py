@@ -6,6 +6,7 @@ import re
 
 from .client import FSClient
 from .discovery import Discovery
+from .errors import FSError
 
 RECORD_SEARCH_PATH = "/service/search/hr/v2/personas"
 ATOM_ACCEPT = "application/x-gedcomx-atom+json"
@@ -86,6 +87,38 @@ class Search:
         })
         resp = self._client.get(url, accept=ATOM_ACCEPT, params=params)
         return _entries(_dict(resp))
+
+    def tree_search_strict(self, *, given=None, surname=None, birth_date=None, death_date=None,
+                           count: int = 20) -> list[dict]:
+        """Like tree_search, but a response that is not a recognisable feed RAISES instead of reading
+        as "no results". Accepts only 204 with an empty body, or 200 JSON whose ``entries`` is a list."""
+        url = self._discovery.href("person-search").split("{", 1)[0]
+        params = _clean({
+            "q.givenName": given, "q.surname": surname,
+            "q.birthLikeDate": normalize_search_date(birth_date),
+            "q.deathLikeDate": normalize_search_date(death_date), "count": count,
+        })
+        resp = self._client.get(url, accept=ATOM_ACCEPT, params=params)
+        status = getattr(resp, "status_code", None)
+        if status == 204:
+            if (getattr(resp, "text", "") or "").strip():
+                raise FSError("search answered 204 with a body")
+            return []
+        if status != 200:
+            raise FSError(f"unexpected search status {status}")
+        ctype = (getattr(resp, "headers", None) or {}).get("Content-Type")
+        if ctype and "json" not in str(ctype).lower():
+            raise FSError("search answered with a non-JSON content type")
+        try:
+            data = resp.json()
+        except ValueError:
+            raise FSError("search answered with a body that is not JSON") from None
+        if not isinstance(data, dict) or not isinstance(data.get("entries"), list):
+            raise FSError("search answered with an unrecognised body")
+        results = data.get("results")
+        if not data["entries"] and isinstance(results, int) and not isinstance(results, bool) and results > 0:
+            raise FSError("search reports results but returned no entries")
+        return data["entries"]
 
     def record_search(
         self, *, given=None, surname=None, count: int = 20, offset: int = 0

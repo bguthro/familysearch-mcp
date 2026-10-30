@@ -122,6 +122,7 @@ def build_tree_plan(relationships: Mapping, approvals: Mapping, links: Mapping[s
         return None
 
     spouse_seen: set[str] = set()
+    present_spouses: set[frozenset[str]] = set()  # couples FamilySearch already has (any edge, approved or not)
     by_child: dict[str, list[Mapping]] = {}
     all_parent_edges: dict[str, list[Mapping]] = {}
     for e in relationships.get("edges", []):
@@ -131,6 +132,8 @@ def build_tree_plan(relationships: Mapping, approvals: Mapping, links: Mapping[s
         if kind not in ("spouse", "parent-child"):
             continue
         a, b = e.get("a_fs") or "", e.get("b_fs") or ""
+        if kind == "spouse" and e.get("status") == "present" and a and b:
+            present_spouses.add(frozenset((a, b)))
         ckey = _canonical_key(kind, a, b)
         if e.get("key") not in approved_rel and ckey not in approved_rel:
             continue
@@ -183,6 +186,13 @@ def build_tree_plan(relationships: Mapping, approvals: Mapping, links: Mapping[s
         elif len(parents) > 2:
             actions.append(TreeAction("add-child-parents", key, params, "manual",
                                       "more than two parents approved; do this on the website"))
+        elif len(parents) == 2 and frozenset(parents) not in present_spouses \
+                and not any(a.kind == "add-couple" and a.state == "planned"
+                            and frozenset((a.params["a"], a.params["b"])) == frozenset(parents)
+                            for a in actions):
+            actions.append(TreeAction("add-child-parents", key, params, "manual",
+                                      "parents not yet a couple; approve add-couple first (a two-parent "
+                                      "link would make FamilySearch derive an unapproved couple)"))
         elif not all(NO_PARENTS_NOTE in (e.get("note") or "") for e in edges):
             actions.append(TreeAction("add-child-parents", key, params, "manual",
                                       "child already has a parent relationship on FamilySearch; "
@@ -196,6 +206,10 @@ def build_tree_plan(relationships: Mapping, approvals: Mapping, links: Mapping[s
     for c in cands:
         label_counts[c.get("label")] = label_counts.get(c.get("label"), 0) + 1
     seen_keys: set[str] = set()
+    key_counts: dict[str, int] = {}
+    for c in cands:
+        k = creation_key(str(c.get("label")), c.get("birth"), c.get("death"))
+        key_counts[k] = key_counts.get(k, 0) + 1
     for c in cands:
         label = c.get("label")
         birth, death = c.get("birth"), c.get("death")
@@ -213,6 +227,10 @@ def build_tree_plan(relationships: Mapping, approvals: Mapping, links: Mapping[s
         elif death is None and birth is not None and birth >= LIVING_CUTOFF:
             actions.append(TreeAction("create-person", key, params, "skipped",
                                       "born 1900 or later with no death year (living rule)"))
+        elif key_counts[key] > 1:
+            actions.append(TreeAction("create-person", key, params, "manual",
+                                      f"{key_counts[key]} candidates have this exact name and years; they may "
+                                      "be different people; do this by hand"))
         elif by_label and not by_key and label_counts[label] > 1:
             actions.append(TreeAction("create-person", key, params, "manual",
                                       f"{label_counts[label]} candidates share this name; approve this one "

@@ -57,8 +57,10 @@ def _links(args, repo: Path) -> int:
     _, counts = split_by_status(people)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "LinkReport.md").write_text(render_link_report(results, counts), encoding="utf-8")
+    links_data = links_json(results)
+    links_data["env"] = args.env  # tree-plan refuses a links.json built against another environment
     (out_dir / "links.json").write_text(
-        json.dumps(links_json(results), indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        json.dumps(links_data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
     print(f"wrote {out_dir / 'LinkReport.md'} and {out_dir / 'links.json'}")
     return 0
@@ -302,12 +304,17 @@ def _tree_plan(args, repo: Path) -> int:
         return _err(f"refusing to write inside the repo: {import_dir}")
     try:
         links = load_links(import_dir / "links.json")
+        links_env = json.loads((import_dir / "links.json").read_text(encoding="utf-8")).get("env")
         relationships = json.loads((import_dir / "relationships.json").read_text(encoding="utf-8"))
         approvals = load_tree_approvals(import_dir / "approvals.json")
     except FileNotFoundError as e:
         return _err(f"{Path(e.filename).name} not found in {import_dir}; run the earlier commands first")
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         return _err(f"bad input file: {e}")
+    if links_env is None:
+        return _err("links.json does not record its environment (older file); re-run the links command with --env")
+    if links_env != args.env:
+        return _err(f"links.json was built against {links_env}, but --env is {args.env}")
     try:
         plan = build_tree_plan(relationships, approvals, links, args.env)
     except ValueError as e:

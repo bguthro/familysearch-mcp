@@ -134,7 +134,7 @@ def test_cli_writes_outputs(tmp_path, fake_reader):
     assert cli.main(["links", "--archive", str(root), "--env", "production"]) == 0
     assert (root / "_import" / "LinkReport.md").is_file()
     data = json.loads((root / "_import" / "links.json").read_text())
-    assert data["summary"]["confirmed"] == 2
+    assert data["summary"]["confirmed"] == 2 and data["env"] == "production"
     assert "LIVE-111" not in fake_reader.gets
     # default location may be overwritten on rerun
     assert cli.main(["links", "--archive", str(root), "--env", "beta"]) == 0

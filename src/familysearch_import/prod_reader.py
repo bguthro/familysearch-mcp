@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -306,7 +306,7 @@ class ReadOnlyFS:
     def get_change_summary(self, person_id: str) -> list[tuple[str, str]]:
         """(contributor, operation text) per change-history entry; contributor "" when unknown."""
         import json as _json
-        items = self._read_list(person_id, lambda: self._tree.get_changes(person_id))
+        items = self._read_list(person_id, lambda: self._tree.get_changes_all(person_id))
         out = []
         for i in items:
             contribs = i.get("contributors") if isinstance(i.get("contributors"), list) else []
@@ -320,29 +320,89 @@ class ReadOnlyFS:
             out.append((who, text))
         return out
 
-    def search_duplicates(self, given: str, surname: str, birth: int | None,
-                          death: int | None) -> list[FsPerson]:
+    def search_duplicates(self, given: str, surname: str, birth: int | None, death: int | None,
+                          alt_surnames: Sequence[str] = ()) -> list[FsPerson]:
         """UNFILTERED tree search for anyone who might be the same person: given+surname and
-        surname-only, each at birth and death years -10..+10 (steps of 5). Any entry returned is a hit
-        (no plausibility filter). Errors propagate; never an empty list for a failed search."""
+        surname-only, each at birth and death years -10..+10 (steps of 5), for the surname and every
+        alternative surname. Any entry returned is a hit (no plausibility filter). The response is parsed
+        strictly: anything but 204 or a 200 feed raises ReadFailed (never an empty list for a failed search)."""
+        surnames = list(dict.fromkeys([surname, *alt_surnames]))
         queries = []
         for kind, year in (("birth_date", birth), ("death_date", death)):
             if year is None:
                 continue
             for off in (-10, -5, 0, 5, 10):
-                for g in (given, None):
-                    queries.append({"given": g, "surname": surname, kind: str(year + off)})
+                for sn in surnames:
+                    for g in (given, None):
+                        queries.append({"given": g, "surname": sn, kind: str(year + off)})
         if not queries:
             raise ValueError("duplicate search needs a birth or death year")
         hits: dict[str, FsPerson] = {}
         for q in queries:
-            for entry in self._call(lambda q=q: self._search.tree_search(**q)):
+            try:
+                entries = self._call(lambda q=q: self._search.tree_search_strict(**q))
+            except FSHTTPError as e:
+                raise ReadFailed(f"duplicate search failed: HTTP {e.status}") from e
+            except FSError as e:
+                if type(e) is not FSError:
+                    raise
+                raise ReadFailed(f"duplicate search failed: {e}") from e
+            for entry in entries:
                 fs = _entry_person(entry)
                 if fs is None:
                     eid = entry.get("id") if isinstance(entry, dict) else None
                     fs = FsPerson(str(eid or "(unparsed)"), "", None, None, None, "error")
                 hits.setdefault(fs.id, fs)
         return list(hits.values())
+
+    def current_user_ids(self) -> frozenset[str]:
+        """Ids that identify the signed-in user in change history (never printed)."""
+        data = self._get_json(self._client.base_url + "/platform/users/current", "current user")
+        users = (data or {}).get("users")
+        if not (isinstance(users, list) and users and isinstance(users[0], dict)):
+            raise ReadFailed("read failed for current user: unexpected shape")
+        u = users[0]
+        ids = frozenset(str(u[k]) for k in ("id", "contributorId", "personId") if u.get(k))
+        if not ids:
+            raise ReadFailed("read failed for current user: no id")
+        return ids
+
+    def get_couple_extras(self, relationship_id: str) -> dict:
+        """What others may have added to a couple relationship: counts of facts/sources/notes and the
+        full change history as (contributor, text). Fails closed (ReadFailed) when it cannot be read."""
+        import json as _json
+        from familysearch.tree import couple_url
+        data = self._get_json(couple_url(self._client.base_url, relationship_id), "couple relationship")
+        rels = (data or {}).get("relationships")
+        if not (isinstance(rels, list) and len(rels) == 1 and isinstance(rels[0], dict)):
+            raise ReadFailed("read failed for couple relationship: unexpected shape")
+        r = rels[0]
+        links = r.get("links") if isinstance(r.get("links"), dict) else {}
+        href = (links.get("change-history") or {}).get("href") if isinstance(links.get("change-history"), dict) else None
+        if not isinstance(href, str) or not href:
+            raise ReadFailed("read failed for couple relationship: no change-history link")
+        out_changes = []
+        seen = set()
+        while href:
+            if href in seen or len(seen) >= 50:
+                raise ReadFailed("read failed for couple relationship: change-history paging loop")
+            seen.add(href)
+            page = self._get_json(href, "couple change history")
+            if page is None:
+                raise ReadFailed("read failed for couple relationship: change history gone")
+            for i in page.get("entries") or []:
+                contribs = i.get("contributors") if isinstance(i.get("contributors"), list) else []
+                who = ""
+                for c in contribs:
+                    if isinstance(c, dict) and (c.get("resourceId") or c.get("name")):
+                        who = str(c.get("resourceId") or c.get("name"))
+                        break
+                out_changes.append((who, (_json.dumps(i.get("changeInfo"), sort_keys=True, default=str) + " "
+                                          + str(i.get("title") or "")).lower()))
+            nxt = page.get("links", {}).get("next") if isinstance(page.get("links"), dict) else None
+            href = nxt.get("href") if isinstance(nxt, dict) else None
+        return {"facts": len(r.get("facts") or []), "sources": len(r.get("sources") or []),
+                "notes": len(r.get("notes") or []), "changes": out_changes}
 
     def get_memory_titles(self, person_id: str) -> list[str]:
         items = self._read_list(person_id, lambda: self._tree.get_memories(person_id))

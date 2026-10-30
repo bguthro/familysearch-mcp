@@ -52,7 +52,9 @@ class FakeFS:
         self.ret_id = None           # override the returned id
         self.delete_effect = True
         self.new_name = None
-        self.derive_couple = False   # a two-parent child link also creates a couple between the parents
+        self.derive_couple = False   # a child link (wrongly) also creates a NEW couple between the parents
+        self.couple_extras = {}      # couple id -> extras dict (facts/sources/notes/changes)
+        self.strict_break_after_delete = False
         self.double_write = False
         self.points_elsewhere = False
         self.no_links = set()        # persons whose section links are missing (strict reads fail)
@@ -85,13 +87,14 @@ class FakeFS:
                 out.append(Relative(self.get_fs_person(child), "child"))
         return out
 
-    def search_duplicates(self, given, surname, birth, death):
+    def search_duplicates(self, given, surname, birth, death, alt_surnames=()):
         self.search_calls.append((given, surname, birth, death))
         if self.search_error:
             raise self.search_error
+        names = {surname.lower(), *(a.lower() for a in alt_surnames)}
         hits = []
         for t in self.tree:
-            if t["surname"].lower() != surname.lower():
+            if t["surname"].lower() not in names:
                 continue
             near = any(y is not None and q is not None and abs(y - q) <= 10
                        for y, q in ((t["birth"], birth), (t["death"], death)))
@@ -109,6 +112,13 @@ class FakeFS:
 
     def get_couple_ids(self, a, b):
         return [rid for rid, s in self.couples.items() if s == frozenset((a, b))]
+
+    def current_user_ids(self):
+        return frozenset({"me"})
+
+    def get_couple_extras(self, rid):
+        return self.couple_extras.get(rid, {"facts": 0, "sources": 0, "notes": 0,
+                                            "changes": [("me", "create couple")]})
 
     def get_source_ids(self, pid):
         return list(self.sources.get(pid, []))
@@ -149,7 +159,7 @@ class FakeFS:
         rid = self._id("P")
         if self.apply:
             self.cap[rid] = (child_id, tuple(parent_ids))
-            if self.derive_couple and len(parent_ids) == 2 and not self.get_couple_ids(*parent_ids):
+            if self.derive_couple and len(parent_ids) == 2:
                 self.couples[f"D{self.n}"] = frozenset(parent_ids)
         if self.leak_to:
             self.cap[rid + "x"] = (self.leak_to, (parent_ids[0],))
@@ -172,7 +182,9 @@ class FakeFS:
     def delete_couple(self, rid, *, reason):
         self.calls.append(("delete_couple", rid))
         if self.delete_effect:
-            self.couples.pop(rid, None)
+            pair = self.couples.pop(rid, None)
+            if self.strict_break_after_delete and pair:
+                self.no_links.update(pair)
 
     def delete_child_and_parents(self, rid, *, reason):
         self.calls.append(("delete_cap", rid))
@@ -242,7 +254,19 @@ def pf_for(tmp_path, actions, env="beta", **kw):
     return arch, verify_tree_plan_for_execution(arch, path, plan.plan_hash, env), plan
 
 
-def run(tmp_path, fs, actions, env="beta", execute=True, **kw):
+def seed_parent_couples(fs, actions):
+    """Two-parent child links need the parents to be a couple already (unless an add-couple precedes)."""
+    for a in actions:
+        if a.kind == "add-child-parents" and len(a.params["parents"]) == 2:
+            x, y = a.params["parents"]
+            if not any(c.kind == "add-couple" and c.key == f"spouse:{x}:{y}" for c in actions) \
+                    and not fs.get_couple_ids(x, y):
+                fs.couples[f"PRE{len(fs.couples)}"] = frozenset((x, y))
+
+
+def run(tmp_path, fs, actions, env="beta", execute=True, seed=True, **kw):
+    if seed:
+        seed_parent_couples(fs, actions)
     arch, pf, _ = pf_for(tmp_path, actions, env)
     led = Ledger(arch / "_import" / "tree-ledger.jsonl")
     svc = TreeServices(reader=fs, writer=fs, archive=arch, env=env)
@@ -724,22 +748,39 @@ def test_returned_id_must_name_the_planned_people(tmp_path):  # M6
     assert statuses(s) == ["failed-readback"] and "does not name exactly" in s.outcomes[0].reason
 
 
-def test_derived_couple_is_recorded_and_allowed(tmp_path):  # M8
+def test_two_parent_child_requires_parents_to_be_a_couple(tmp_path):  # N-M1 simplification
+    fs = FakeFS()
+    s, led = run(tmp_path, fs, [child(C, (A, B))], seed=False)
+    assert statuses(s) == ["skipped"] and "not yet a couple; approve add-couple first" in s.outcomes[0].reason
+    assert fs.writes() == [] and not led.path.exists()
+
+
+def test_child_link_runs_after_an_add_couple_in_the_same_run(tmp_path):
+    fs = FakeFS()
+    s, _ = run(tmp_path, fs, [child(C, (A, B)), couple(A, B)], seed=False)
+    assert statuses(s) == ["created", "created"]
+    assert [c[0] for c in fs.writes()] == ["create_couple", "create_parent_child"]
+
+
+def test_dry_run_assumes_the_planned_couple_exists(tmp_path):
+    fs = FakeFS()
+    s, _ = run(tmp_path, fs, [child(C, (A, B)), couple(A, B)], seed=False, execute=False)
+    assert statuses(s) == ["would-create", "would-create"]
+
+
+def test_new_couple_between_parents_after_child_write_fails_readback(tmp_path):  # kept assertion
     fs = FakeFS()
     fs.derive_couple = True
     s, led = run(tmp_path, fs, [child(C, (A, B))])
+    assert statuses(s) == ["failed-readback"] and "new couple" in s.outcomes[0].reason
+    assert led.records()[-1]["created"] == {"child_parents_id": "P1"}
+    assert led.blocked_keys("beta")
+
+
+def test_single_parent_child_needs_no_couple(tmp_path):
+    fs = FakeFS()
+    s, _ = run(tmp_path, fs, [child(C, (A,))], seed=False)
     assert statuses(s) == ["created"]
-    created = led.records()[-1]["created"]
-    assert created["child_parents_id"] == "P1" and created["derived_couple_id"].startswith("D")
-    assert any(r["type"] == "progress" and "derived_couple_id" in r["created"] for r in led.records())
-
-
-def test_no_derived_couple_when_parents_already_a_couple(tmp_path):
-    fs = FakeFS()
-    fs.couples["X"] = frozenset((A, B))
-    fs.derive_couple = True
-    s, led = run(tmp_path, fs, [child(C, (A, B))])
-    assert statuses(s) == ["created"] and "derived_couple_id" not in led.records()[-1]["created"]
 
 
 def test_person_name_mismatch_fails_readback(tmp_path):
@@ -882,16 +923,17 @@ def test_resolve_absent_couple_lifts_block(tmp_path):
     assert statuses(s) == ["resolved"] and led.blocked_keys("beta") == {}
 
 
-def test_resolve_present_records_created(tmp_path):
+def test_resolve_present_couple_is_not_recorded_as_ours(tmp_path):  # N minor 4
     fs = FakeFS()
     fs.write_error = 500
     _, led = run(tmp_path, fs, [couple()])
-    fs.couples["Q"] = frozenset((A, B))
+    fs.couples["Q"] = frozenset((A, B))  # exists, but nothing proves we made it
     arch = tmp_path / "arch"
     with RunLock(arch):
         s = resolve_tree(led, TreeServices(fs, fs, arch, "beta"), [couple().key], execute=True)
-    assert statuses(s) == ["resolved-created"]
-    assert couple().key in led.executed_keys("beta")
+    assert statuses(s) == ["still-blocked"] and "not recorded as ours" in s.outcomes[0].reason
+    assert couple().key not in led.executed_keys("beta")
+    assert couple().key in led.blocked_keys("beta")
 
 
 def test_resolve_child_requires_exact_parent_set(tmp_path):  # minor 6
@@ -927,7 +969,7 @@ def test_resolve_unblocked_key_refused(tmp_path):
 
 def test_rollback_deletes_exactly_ledger_ids(tmp_path):
     fs = FakeFS()
-    fs.couples["FOREIGN"] = frozenset((C, D))  # not ours, must survive
+    fs.couples["FOREIGN"] = frozenset((C, D))  # not ours (the parents' existing couple), must survive
     s, led = run(tmp_path, fs, [couple(A, B), child(E, (C, D))])
     assert statuses(s) == ["created", "created"]
     arch = tmp_path / "arch"
@@ -944,35 +986,6 @@ def test_rollback_deletes_exactly_ledger_ids(tmp_path):
     with RunLock(arch):
         again = rollback_tree(led, svc, [], True)
     assert again.outcomes == []
-
-
-def test_rollback_deletes_derived_couple_with_child_link(tmp_path):  # M8
-    fs = FakeFS()
-    fs.derive_couple = True
-    _, led = run(tmp_path, fs, [child(C, (A, B))])
-    assert len(fs.couples) == 1
-    arch = tmp_path / "arch"
-    with RunLock(arch):
-        rb = rollback_tree(led, TreeServices(fs, fs, arch, "beta"), [], True)
-    assert [o.status for o in rb.outcomes] == ["rolled-back", "rolled-back"]
-    assert [c[0] for c in fs.writes() if c[0].startswith("delete")] == ["delete_cap", "delete_couple"]
-    assert not fs.couples and not fs.cap
-
-
-def test_rollback_derived_couple_already_gone_is_ok(tmp_path):
-    fs = FakeFS()
-    fs.derive_couple = True
-    _, led = run(tmp_path, fs, [child(C, (A, B))])
-    orig = fs.delete_child_and_parents
-
-    def cascade(rid, *, reason):
-        orig(rid, reason=reason)
-        fs.couples.clear()  # FamilySearch removed the derived couple itself
-    fs.delete_child_and_parents = cascade
-    arch = tmp_path / "arch"
-    with RunLock(arch):
-        rb = rollback_tree(led, TreeServices(fs, fs, arch, "beta"), [], True)
-    assert [o.status for o in rb.outcomes] == ["rolled-back", "rolled-back"] and not rb.stopped
 
 
 def test_rollback_failed_absence_readback(tmp_path):
@@ -1110,6 +1123,141 @@ def test_rollback_production_gates(tmp_path):
         rollback_tree(led, svc, [], False)
     with pytest.raises(GateError, match="--only"):
         rollback_tree(led, svc, [], False, allow_production=True)
+
+
+# ------------------------------------------------------- round 2 regressions
+
+
+def test_couple_rollback_refused_when_a_child_link_names_both(tmp_path):  # N-M2
+    fs = FakeFS()
+    _, led = run(tmp_path, fs, [couple()])
+    fs.cap["THEIRS"] = (E, (A, B))  # someone else's child link depends on the couple
+    arch = tmp_path / "arch"
+    with RunLock(arch):
+        rb = rollback_tree(led, TreeServices(fs, fs, arch, "beta"), [], True)
+    assert rb.outcomes[-1].status == "rollback-failed" and "names both people as parents" in rb.outcomes[-1].reason
+    assert not [c for c in fs.calls if c[0] == "delete_couple"]
+
+
+@pytest.mark.parametrize("extras,reason", [
+    ({"facts": 1, "sources": 0, "notes": 0, "changes": [("me", "create")]}, "facts, sources or notes"),
+    ({"facts": 0, "sources": 1, "notes": 0, "changes": [("me", "create")]}, "facts, sources or notes"),
+    ({"facts": 0, "sources": 0, "notes": 0, "changes": [("me", "create"), ("them", "edit")]}, "other contributors"),
+    ({"facts": 0, "sources": 0, "notes": 0, "changes": []}, "other contributors"),
+    ({"facts": 0, "sources": 0, "notes": 0, "changes": [("me", "merge couples")]}, "merge"),
+])
+def test_couple_rollback_refused_when_others_added_data(tmp_path, extras, reason):  # N-M2
+    fs = FakeFS()
+    _, led = run(tmp_path, fs, [couple()])
+    fs.couple_extras["R1"] = extras
+    arch = tmp_path / "arch"
+    with RunLock(arch):
+        rb = rollback_tree(led, TreeServices(fs, fs, arch, "beta"), [], True)
+    assert rb.outcomes[-1].status == "rollback-failed" and reason in rb.outcomes[-1].reason
+    assert not [c for c in fs.calls if c[0] == "delete_couple"]
+
+
+def test_couple_and_our_child_link_roll_back_together_in_dry_run_and_for_real(tmp_path):
+    fs = FakeFS()
+    _, led = run(tmp_path, fs, [couple(A, B), child(C, (A, B))], seed=False)
+    arch = tmp_path / "arch"
+    svc = TreeServices(fs, fs, arch, "beta")
+    dry = rollback_tree(led, svc, [], False)
+    assert [o.status for o in dry.outcomes] == ["would-rollback", "would-rollback"]
+    with RunLock(arch):
+        rb = rollback_tree(led, svc, [], True)
+    assert [o.status for o in rb.outcomes] == ["rolled-back", "rolled-back"]
+    assert [c[0] for c in fs.writes() if c[0].startswith("delete")] == ["delete_cap", "delete_couple"]
+
+
+def test_person_rollback_compares_contributor_to_current_user(tmp_path):  # minor 3
+    fs = FakeFS()
+    _, led = run(tmp_path, fs, [newp()])
+    fs.changes["NNNN-001"] = [("someone-else", "create person")]  # one contributor, but not us
+    arch = tmp_path / "arch"
+    with RunLock(arch):
+        rb = rollback_tree(led, TreeServices(fs, fs, arch, "beta"), [], True)
+    assert rb.outcomes[-1].status == "rollback-failed" and "contributors" in rb.outcomes[-1].reason
+    assert "someone-else" not in rb.outcomes[-1].reason and "me" not in rb.outcomes[-1].reason.split()
+
+
+def test_incomplete_rollback_keeps_the_key_blocked(tmp_path):  # N-M3
+    fs = FakeFS()
+    fs.apply = False
+    _, led = run(tmp_path, fs, [child(C, (A,))])
+    fs.cap["P1"] = (C, (A,))
+    # the failed key also carries a second recorded id that cannot be rolled back
+    led._append({"type": "result", "intent_id": "z", "key": child(C, (A,)).key, "kind": "add-child-parents",
+                 "env": "beta", "status": "partial", "reason": "x", "created": {"couple_id": "ZZ9"},
+                 "params": child(C, (A,)).params})
+    arch = tmp_path / "arch"
+    with RunLock(arch):
+        rollback_tree(led, TreeServices(fs, fs, arch, "beta"), [child(C, (A,)).key], True)
+    from familysearch_import.treeexec import _tree_blocked
+    assert _tree_blocked(led, "beta") == {child(C, (A,)).key: "rollback-incomplete"}
+    n = len(fs.writes())
+    s2, _ = run(tmp_path, fs, [child(C, (A,))])
+    assert s2.stopped and len(fs.writes()) == n
+
+
+def test_rollback_fully_done_lifts_the_block(tmp_path):
+    fs = FakeFS()
+    fs.apply = False
+    _, led = run(tmp_path, fs, [couple()])
+    fs.couples["R1"] = frozenset((A, B))
+    arch = tmp_path / "arch"
+    from familysearch_import.treeexec import _tree_blocked
+    with RunLock(arch):
+        rollback_tree(led, TreeServices(fs, fs, arch, "beta"), [couple().key], True)
+    assert _tree_blocked(led, "beta") == {}
+
+
+def test_strict_read_failing_after_a_successful_delete_still_records_rolled_back(tmp_path):  # minor 9
+    fs = FakeFS()
+    _, led = run(tmp_path, fs, [couple()])
+    fs.strict_break_after_delete = True
+    arch = tmp_path / "arch"
+    with RunLock(arch):
+        rb = rollback_tree(led, TreeServices(fs, fs, arch, "beta"), [], True)
+    assert [o.status for o in rb.outcomes] == ["rolled-back"] and "unavailable" in rb.outcomes[0].reason
+    assert not rb.stopped and led.blocked_keys("beta") == {}
+
+
+def test_production_execute_requires_the_guarded_writer(tmp_path):  # minor 5
+    fs = FakeFS()
+    arch, pf, _ = pf_for(tmp_path, [couple()], env="production")
+    led = Ledger(arch / "_import" / "tree-ledger.jsonl")
+    svc = TreeServices(fs, fs, arch, "production")
+    with RunLock(arch):
+        with pytest.raises(GateError, match="GuardedTreeWriter"):
+            run_tree_plan(pf, svc, led, only=[couple().key], execute=True, allow_production=True)
+        with pytest.raises(GateError, match="GuardedTreeWriter"):
+            rollback_tree(led, svc, [], True, only=[couple().key], allow_production=True)
+    assert fs.calls == []
+    guarded = TreeServices(fs, GuardedTreeWriter(fs, Environment.PRODUCTION, True), arch, "production")
+    with RunLock(arch):
+        s = run_tree_plan(pf, guarded, led, only=[couple().key], execute=True, allow_production=True)
+    assert statuses(s) == ["created"]
+
+
+def test_confirm_absent_prints_current_search_hits_deceased_ids_only(tmp_path):  # minor 7
+    fs = FakeFS()
+    fs.write_error = 504
+    _, led = run(tmp_path, fs, [newp()])
+    fs.tree = [tree_person("DEAD-001"), tree_person("LIVE-001", living=True)]
+    arch = tmp_path / "arch"
+    key = newp().key
+    with RunLock(arch):
+        r = resolve_tree(led, TreeServices(fs, fs, arch, "beta"), [key], execute=True, confirm_absent=[key])
+    text = r.outcomes[0].reason
+    assert statuses(r) == ["resolved"] and "DEAD-001" in text and "LIVE-001" not in text
+
+
+def test_parenthesised_surname_is_searched_too(tmp_path):  # minor 1
+    fs = FakeFS()
+    fs.tree = [tree_person("MMMM-222", given="Elizabeth", surname="Vaganis", birth=1851)]
+    s, _ = run(tmp_path, fs, [newp(name="Elizabeth (Vaganis) McDonough", birth=1850, death=None)])
+    assert statuses(s) == ["skipped"] and "MMMM-222" in s.outcomes[0].reason
 
 
 # ---------------------------------------------------------------- guarded writer (M9)

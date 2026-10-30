@@ -45,6 +45,7 @@ def test_spouse_deduped_and_canonical():
 def test_child_grouped_with_two_parents():
     r = rel(edge("parent-child", "Alpha Testname", "Gamma Testname", "AAAA-001", "CCCC-003", note=NOPAR),
             edge("parent-child", "Beta Testname", "Gamma Testname", "BBBB-002", "CCCC-003", note=NOPAR))
+    r["edges"].append(edge("spouse", "Alpha Testname", "Beta Testname", "AAAA-001", "BBBB-002", status="present"))
     ap = appr(["parent-child:AAAA-001:CCCC-003", "parent-child:BBBB-002:CCCC-003"])
     plan = build_tree_plan(r, ap, LINKS, "beta")
     assert len(plan.actions) == 1
@@ -132,7 +133,7 @@ def test_cli_tree_plan_writes_files(tmp_path, monkeypatch):
     (imp / "relationships.json").write_text(json.dumps(r))
     (imp / "approvals.json").write_text(json.dumps(
         {"approved_links": {}, "approved_relationships": ["spouse:AAAA-001:BBBB-002"]}))
-    (imp / "links.json").write_text(json.dumps({"people": [
+    (imp / "links.json").write_text(json.dumps({"env": "beta", "people": [
         {"line": "Line A", "folder": "alpha", "verdict": "confirmed", "chosen_id": "AAAA-001"},
         {"line": "Line A", "folder": "beta", "verdict": "confirmed", "chosen_id": "BBBB-002"}]}))
     monkeypatch.setattr(cli, "check_archive", lambda a, r: None)
@@ -173,7 +174,7 @@ def test_tree_plan_cli_env_required_and_old_file_refused(tmp_path, capsys):
     (archive / "_import").mkdir(parents=True)
     with pytest.raises(SystemExit):
         cli.main(["tree-plan", "--archive", str(archive)])
-    (archive / "_import" / "links.json").write_text(json.dumps({"people": []}))
+    (archive / "_import" / "links.json").write_text(json.dumps({"env": "beta", "people": []}))
     (archive / "_import" / "relationships.json").write_text(json.dumps({"edges": [], "create_candidates": []}))
     assert cli.main(["tree-plan", "--archive", str(archive), "--env", "beta"]) == 2
     assert "environment" in capsys.readouterr().err
@@ -243,3 +244,53 @@ def test_approved_links_values_validated(tmp_path):
     p.write_text(json.dumps({"approved_links": {"Line A/x": ["bad"]}}))
     with pytest.raises(ValueError, match="approved_links"):
         load_tree_approvals(p)
+
+
+def two_parent_edges():
+    return [edge("parent-child", "Alpha Testname", "Gamma Testname", "AAAA-001", "CCCC-003", note=NOPAR),
+            edge("parent-child", "Beta Testname", "Gamma Testname", "BBBB-002", "CCCC-003", note=NOPAR)]
+
+
+BOTH = ["parent-child:AAAA-001:CCCC-003", "parent-child:BBBB-002:CCCC-003"]
+
+
+def test_two_parents_who_are_not_a_couple_are_manual():  # N-M1
+    plan = build_tree_plan(rel(*two_parent_edges()), appr(BOTH), LINKS, "beta")
+    a = plan.actions[0]
+    assert a.state == "manual" and "parents not yet a couple; approve add-couple first" in a.reason
+
+
+def test_two_parents_with_an_approved_add_couple_are_planned_after_it():
+    edges = two_parent_edges() + [edge("spouse", "Alpha Testname", "Beta Testname", "AAAA-001", "BBBB-002")]
+    plan = build_tree_plan(rel(*edges), appr(BOTH + ["spouse:AAAA-001:BBBB-002"]), LINKS, "beta")
+    assert [(a.kind, a.state) for a in plan.actions] == [("add-couple", "planned"), ("add-child-parents", "planned")]
+
+
+def test_two_parents_with_an_unapproved_missing_couple_stay_manual():
+    edges = two_parent_edges() + [edge("spouse", "Alpha Testname", "Beta Testname", "AAAA-001", "BBBB-002")]
+    plan = build_tree_plan(rel(*edges), appr(BOTH), LINKS, "beta")
+    assert plan.actions[0].state == "manual"
+
+
+def test_identical_candidates_are_manual_not_merged():  # minor 8
+    r = rel(cands=[cand("John Smith", 1850, 1910), cand("John Smith", 1850, 1910)])
+    plan = build_tree_plan(r, appr(creations=["John Smith"]), LINKS, "beta")
+    assert [a.state for a in plan.actions] == ["manual"]
+    assert "exact name and years" in plan.actions[0].reason
+
+
+def test_tree_plan_cli_links_env_missing_or_wrong(tmp_path, capsys, monkeypatch):  # minor 2
+    archive = tmp_path / "arch"
+    imp = archive / "_import"
+    imp.mkdir(parents=True)
+    monkeypatch.setattr(cli, "check_archive", lambda a, r: None)
+    (imp / "relationships.json").write_text(json.dumps(rel()))
+    (imp / "approvals.json").write_text(json.dumps({"approved_links": {}}))
+    (imp / "links.json").write_text(json.dumps({"people": []}))
+    assert cli.main(["tree-plan", "--archive", str(archive), "--env", "beta"]) == 2
+    assert "links.json does not record its environment" in capsys.readouterr().err
+    (imp / "links.json").write_text(json.dumps({"env": "production", "people": []}))
+    assert cli.main(["tree-plan", "--archive", str(archive), "--env", "beta"]) == 2
+    assert "links.json was built against production" in capsys.readouterr().err
+    (imp / "links.json").write_text(json.dumps({"env": "beta", "people": []}))
+    assert cli.main(["tree-plan", "--archive", str(archive), "--env", "beta"]) == 0

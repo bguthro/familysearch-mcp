@@ -83,7 +83,8 @@ def write_inputs(import_dir: Path, *, ids: dict[str, str], with_people: bool = T
                           "note": NO_PARENTS_NOTE, "a_folder": fk[par], "b_folder": fk["child"]})
             approved_rel.append(k)
     cand = dict(NEW_PERSON)
-    (import_dir / "links.json").write_text(json.dumps({"people": people}, indent=2) + "\n", encoding="utf-8")
+    (import_dir / "links.json").write_text(json.dumps({"env": "beta", "people": people}, indent=2) + "\n",
+                                           encoding="utf-8")
     (import_dir / "relationships.json").write_text(
         json.dumps({"edges": edges, "create_candidates": [cand], "env": "beta"}, indent=2) + "\n", encoding="utf-8")
     write_approvals(import_dir, approved_rel, [cand["label"]], None)
@@ -143,6 +144,7 @@ class Drill:
         self.ids: dict[str, str] = {}
         self.root: Path | None = None
         self.root2: Path | None = None
+        self.root3: Path | None = None
         self.keys: dict[str, str] = {}
         self.plan_name = ""
         self.plan_hash = ""
@@ -218,6 +220,50 @@ class Drill:
                            f"rc={rc}; would-create={count_outcomes(out, 'would-create')}; "
                            f"setup people still unrelated={untouched}; ledger intents={intents}")
 
+    def step3b_not_a_couple(self) -> bool:
+        """A two-parent child link whose parents are NOT a couple on FamilySearch must be skipped.
+
+        The plan is built from a scratch relationships.json that (falsely) says the parents are already a
+        couple, so the planner lets the action through; the executor's fresh read must refuse it. Dry run only.
+        """
+        i = self.ids
+        self.root3 = Path(tempfile.mkdtemp(prefix="tree-drill3-"))
+        imp = self.root3 / "_import"
+        imp.mkdir(parents=True)
+        spec = {"p1": PEOPLE["p1"], "control": PEOPLE["control"], "child": PEOPLE["child"]}
+        fkey, people = {}, []
+        for k, (name, _g, b, d) in spec.items():
+            (self.root3 / LINE / folder_of(name, b, d)).mkdir(parents=True, exist_ok=True)
+            people.append({"line": LINE, "folder": folder_of(name, b, d), "verdict": "confirmed",
+                           "chosen_id": i[k]})
+            fkey[k] = f"{LINE}/{folder_of(name, b, d)}"
+        (imp / "links.json").write_text(json.dumps({"env": "beta", "people": people}), encoding="utf-8")
+        x, y = sorted((i["p1"], i["control"]))
+        edges = [{"key": f"spouse:{x}:{y}", "kind": "spouse", "a": "A", "b": "B", "a_fs": i["p1"],
+                  "b_fs": i["control"], "status": "present", "note": "", "a_folder": fkey["p1"],
+                  "b_folder": fkey["control"]}]
+        keys = []
+        for par in ("p1", "control"):
+            keys.append(f"parent-child:{i[par]}:{i['child']}")
+            edges.append({"key": keys[-1], "kind": "parent-child", "a": "P", "b": "C", "a_fs": i[par],
+                          "b_fs": i["child"], "status": "missing-in-familysearch", "note": NO_PARENTS_NOTE,
+                          "a_folder": fkey[par], "b_folder": fkey["child"]})
+        (imp / "relationships.json").write_text(
+            json.dumps({"edges": edges, "create_candidates": [], "env": "beta"}), encoding="utf-8")
+        write_approvals(imp, keys, [], None)
+        rc, out = self.cli("tree-plan", "--env", "beta", root=self.root3)
+        parsed = parse_tree_plan_output(out)
+        if rc != 0 or not parsed:
+            return self.r.step("3b two-parent link, parents not a couple, is skipped", False, f"plan rc={rc}")
+        write_approvals(imp, keys, [], parsed[1])
+        rc, out = self.cli("tree-execute", *self.exec_args(Path(parsed[0]).name, parsed[1], execute=False),
+                           root=self.root3)
+        skipped = "not yet a couple" in out and count_outcomes(out, "skipped") == 1
+        return self.r.step("3b two-parent link, parents not a couple, is skipped",
+                           rc == 0 and skipped and count_outcomes(out, "would-create") == 0,
+                           f"rc={rc}; skipped with 'not yet a couple' reason={skipped}; "
+                           f"would-create={count_outcomes(out, 'would-create')}")
+
     def step4_wrong_hash(self) -> bool:
         rc, out = self.cli("tree-execute", *self.exec_args(self.plan_name, ZERO_HASH, execute=True))
         intents = sum(1 for r in self.ledger() if r.get("type") == "intent")
@@ -259,6 +305,7 @@ class Drill:
                           f"{ev}; readable={bool(fs) and fs.status == 'ok'}; living={getattr(fs, 'living', None)}; "
                           f"no relationships={bool(new_id) and not self.rels(new_id)}")
         self.new_id = new_id
+        self.capture_shapes()
         return bool(ok)
 
     # -- step 6 and 7
@@ -344,6 +391,58 @@ class Drill:
         except Exception as e:  # noqa: BLE001
             self.observed.append(f"derived-couple observation did not complete: {describe_error(e)}")
 
+    def capture_shapes(self) -> None:
+        """Record observed API response shapes (booleans and counts only; never ids or names)."""
+        i = self.ids
+        obs = self.observed.append
+        try:
+            self.reader.get_relatives(i["control"], strict=True)
+            obs("strict section links present for a person with no relatives (control): yes")
+        except Exception as e:  # noqa: BLE001
+            obs(f"strict section links for a person with no relatives (control): NO - {describe_error(e)}")
+        if self.new_id:
+            try:
+                self.reader.get_relatives(self.new_id, strict=True)
+                obs("strict section links present for the freshly created person: yes")
+            except Exception as e:  # noqa: BLE001
+                obs(f"strict section links for the freshly created person: NO - {describe_error(e)}")
+        cid = created_by_key(self.ledger()).get(self.keys.get("couple", ""), {}).get("couple_id")
+        if cid:
+            try:
+                from familysearch.discovery import Discovery
+                from familysearch.tree import TreeReader
+
+                disc = Discovery(self.client)
+                rels = TreeReader(self.client, disc)._fetch_all(disc.person_links(i["p1"]), "spouses",
+                                                                "relationships")
+                obs("spouses section carries relationships with id/person1/person2: "
+                    + str(bool(rels) and all(r.get("id") and r.get("person1") and r.get("person2") for r in rels)))
+                obs(f"get_couple(id) names the pair: {self.reader.get_couple(cid) == frozenset((i['p1'], i['p2']))}; "
+                    f"get_couple_ids == [id]: {self.reader.get_couple_ids(i['p1'], i['p2']) == [cid]}")
+                ex = self.reader.get_couple_extras(cid)
+                me = self.reader.current_user_ids()
+                who = [w for w, _ in ex["changes"]]
+                obs(f"couple change history: entries={len(who)}; contributor populated={bool(who) and all(who)}; "
+                    f"all contributors are the current user={bool(who) and all(w in me for w in who)}; "
+                    f"facts={ex['facts']} sources={ex['sources']} notes={ex['notes']}")
+            except Exception as e:  # noqa: BLE001
+                obs(f"couple shape observation did not complete: {describe_error(e)}")
+        if self.new_id:
+            try:
+                ch = self.reader.get_change_summary(self.new_id)
+                me = self.reader.current_user_ids()
+                obs(f"person change history: entries={len(ch)}; contributor populated="
+                    f"{bool(ch) and all(w for w, _ in ch)}; all contributors are the current user="
+                    f"{bool(ch) and all(w in me for w, _ in ch)}")
+            except Exception as e:  # noqa: BLE001
+                obs(f"person change-history observation did not complete: {describe_error(e)}")
+        try:
+            hits = self.reader.search_duplicates("Zzqxnonexistent", "Zzqxnotreal", 1700, None)
+            obs(f"duplicate search for a nonsense name parsed strictly; hits={len(hits)}")
+        except Exception as e:  # noqa: BLE001
+            obs(f"duplicate search for a nonsense name FAILED strict parsing (real feed shape differs): "
+                f"{describe_error(e)}")
+
     def find_couple_id(self, a: str, b: str) -> str | None:
         """Best effort: the couple relationship id between a and b from the person's spouse relationships."""
         try:
@@ -387,7 +486,7 @@ class Drill:
             except Exception as e:  # noqa: BLE001
                 bad.append(f"{pid} ({describe_error(e)})")
         self.r.step("9c teardown absence verified", not bad, f"not gone: {bad}" if bad else "all gone")
-        for root in (self.root, self.root2):
+        for root in (self.root, self.root2, self.root3):
             if root:
                 try:
                     shutil.rmtree(root)
@@ -409,7 +508,7 @@ def run(report: Report | None = None) -> int:
     report.step("0 beta session", True, "session answers on beta")
     step = None
     try:
-        for step in (drill.step1_setup, drill.step2_plan, drill.step3_dry_run, drill.step4_wrong_hash,
+        for step in (drill.step1_setup, drill.step2_plan, drill.step3_dry_run, drill.step3b_not_a_couple, drill.step4_wrong_hash,
                      drill.step5_execute, drill.step6_rerun, drill.step7_name_exists, drill.step8_rollback):
             if not step():
                 break

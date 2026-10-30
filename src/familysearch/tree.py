@@ -114,6 +114,13 @@ class TreeReader:
         links = self._discovery.person_links(person_id)
         return self._fetch(links, "change-history", "entries")
 
+    def get_changes_all(self, person_id: str) -> list[dict]:
+        """Every page of the change history (never truncated)."""
+        links = self._discovery.person_links(person_id)
+        if not links.get("change-history"):
+            raise FSError("person has no change-history link")
+        return self._fetch_all(links, "change-history", "entries")
+
     def get_matches(self, person_id: str) -> list[dict]:
         links = self._discovery.person_links(person_id)
         # The matches endpoint answers 406 to x-fs-v1+json; it needs the atom Accept
