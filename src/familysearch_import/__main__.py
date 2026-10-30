@@ -423,6 +423,90 @@ def _resolve(args, repo: Path) -> int:
         return _err(f"FamilySearch session/environment check failed: {ex._http_status(e)}")
 
 
+def _tree_run(args, repo: Path, body) -> int:
+    import requests
+    from familysearch.errors import FSError
+    from . import execute as ex
+    from . import treeexec as te
+
+    try:
+        body_ctx = body(ex, te)
+        return body_ctx
+    except ex.GateError as e:
+        return _err(str(e))
+    except (FSError, requests.RequestException) as e:
+        # type and HTTP status only: never str(e), which can carry response text
+        return _err(f"FamilySearch session/environment check failed: {ex._http_status(e)}")
+
+
+def _tree_locked(args, ex, go) -> int:
+    if args.execute:
+        with ex.RunLock(args.archive, break_lock=getattr(args, "break_lock", False)):
+            return go()
+    return go()
+
+
+def _tree_execute(args, repo: Path) -> int:
+    def body(ex, te) -> int:
+        plan_arg = Path(args.plan)
+        plan_path = args.archive / "_import" / plan_arg if len(plan_arg.parts) == 1 else plan_arg
+        te.check_tree_run_gates(args.env, args.allow_production, args.only, args.max_actions)
+        plan = te.verify_tree_plan_for_execution(args.archive, plan_path, args.confirm_hash, args.env)
+        ledger = ex.Ledger(te.tree_ledger_path(args.archive))
+
+        def go() -> int:
+            services = te.build_tree_services(args.archive, args.env, args.allow_production)
+            summary = te.run_tree_plan(plan, services, ledger, only=args.only, max_actions=args.max_actions,
+                                       execute=args.execute, allow_production=args.allow_production)
+            print(("EXECUTED" if args.execute else "DRY RUN (nothing written; pass --execute)")
+                  + f" env={args.env} plan={plan.plan_hash[:12]}")
+            _print_outcomes(summary)
+            return 3 if summary.stopped else 0
+        return _tree_locked(args, ex, go)
+    return _tree_run(args, repo, body)
+
+
+def _tree_rollback(args, repo: Path) -> int:
+    def body(ex, te) -> int:
+        te.check_tree_run_gates(args.env, args.allow_production, args.only, 1)
+        path = te.tree_ledger_path(args.archive)
+        if not path.is_file():
+            raise ex.GateError(f"no tree ledger at {path}")
+        ledger = ex.Ledger(path)
+
+        def go() -> int:
+            services = te.build_tree_services(args.archive, args.env, args.allow_production)
+            summary = te.rollback_tree(ledger, services, args.key, args.execute,
+                                       only=args.only, allow_production=args.allow_production)
+            print(("ROLLED BACK" if args.execute else "DRY RUN (nothing deleted; pass --execute)")
+                  + f" env={args.env}")
+            _print_outcomes(summary)
+            bad = any(o.status in ("rollback-failed", "cannot-rollback") for o in summary.outcomes)
+            return 3 if summary.stopped or bad else 0
+        return _tree_locked(args, ex, go)
+    return _tree_run(args, repo, body)
+
+
+def _tree_resolve(args, repo: Path) -> int:
+    def body(ex, te) -> int:
+        te.check_tree_run_gates(args.env, args.allow_production, args.only, 1)
+        path = te.tree_ledger_path(args.archive)
+        if not path.is_file():
+            raise ex.GateError(f"no tree ledger at {path}")
+        ledger = ex.Ledger(path)
+
+        def go() -> int:
+            services = te.build_tree_services(args.archive, args.env, args.allow_production)
+            summary = te.resolve_tree(ledger, services, args.key, args.execute,
+                                      only=args.only, allow_production=args.allow_production)
+            print(("RESOLVED" if args.execute else "DRY RUN (nothing recorded; pass --execute)")
+                  + f" env={args.env}")
+            _print_outcomes(summary)
+            return 3 if summary.stopped or any(o.status == "still-blocked" for o in summary.outcomes) else 0
+        return _tree_locked(args, ex, go)
+    return _tree_run(args, repo, body)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="familysearch_import")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -492,6 +576,35 @@ def main(argv: list[str] | None = None) -> int:
     rb.add_argument("--execute", action="store_true")
     rb.add_argument("--allow-production", action="store_true")
     rb.add_argument("--break-lock", action="store_true")
+    te_ = sub.add_parser("tree-execute", help="WRITE approved couples, parent links and new people to "
+                         "FamilySearch (dry run by default)")
+    te_.add_argument("--archive", required=True, type=Path)
+    te_.add_argument("--env", required=True, choices=("production", "beta"))
+    te_.add_argument("--plan", required=True, help="TreePlan file name in <archive>/_import (or a path inside it)")
+    te_.add_argument("--confirm-hash", required=True)
+    te_.add_argument("--only", action="append", default=[], metavar="ACTION_KEY")
+    te_.add_argument("--max-actions", type=int, default=10)
+    te_.add_argument("--execute", action="store_true", help="actually write (default: dry run)")
+    te_.add_argument("--allow-production", action="store_true")
+    te_.add_argument("--break-lock", action="store_true")
+    tr_ = sub.add_parser("tree-resolve", help="lift the block on a failed/ambiguous tree key that has no id "
+                         "(checks FamilySearch; dry run by default)")
+    tr_.add_argument("--archive", required=True, type=Path)
+    tr_.add_argument("--env", required=True, choices=("production", "beta"))
+    tr_.add_argument("--key", action="append", required=True)
+    tr_.add_argument("--only", action="append", default=[], metavar="ACTION_KEY")
+    tr_.add_argument("--execute", action="store_true")
+    tr_.add_argument("--allow-production", action="store_true")
+    tr_.add_argument("--break-lock", action="store_true")
+    tb_ = sub.add_parser("tree-rollback", help="delete relationships/people this tool created (dry run by "
+                         "default)")
+    tb_.add_argument("--archive", required=True, type=Path)
+    tb_.add_argument("--env", required=True, choices=("production", "beta"))
+    tb_.add_argument("--key", action="append", default=[])
+    tb_.add_argument("--only", action="append", default=[], metavar="ACTION_KEY")
+    tb_.add_argument("--execute", action="store_true")
+    tb_.add_argument("--allow-production", action="store_true")
+    tb_.add_argument("--break-lock", action="store_true")
     args = ap.parse_args(argv)
 
     repo = repo_root()
@@ -500,6 +613,12 @@ def main(argv: list[str] | None = None) -> int:
     except (FileNotFoundError, ValueError) as e:
         return _err(str(e))
 
+    if args.cmd == "tree-execute":
+        return _tree_execute(args, repo)
+    if args.cmd == "tree-rollback":
+        return _tree_rollback(args, repo)
+    if args.cmd == "tree-resolve":
+        return _tree_resolve(args, repo)
     if args.cmd == "execute":
         return _execute(args, repo)
     if args.cmd == "rollback":

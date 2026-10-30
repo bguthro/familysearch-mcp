@@ -34,6 +34,7 @@ class TreePlan:
     env: str
     actions: tuple[TreeAction, ...]
     plan_hash: str
+    warnings: tuple[str, ...] = ()  # report only; not part of the hash
 
 
 def compute_tree_plan_hash(actions: Sequence[TreeAction], env: str) -> str:
@@ -86,6 +87,8 @@ def build_tree_plan(relationships: Mapping, approvals: Mapping, links: Mapping[s
     approved_new = set(approvals.get("approved_creations") or [])
     linked = _linked_ids(links, approvals)
     actions: list[TreeAction] = []
+    matched_rel: set[str] = set()
+    matched_new: set[str] = set()
 
     def link_problem(e: Mapping) -> str | None:
         a, b = e.get("a_fs"), e.get("b_fs")
@@ -106,6 +109,7 @@ def build_tree_plan(relationships: Mapping, approvals: Mapping, links: Mapping[s
         ckey = _canonical_key(kind, a, b)
         if e.get("key") not in approved_rel and ckey not in approved_rel:
             continue
+        matched_rel.update(k for k in (e.get("key"), ckey) if k in approved_rel)
         if e.get("status") != "missing-in-familysearch":
             if kind == "spouse" and ckey in spouse_seen:
                 continue
@@ -162,6 +166,7 @@ def build_tree_plan(relationships: Mapping, approvals: Mapping, links: Mapping[s
         label = c.get("label")
         if label not in approved_new:
             continue
+        matched_new.add(label)
         birth, death = c.get("birth"), c.get("death")
         params = {"name": label, "birth": birth, "death": death, "gender": "Unknown"}
         key = "create-person:" + hashlib.sha256(str(label).encode("utf-8")).hexdigest()[:16]
@@ -174,8 +179,10 @@ def build_tree_plan(relationships: Mapping, approvals: Mapping, links: Mapping[s
             actions.append(TreeAction("create-person", key, params, "planned",
                                       "approved creation; search before create at execution"))
 
+    warnings = [f"approved relationship matches no edge: {k}" for k in sorted(approved_rel - matched_rel)]
+    warnings += [f"approved creation matches no candidate: {k}" for k in sorted(approved_new - matched_new)]
     actions.sort(key=lambda a: (a.kind, a.key))
-    return TreePlan(env, tuple(actions), compute_tree_plan_hash(actions, env))
+    return TreePlan(env, tuple(actions), compute_tree_plan_hash(actions, env), tuple(warnings))
 
 
 def tree_plan_json(plan: TreePlan) -> dict:
@@ -185,6 +192,8 @@ def tree_plan_json(plan: TreePlan) -> dict:
 def render_tree_plan_report(plan: TreePlan) -> str:
     out = [f"# Tree plan {plan.plan_hash[:8]}", "",
            f"Environment: {plan.env}. Plan hash: {plan.plan_hash}", ""]
+    if plan.warnings:
+        out += [f"## Warnings ({len(plan.warnings)})", ""] + [f"- {w}" for w in plan.warnings] + [""]
     for state, title in (("planned", "Planned"), ("manual", "Manual on the website"), ("skipped", "Skipped")):
         rows = [a for a in plan.actions if a.state == state]
         out.append(f"## {title} ({len(rows)})")

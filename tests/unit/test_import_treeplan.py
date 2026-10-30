@@ -137,3 +137,18 @@ def test_cli_tree_plan_writes_files(tmp_path, monkeypatch):
 
 def test_load_tree_approvals_missing_file(tmp_path):
     assert load_tree_approvals(tmp_path / "none.json")["approved_relationships"] == []
+
+
+def test_unmatched_approvals_warn_in_report():
+    r = rel(edge("spouse", "Alpha Testname", "Beta Testname", "AAAA-001", "BBBB-002"))
+    plan = build_tree_plan(r, appr(["spouse:AAAA-001:ZZZZ-999"], ["Nobody Here"]), LINKS, "beta")
+    assert plan.actions == ()
+    assert len(plan.warnings) == 2
+    from familysearch_import.treeplan import render_tree_plan_report
+    text = render_tree_plan_report(plan)
+    assert "spouse:AAAA-001:ZZZZ-999" in text and "Nobody Here" in text
+
+
+def test_matched_approvals_do_not_warn():
+    r = rel(edge("spouse", "Alpha Testname", "Beta Testname", "AAAA-001", "BBBB-002"))
+    assert build_tree_plan(r, appr(["spouse:AAAA-001:BBBB-002"]), LINKS, "beta").warnings == ()
