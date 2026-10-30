@@ -802,6 +802,88 @@ def test_missing_env_line_never_lifts_a_block(tmp_path):
     assert a.key in led.blocked_keys("beta")
 
 
+def blocked_by_idless_failure(tmp_path):
+    mkfile(tmp_path)
+    a = up()
+    pf = make_plan(tmp_path, [a])
+    fs = FakeFS()
+    fs.upload_error = 500
+    run(tmp_path, fs, pf)
+    return a, pf, fs, Ledger(tmp_path / "arch" / "_import" / "ledger.jsonl")
+
+
+def test_resolve_treats_envless_id_result_as_matching_and_refuses(tmp_path, monkeypatch):
+    a, pf, fs, led = blocked_by_idless_failure(tmp_path)
+    led._append({"type": "result", "key": a.key, "status": "failed", "memory_id": "M9"})  # no env
+    later(monkeypatch, 20)
+    r, _ = do_resolve(tmp_path, fs, pf, a.key)
+    assert r.outcomes[0].status == "still-blocked" and "rollback" in r.outcomes[0].reason
+
+
+@pytest.mark.parametrize("bad", [True, 0.0, "0", None])
+def test_before_must_be_a_real_int(tmp_path, monkeypatch, bad):
+    a, pf, fs, led = blocked_by_idless_failure(tmp_path)
+    recs = led.records()
+    intent = [r for r in recs if r["type"] == "intent"][-1]
+    led._append({**intent, "intent_id": "forged", "before": bad})
+    later(monkeypatch, 20)
+    r, _ = do_resolve(tmp_path, fs, pf, a.key)
+    assert r.outcomes[0].status == "still-blocked"
+    # and reconcile (a new unresolved intent with the bad before) goes ambiguous, not eligible
+    fs2 = FakeFS()
+    s, led2 = run(tmp_path, fs2, pf)
+    assert s.stopped and fs2.writes() == []
+
+
+def test_intent_without_intent_id_does_not_crash(tmp_path, monkeypatch):
+    a, pf, fs, led = blocked_by_idless_failure(tmp_path)
+    intent = [r for r in led.records() if r["type"] == "intent"][-1]
+    stripped = {k: v for k, v in intent.items() if k != "intent_id"}
+    led._append(stripped)
+    later(monkeypatch, 20)
+    r, _ = do_resolve(tmp_path, fs, pf, a.key)
+    assert r.outcomes[0].status == "still-blocked" and "intent_id" in r.outcomes[0].reason
+    # reconcile path: a lone id-less intent (key not otherwise blocked) stops the run cleanly
+    led.path.write_text(json.dumps(stripped) + "\n")
+    s, _ = run(tmp_path, FakeFS(), pf)
+    assert s.stopped and "intent_id" in s.stop_reason
+
+
+def test_rolled_back_id_result_does_not_dead_end_a_later_idless_block(tmp_path, monkeypatch):
+    from familysearch_import.execute import rollback
+    mkfile(tmp_path)
+    a = up()
+    pf = make_plan(tmp_path, [a])
+    fs = FakeFS()
+    fs.upload_appears = False
+    run(tmp_path, fs, pf)  # failed-readback carrying M1
+    fs.mem[FS_ID].append(("M1", "visible now"))
+    arch = tmp_path / "arch"
+    led = Ledger(arch / "_import" / "ledger.jsonl")
+    with RunLock(arch):
+        rb = rollback(led, services(fs, arch), [a.key], True)
+    assert rb.outcomes[0].status == "rolled-back"
+    fs.upload_appears, fs.upload_error = True, 500
+    run(tmp_path, fs, pf)  # a fresh id-less failure
+    assert a.key in led.blocked_keys("beta")
+    later(monkeypatch, 20)
+    r, _ = do_resolve(tmp_path, fs, pf, a.key)
+    assert r.outcomes[0].status == "resolved"
+
+
+def test_interrupt_after_created_result_appends_nothing_more(tmp_path, monkeypatch):
+    mkfile(tmp_path)
+    pf = make_plan(tmp_path, [up()])
+
+    def boom(*a, **k):
+        raise KeyboardInterrupt()
+    monkeypatch.setattr(execute, "Outcome", boom)
+    with pytest.raises(KeyboardInterrupt):
+        run(tmp_path, FakeFS(), pf)
+    recs = Ledger(tmp_path / "arch" / "_import" / "ledger.jsonl").records()
+    assert [(r["type"], r.get("status")) for r in recs] == [("intent", None), ("result", "created")]
+
+
 def test_source_crash_between_create_and_attach_is_recoverable(tmp_path, monkeypatch):
     mkfile(tmp_path)
     a = src()

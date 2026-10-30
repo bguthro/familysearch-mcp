@@ -283,9 +283,60 @@ def test_get_memory_titles_populated_and_empty():
     body = {"sourceDescriptions": [
         {"titles": [{"value": "Census 1900"}]}, {"titles": []}, {"titles": [{"value": "Will"}]}]}
     fs, _, _ = make({P + "ABCD-123": [links_body("ABCD-123")], "/m/ABCD-123": [Resp(200, body)]})
-    assert fs.get_memory_titles("ABCD-123") == ["Census 1900", "Will"]
+    assert fs.get_memory_titles("ABCD-123") == ["Census 1900", "", "Will"]
     fs, _, _ = make({P + "ABCD-123": [links_body("ABCD-123")], "/m/ABCD-123": [Resp(200, {})]})
     assert fs.get_memory_titles("ABCD-123") == []
+
+
+def page(items, nxt=None, key="sourceDescriptions"):
+    body = {key: items}
+    if nxt:
+        body["links"] = {"next": {"href": nxt}}
+    return Resp(200, body)
+
+
+def test_memories_follow_paging_links_and_count_untitled():
+    routes = {
+        P + "ABCD-123": [links_body("ABCD-123")],
+        "/m/ABCD-123": [page([{"id": "M1", "titles": [{"value": "A"}]}], "/m/ABCD-123?start=1")],
+        "/m/ABCD-123?start=1": [page([{"id": "M2"}], "/m/ABCD-123?start=2")],
+        "/m/ABCD-123?start=2": [page([{"id": "M3", "titles": [{"value": "C"}]}])],
+    }
+    fs, _, _ = make(routes)
+    assert fs.get_memory_titles("ABCD-123") == ["A", "", "C"]
+    fs, _, _ = make({**routes, P + "ABCD-123": [links_body("ABCD-123")]})
+    assert fs.get_memory_ids("ABCD-123") == ["M1", "M2", "M3"]
+
+
+def test_sources_follow_paging_links_list_form():
+    first = Resp(200, {"sourceDescriptions": [{"id": "S1", "about": "https://e.org/1"}],
+                       "links": [{"rel": "next", "href": "/s/ABCD-123?start=1"}]})
+    fs, _, _ = make({P + "ABCD-123": [links_body("ABCD-123")], "/s/ABCD-123": [first],
+                     "/s/ABCD-123?start=1": [page([{"id": "S2", "titles": [{"value": "T"}]}])]})
+    refs = fs.get_source_refs("ABCD-123")
+    assert [r.url for r in refs] == ["https://e.org/1", None] and refs[1].title == "T"
+
+
+def test_paging_past_the_cap_is_read_failed_never_truncated():
+    routes = {P + "ABCD-123": [links_body("ABCD-123")], "/m/ABCD-123": [page([{"id": "M0"}], "/m/p1")]}
+    for n in range(1, 60):
+        routes[f"/m/p{n}"] = [page([{"id": f"M{n}"}], f"/m/p{n + 1}")]
+    fs, _, _ = make(routes)
+    with pytest.raises(prod_reader.ReadFailed):
+        fs.get_memory_titles("ABCD-123")
+
+
+def test_paging_loop_is_read_failed():
+    fs, _, _ = make({P + "ABCD-123": [links_body("ABCD-123")],
+                     "/m/ABCD-123": [page([{"id": "M0"}], "/m/ABCD-123")]})
+    with pytest.raises(prod_reader.ReadFailed):
+        fs.get_memory_ids("ABCD-123")
+
+
+def test_item_without_id_is_read_failed_for_id_reads():
+    fs, _, _ = make({P + "ABCD-123": [links_body("ABCD-123")], "/m/ABCD-123": [page([{"titles": []}])]})
+    with pytest.raises(prod_reader.ReadFailed):
+        fs.get_memory_ids("ABCD-123")
 
 
 def test_get_source_refs_populated():

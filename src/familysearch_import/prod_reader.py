@@ -210,15 +210,21 @@ class ReadOnlyFS:
 
     def get_memory_titles(self, person_id: str) -> list[str]:
         items = self._read_list(person_id, lambda: self._tree.get_memories(person_id))
-        return [t for t in (_title(i) for i in items) if t]
+        return [_title(i) for i in items]  # untitled memories stay in the list: counts must be complete
 
     def get_memory_ids(self, person_id: str) -> list[str]:
         items = self._read_list(person_id, lambda: self._tree.get_memories(person_id))
-        return [str(i["id"]) for i in items if isinstance(i, dict) and i.get("id")]
+        return self._ids(person_id, items)
+
+    def _ids(self, person_id: str, items: list[dict]) -> list[str]:
+        ids = [str(i["id"]) for i in items if isinstance(i, dict) and i.get("id")]
+        if len(ids) != len(items):  # an item without an id would make counts untrustworthy
+            raise ReadFailed(f"read failed for {person_id}: an item has no id")
+        return ids
 
     def get_source_ids(self, person_id: str) -> list[str]:
         items = self._read_list(person_id, lambda: self._tree.get_sources(person_id))
-        return [str(i["id"]) for i in items if isinstance(i, dict) and i.get("id")]
+        return self._ids(person_id, items)
 
     def get_source_refs(self, person_id: str) -> list[SourceRef]:
         items = self._read_list(person_id, lambda: self._tree.get_sources(person_id))

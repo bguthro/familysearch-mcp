@@ -3,6 +3,16 @@
 Fail closed everywhere. Every gate here runs before any network I/O and before any
 ledger ``intent`` line. This module never reads or writes the Brave session itself;
 the CLI hands it already-built services.
+
+Known, accepted limitation (orphan source description): add-source is two writes,
+create_description then attach_to_person. A ``progress`` ledger line carrying the new
+description id is written between them, so a crash after that line is recoverable
+(reconcile records a ``partial`` with the id; roll it back with ``--key``). If the process
+dies in the instant between create_description returning and the progress line reaching disk,
+an unattached description exists on FamilySearch that the ledger knows nothing about: the
+intent is unresolved, reconcile finds no title on the person, and the key becomes
+``ambiguous``/``resolved`` without ever learning the orphan's id. It is harmless (a
+description attached to nobody) but must be cleaned up by hand if noticed.
 """
 
 from __future__ import annotations
@@ -513,6 +523,8 @@ def _reconcile(services: ExecServices, ledger: Ledger, execute: bool, out: list[
     """
     for rec in ledger.unresolved_intents(services.env):
         key, fs_id = rec.get("key"), rec.get("fs_id")
+        if not isinstance(rec.get("intent_id"), str):
+            raise _Stop("an unresolved ledger intent has no intent_id; resolve it manually")
         probe = Action(key or "", rec.get("kind") or "", "", "", fs_id or "", rec.get("file"),
                        rec.get("title"), rec.get("url"), "planned", "", rec.get("sha256"))
         if not (isinstance(key, str) and _ID_RE.match(fs_id or "")) \
@@ -541,7 +553,7 @@ def _reconcile(services: ExecServices, ledger: Ledger, execute: bool, out: list[
             executed.add(key)
             out.append(Outcome(key, who, rec.get("person") or "", "reconciled-created",
                                "interrupted run: object found on FamilySearch (no id recorded)"))
-        elif isinstance(rec.get("before"), int) and count == rec["before"] \
+        elif type(rec.get("before")) is int and count == rec["before"] \
                 and intent_age_seconds(rec) >= MIN_SETTLE_SECONDS:
             if execute:
                 ledger.result(status="skipped", reconciled=True,
@@ -739,6 +751,7 @@ def _write_one(a: Action, who: str, data: bytes, ctype: str, before: int, plan: 
     common = dict(intent_id=intent_id, key=a.key, kind=a.kind, fs_id=a.fs_id, env=services.env,
                   title=a.title, url=a.url, person=who)
     mem_id = sd_id = None
+    finished = False  # set once the created result is on disk: nothing may be appended after it
 
     def fail(status: str, reason: str) -> None:
         ledger.result(status=status, reason=reason, memory_id=mem_id,
@@ -782,10 +795,13 @@ def _write_one(a: Action, who: str, data: bytes, ctype: str, before: int, plan: 
             fail("failed-readback", f"read-back mismatch (before {before}, after {after}, present {present})")
         ledger.result(status="created", reason="created", memory_id=mem_id,
                       source_description_id=sd_id, **common)
+        finished = True
         out.append(Outcome(a.key, a.kind, who, "created", "created"))
     except _Stop:
         raise
     except BaseException as e:  # KeyboardInterrupt etc.: keep every id known so far, then re-raise
+        if finished:
+            raise
         status = "partial" if (mem_id or sd_id) else "ambiguous"
         try:
             ledger.result(status=status, reason=f"interrupted: {type(e).__name__}", memory_id=mem_id,
@@ -945,12 +961,14 @@ def resolve(ledger: Ledger, services: ExecServices, keys: Sequence[str], execute
         if k not in blocked:
             raise GateError(f"key is not blocked in {services.env}: {k[:12]}")
     recs = ledger.records()
+    rolled = {(r.get("key"), r.get("memory_id"), r.get("source_description_id")) for r in recs
+              if r.get("type") == "rollback" and r.get("status") == "rolled-back"
+              and r.get("env") == services.env}
     out: list[Outcome] = []
     summary = RunSummary(execute, out)
-    from .prod_reader import ReadFailed
     for k in keys:
         intents = [r for r in recs if r.get("type") == "intent" and r.get("key") == k
-                   and r.get("env") == services.env]
+                   and Ledger._env_ok(r, services.env)]
         if not intents:
             out.append(Outcome(k, "", "", "still-blocked", "no intent recorded; check FamilySearch by hand"))
             continue
@@ -959,9 +977,14 @@ def resolve(ledger: Ledger, services: ExecServices, keys: Sequence[str], execute
         if scope and who not in scope:
             out.append(Outcome(k, rec.get("kind") or "", who, "skipped", "outside --only"))
             continue
+        if not isinstance(rec.get("intent_id"), str):
+            out.append(Outcome(k, rec.get("kind") or "", who, "still-blocked",
+                               "intent has no intent_id; check FamilySearch by hand"))
+            continue
         has_id = ledger.progress_for(rec["intent_id"]) or any(
-            r.get("type") == "result" and r.get("key") == k and r.get("env") == services.env
-            and (r.get("memory_id") or r.get("source_description_id")) for r in recs)
+            r.get("type") == "result" and r.get("key") == k and Ledger._env_ok(r, services.env)
+            and (r.get("memory_id") or r.get("source_description_id"))
+            and (k, r.get("memory_id"), r.get("source_description_id")) not in rolled for r in recs)
         if has_id:
             out.append(Outcome(k, rec.get("kind") or "", who, "still-blocked",
                                "carries an object id; use rollback --key"))
@@ -983,7 +1006,7 @@ def resolve(ledger: Ledger, services: ExecServices, keys: Sequence[str], execute
                 ledger.result(status="created", reason="created (reconciled)", reconciled=True, **common)
             out.append(Outcome(k, probe.kind, who, "resolved-created" if execute else "would-resolve-created",
                                "found on FamilySearch; recorded as created (no id)"))
-        elif isinstance(rec.get("before"), int) and count == rec["before"] \
+        elif type(rec.get("before")) is int and count == rec["before"] \
                 and intent_age_seconds(rec) >= MIN_SETTLE_SECONDS:
             if execute:
                 ledger.resolved(key=k, env=services.env, reason="absent, count unchanged, intent settled")

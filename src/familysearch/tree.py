@@ -25,6 +25,23 @@ def _items(body: dict, *keys: str) -> list[dict]:
     return []
 
 
+MAX_PAGES = 50
+
+
+def _next_href(body: dict) -> str | None:
+    """The GedcomX paging link (links.next.href, or a rel=next entry in a links list)."""
+    links = body.get("links")
+    if isinstance(links, dict):
+        nxt = links.get("next")
+        href = nxt.get("href") if isinstance(nxt, dict) else None
+        return href if isinstance(href, str) and href else None
+    if isinstance(links, list):
+        for link in links:
+            if isinstance(link, dict) and link.get("rel") == "next" and isinstance(link.get("href"), str):
+                return link["href"] or None
+    return None
+
+
 class TreeReader:
     def __init__(self, client: FSClient, discovery: Discovery):
         self._client = client
@@ -43,17 +60,36 @@ class TreeReader:
             return []
         return _items(_json(self._client.get(href, accept=accept)), *keys)
 
+    def _fetch_all(self, links: dict[str, str], rel: str, *keys: str) -> list[dict]:
+        """Like _fetch but follows paging links until exhausted. Never returns a truncated list:
+        more than MAX_PAGES pages, or a paging loop, raises FSError."""
+        href = links.get(rel)
+        out: list[dict] = []
+        seen: set[str] = set()
+        pages = 0
+        while href:
+            if href in seen:
+                raise FSError("paging loop while reading a list")
+            seen.add(href)
+            pages += 1
+            if pages > MAX_PAGES:
+                raise FSError(f"list has more than {MAX_PAGES} pages; refusing to treat it as complete")
+            body = _json(self._client.get(href))
+            out.extend(_items(body, *keys))
+            href = _next_href(body)
+        return out
+
     def get_relatives(self, person_id: str) -> dict:
         links = self._discovery.person_links(person_id)
         return {rel: self._fetch(links, rel, "persons") for rel in ("parents", "children", "spouses")}
 
     def get_memories(self, person_id: str) -> list[dict]:
         links = self._discovery.person_links(person_id)
-        return self._fetch(links, "artifacts", "sourceDescriptions", "artifacts", "memories")
+        return self._fetch_all(links, "artifacts", "sourceDescriptions", "artifacts", "memories")
 
     def get_sources(self, person_id: str) -> list[dict]:
         links = self._discovery.person_links(person_id)
-        return self._fetch(links, "source-descriptions", "sourceDescriptions")
+        return self._fetch_all(links, "source-descriptions", "sourceDescriptions")
 
     def get_changes(self, person_id: str) -> list[dict]:
         links = self._discovery.person_links(person_id)
