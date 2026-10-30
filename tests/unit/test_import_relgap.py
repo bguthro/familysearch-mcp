@@ -264,3 +264,36 @@ def test_unparsed_lines_are_carried():
     body = diagram("Adam Example (1800–1860)\n └─ ((( garbled (((")
     res, _ = run(body, [ADAM], {}, {})
     assert res.unparsed_lines and res.unparsed_lines[0][0] == "Line A"
+
+
+# ---- no-folder approvals
+
+
+def test_blocked_edge_keeps_the_linked_ends_fs_id():
+    res, _ = run(FAMILY, [ADAM, CAL], LINKS, {})  # Eve has no folder
+    e = next(x for x in by_status(res, "blocked") if pair(x) == ("Eve Sample", "Cal Example"))
+    assert (e.a_fs, e.b_fs) == (None, "CCCC-1")
+
+
+def test_apply_nofolder_approvals_only_touches_unmapped_labels():
+    from familysearch_import.relgap import apply_nofolder_approvals
+
+    assert apply_nofolder_approvals("Eve Sample", "unmapped", None, {"Eve Sample": "EEEE-1"}) == "EEEE-1"
+    assert apply_nofolder_approvals("Eve Sample", "unmapped", None, {}) is None
+    assert apply_nofolder_approvals("Eve Sample", "ambiguous", None, {"Eve Sample": "EEEE-1"}) is None
+    assert apply_nofolder_approvals("Eve Sample", "mapped", "XXXX-9", {"Eve Sample": "EEEE-1"}) == "XXXX-9"
+
+
+def test_approved_nofolder_label_makes_blocked_edges_checkable():
+    tree = {"CCCC-1": [Relative(fsp("EEEE-1", "Eve Sample", 1802, 1880), "parent")],
+            "AAAA-1": [Relative(fsp("EEEE-1", "Eve Sample", 1802, 1880), "spouse")]}
+    res, _ = run(FAMILY, [ADAM, CAL], LINKS, tree, nofolder={"Eve Sample": "EEEE-1"})
+    assert not by_status(res, "blocked")
+    assert {pair(e): e.status for e in res.edges}[("Eve Sample", "Cal Example")] == "present"
+    assert any("Eve Sample" in e.approved_ends for e in res.edges)
+
+
+def test_unapproved_nofolder_changes_nothing():
+    a, _ = run(FAMILY, [ADAM, CAL], LINKS, {})
+    b, _ = run(FAMILY, [ADAM, CAL], LINKS, {}, nofolder={"Someone Else": "ZZZZ-1"})
+    assert a == b

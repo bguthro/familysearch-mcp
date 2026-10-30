@@ -41,6 +41,19 @@ def load_approvals(path: Path) -> dict[str, str]:
     return dict(links)
 
 
+def load_nofolder_approvals(path: Path) -> dict[str, str]:
+    """approved_nofolder: {diagram label: FamilySearch id} for people with no archive folder."""
+    path = Path(path)
+    if not path.exists():
+        return {}
+    load_approvals(path)  # validates the rest of the file
+    data = json.loads(path.read_text(encoding="utf-8")).get("approved_nofolder", {})
+    if not isinstance(data, dict) or not all(isinstance(k, str) and k and isinstance(v, str) and v
+                                             for k, v in data.items()):
+        raise ValueError(f'"approved_nofolder" must be {{"<label>": "<FS id>"}}: {path}')
+    return dict(data)
+
+
 def load_force_upload(path: Path) -> frozenset[str]:
     path = Path(path)
     if not path.exists():

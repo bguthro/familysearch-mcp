@@ -77,6 +77,16 @@ class RelGapResult:
     sources: tuple[tuple[str, str], ...] = ()  # (line, where its nodes and edges came from)
 
 
+def apply_nofolder_approvals(
+    label: str, status: str, link: str | None, approved_nofolder: Mapping[str, str]
+) -> str | None:
+    """The FamilySearch id for a diagram person: the folder's link, or (only for people with no folder)
+    the id Ben approved under approved_nofolder. Unapproved matches never change anything."""
+    if status == "unmapped" and link is None:
+        return approved_nofolder.get(label) or None
+    return link
+
+
 def _pkey(p: Person) -> str:
     return f"{p.line}/{p.folder}"
 
@@ -169,7 +179,9 @@ def evaluate_edges(
     max_reads: int = 600,
     record_status: Callable[[Person], tuple[str, str]] = record_state_and_status,
     sources: Mapping[str, str] | None = None,
+    nofolder: Mapping[str, str] | None = None,
 ) -> RelGapResult:
+    nofolder = nofolder or {}
     mapped = map_nodes(parsed_by_line, people, record_status)
 
     # 1. unique edges across all lines
@@ -201,7 +213,8 @@ def evaluate_edges(
 
     def link_of(end: _End) -> str | None:
         p = end.mapped.person
-        return current_link(_pkey(p), approved, links) if p is not None and end.mapped.status == "mapped" else None
+        link = current_link(_pkey(p), approved, links) if p is not None and end.mapped.status == "mapped" else None
+        return apply_nofolder_approvals(end.node.name, end.mapped.status, link, nofolder)
 
     # archive parents of each child, for the partial-parents rule
     archive_parents: dict[tuple, list[tuple]] = {}
@@ -261,7 +274,7 @@ def evaluate_edges(
         names = ("parent", "child") if kind == "parent-child" else ("first spouse", "second spouse")
         blocked = ""
         for end, role in ((a, names[0]), (b, names[1])):
-            if end.mapped.status == "unmapped":
+            if end.mapped.status == "unmapped" and link_of(end) is None:
                 blocked = f"blocked: {role} has no folder"
             elif end.mapped.status == "ambiguous":
                 blocked = f"blocked: {role} fits several folders"
@@ -270,10 +283,11 @@ def evaluate_edges(
             if blocked:
                 break
         if blocked:
-            done("blocked", blocked)
+            done("blocked", blocked, link_of(a), link_of(b))  # keep the linked end's id for the nofolder resolver
             continue
         fa, fb = link_of(a), link_of(b)
-        appr = tuple(e.label for e in (a, b) if approved.get(_pkey(e.mapped.person)))  # type: ignore[arg-type]
+        appr = tuple(e.label for e in (a, b) if (approved.get(_pkey(e.mapped.person)) if e.mapped.person else
+                                                   e.node.name in nofolder))
         if kind == "spouse":
             rels = read(fa)  # type: ignore[arg-type]
             if rels is None:

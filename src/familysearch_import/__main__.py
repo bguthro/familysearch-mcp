@@ -100,11 +100,47 @@ def _relatives(args, repo: Path) -> int:
     return 0
 
 
+def _nofolder(args, repo: Path) -> int:
+    import json
+
+    from familysearch.errors import FSError
+    from .nofolder import find_nofolder_matches
+    from .nofolderreport import nofolder_json, render_nofolder_report
+    from .planreport import load_nofolder_approvals
+
+    import_dir = args.archive / "_import"
+    if is_inside(import_dir, repo):
+        return _err(f"refusing to write inside the repo: {import_dir}")
+    if args.max_reads is not None and args.max_reads < 0:
+        return _err("--max-reads must not be negative")
+    try:
+        relationships = json.loads((import_dir / "relationships.json").read_text(encoding="utf-8"))
+        approved = load_nofolder_approvals(import_dir / "approvals.json")
+        if not isinstance(relationships, dict):
+            raise ValueError("relationships.json is not an object")
+    except FileNotFoundError:
+        return _err(f"relationships.json not found in {import_dir}; run the relationships command first")
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
+        return _err(f"bad input file: {e}")
+    if relationships.get("env") not in (None, args.env):
+        return _err(f"relationships.json was built against {relationships['env']}, not {args.env}")
+    kw = {} if args.max_reads is None else {"max_reads": args.max_reads}
+    try:
+        result = find_nofolder_matches(relationships, _make_reader(args.env), approved, **kw)
+    except FSError as e:
+        return _err(str(e))
+    report_path, json_path = import_dir / "NoFolderReport.md", import_dir / "nofolder.json"
+    report_path.write_text(render_nofolder_report(result), encoding="utf-8")
+    json_path.write_text(json.dumps(nofolder_json(result), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(f"wrote {report_path} and {json_path}" + (" (PARTIAL)" if result.partial else ""))
+    return 0
+
+
 def _relationships(args, repo: Path) -> int:
     import json
 
     from familysearch.errors import FSError
-    from .planreport import load_approvals, load_links
+    from .planreport import load_approvals, load_links, load_nofolder_approvals
     from .relgap import evaluate_edges
     from .relations import RelationsError, load_relations, to_parsed_tree
     from .relgapreport import AWAITING, FALLBACK, REVIEWED, relgap_json, render_relgap_report
@@ -118,6 +154,7 @@ def _relationships(args, repo: Path) -> int:
     try:
         links = load_links(import_dir / "links.json")
         approvals = load_approvals(import_dir / "approvals.json")
+        nofolder = load_nofolder_approvals(import_dir / "approvals.json")
     except FileNotFoundError:
         return _err(f"links.json not found in {import_dir}; run the links command first")
     except (ValueError, KeyError, TypeError, AttributeError) as e:
@@ -149,7 +186,7 @@ def _relationships(args, repo: Path) -> int:
             print(f"note: could not read FamilyTree.md for line {name}")
     kw = {} if args.max_reads is None else {"max_reads": args.max_reads}
     try:
-        result = evaluate_edges(parsed, people, links, approvals, _make_reader(args.env), sources=sources, **kw)
+        result = evaluate_edges(parsed, people, links, approvals, _make_reader(args.env), sources=sources, nofolder=nofolder, **kw)
     except FSError as e:
         return _err(str(e))
     import_dir.mkdir(parents=True, exist_ok=True)
@@ -546,6 +583,11 @@ def main(argv: list[str] | None = None) -> int:
     rl.add_argument("--archive", required=True, type=Path)
     rl.add_argument("--env", required=True, choices=("production", "beta"))
     rl.add_argument("--max-reads", type=int, default=None)
+    nf = sub.add_parser("nofolder", help="match diagram people without a folder to FamilySearch through "
+                        "linked relatives (read-only)")
+    nf.add_argument("--archive", required=True, type=Path)
+    nf.add_argument("--env", required=True, choices=("production", "beta"))
+    nf.add_argument("--max-reads", type=int, default=None)
     rg = sub.add_parser("relationships", help="compare FamilyTree diagram relationships with FamilySearch "
                         "(read-only)")
     rg.add_argument("--archive", required=True, type=Path)
@@ -652,6 +694,8 @@ def main(argv: list[str] | None = None) -> int:
         return _tree_plan(args, repo)
     if args.cmd == "relatives":
         return _relatives(args, repo)
+    if args.cmd == "nofolder":
+        return _nofolder(args, repo)
     if args.cmd == "relationships":
         return _relationships(args, repo)
     if args.cmd == "relations-review":
