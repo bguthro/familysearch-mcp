@@ -1260,6 +1260,181 @@ def test_parenthesised_surname_is_searched_too(tmp_path):  # minor 1
     assert statuses(s) == ["skipped"] and "MMMM-222" in s.outcomes[0].reason
 
 
+# ------------------------------------------------------- round 3 regressions
+
+
+def _resolve(tmp_path, fs, led, keys, gone=(), execute=True):
+    arch = tmp_path / "arch"
+    with RunLock(arch):
+        return resolve_tree(led, TreeServices(fs, fs, arch, "beta"), list(keys), execute=execute,
+                            confirm_gone=list(gone))
+
+
+def test_confirm_gone_lifts_a_key_whose_id_is_unreadable(tmp_path):  # MAJOR 1, scenario A
+    fs = FakeFS()
+    fs.apply = False  # the id came back but the object never became readable
+    s, led = run(tmp_path, fs, [couple()])
+    assert statuses(s) == ["failed-readback"]
+    arch = tmp_path / "arch"
+    with RunLock(arch):
+        rb = rollback_tree(led, TreeServices(fs, fs, arch, "beta"), [couple().key], True)
+    assert rb.outcomes[-1].status == "rollback-failed"
+    plain = _resolve(tmp_path, fs, led, [couple().key], execute=False)
+    assert statuses(plain) == ["still-blocked"]  # no exit without the new flag
+    r = _resolve(tmp_path, fs, led, [couple().key], gone=[couple().key])
+    assert statuses(r) == ["resolved"] and "couple_id R1: absent" in r.outcomes[0].reason
+    assert led.blocked_keys("beta") == {}
+    from familysearch_import.treeexec import _tree_blocked
+    assert _tree_blocked(led, "beta") == {}
+    assert any(x.get("reason") == "confirmed gone by operator" for x in led.records() if x["type"] == "rollback")
+
+
+def test_confirm_gone_after_a_deleted_then_unreadable_rollback(tmp_path):  # scenario B/C
+    fs = FakeFS()
+    fs.apply = False
+    _, led = run(tmp_path, fs, [couple()])
+    fs.couples.pop("R1", None)  # nothing there (or removed by hand on the website)
+    r = _resolve(tmp_path, fs, led, [couple().key], gone=[couple().key], execute=False)
+    assert statuses(r) == ["would-resolve"]
+
+
+def test_confirm_gone_refuses_when_the_id_is_still_there(tmp_path):
+    fs = FakeFS()
+    fs.apply = False
+    _, led = run(tmp_path, fs, [couple()])
+    fs.couples["R1"] = frozenset((A, B))
+    r = _resolve(tmp_path, fs, led, [couple().key], gone=[couple().key])
+    assert statuses(r) == ["still-blocked"] and "present" in r.outcomes[0].reason
+    assert couple().key in led.blocked_keys("beta")
+
+
+def test_confirm_gone_does_not_count_a_merge_redirect_as_gone(tmp_path):
+    fs = FakeFS()
+    fs.new_name = None
+    fs.write_error = None
+    fs.new_living = None  # read-back fails: the id stays recorded
+    _, led = run(tmp_path, fs, [newp()])
+    fs.people["NNNN-001"]["status"] = "redirected"
+    r = _resolve(tmp_path, fs, led, [newp().key], gone=[newp().key])
+    assert statuses(r) == ["still-blocked"] and "redirected" in r.outcomes[0].reason
+    fs.people["NNNN-001"]["status"] = "deleted"
+    r = _resolve(tmp_path, fs, led, [newp().key], gone=[newp().key])
+    assert statuses(r) == ["resolved"]
+
+
+def test_confirm_gone_key_must_also_be_a_key(tmp_path):
+    fs = FakeFS()
+    fs.apply = False
+    _, led = run(tmp_path, fs, [couple()])
+    with pytest.raises(GateError, match="also be given as --key"):
+        _resolve(tmp_path, fs, led, [couple().key], gone=["spouse:ZZZZ-001:ZZZZ-002"])
+
+
+def test_child_link_skipped_when_its_parents_couple_write_is_unresolved(tmp_path):  # MAJOR 3
+    fs = FakeFS()
+    fs.double_write = True
+    s, led = run(tmp_path, fs, [couple(A, B), child(C, (A, B))], seed=False)
+    assert statuses(s) == ["failed-readback"]
+    n = len(fs.writes())
+    s2, _ = run(tmp_path, fs, [couple(A, B), child(C, (A, B))], seed=False, only=[child(C, (A, B)).key])
+    assert statuses(s2) == ["skipped"] and "blocked key" in s2.outcomes[0].reason
+    assert len(fs.writes()) == n
+    s3, _ = run(tmp_path, fs, [couple(A, B), child(C, (A, B))], seed=False, only=[child(C, (A, B)).key],
+                execute=False)
+    assert statuses(s3) == ["skipped"]  # dry run refuses too
+
+
+def test_child_link_skipped_when_a_blocked_key_involves_a_parent(tmp_path):
+    fs = FakeFS()
+    fs.write_error = 500
+    run(tmp_path, fs, [child(E, (A,))], seed=False)  # blocked: E's link to A failed
+    fs.write_error = None
+    s, _ = run(tmp_path, fs, [child(C, (A,)), child(E, (A,))], seed=False, only=[child(C, (A,)).key])
+    assert statuses(s) == ["skipped"] and "blocked key" in s.outcomes[0].reason
+    assert fs.writes() == [("create_parent_child", E, (A,))]
+
+
+def test_couple_rollback_child_guard_reads_strictly(tmp_path):  # minor 1
+    fs = FakeFS()
+    _, led = run(tmp_path, fs, [couple()])
+    fs.cap["X"] = (E, (A,))
+    fs.no_links.add(E)  # a child whose parents section would read as empty
+    arch = tmp_path / "arch"
+    with RunLock(arch):
+        rb = rollback_tree(led, TreeServices(fs, fs, arch, "beta"), [], True)
+    assert rb.outcomes[-1].status == "rollback-failed"
+    assert not [c for c in fs.calls if c[0] == "delete_couple"]
+
+
+def test_unreadable_couple_id_list_refuses_a_child_link(tmp_path):  # minor 2
+    fs = FakeFS()
+    fs.couples["PRE"] = frozenset((A, B))
+    fs.get_couple_ids = lambda a, b: []
+    s, _ = run(tmp_path, fs, [child(C, (A, B))], seed=False)
+    assert statuses(s) == ["skipped"] and "could not be read" in s.outcomes[0].reason
+
+
+def test_new_couple_ids_are_named_in_the_readback_failure(tmp_path):  # minor 2
+    fs = FakeFS()
+    fs.derive_couple = True
+    s, _ = run(tmp_path, fs, [child(C, (A, B))])
+    assert statuses(s) == ["failed-readback"] and "new couple id(s): D" in s.outcomes[0].reason
+
+
+def test_legacy_derived_couple_id_can_still_be_rolled_back(tmp_path):  # minor 3
+    fs = FakeFS()
+    fs.cap["P1"] = (C, (A, B))
+    fs.couples["D1"] = frozenset((A, B))
+    arch, pf, _ = pf_for(tmp_path, [child(C, (A, B))])
+    led = Ledger(arch / "_import" / "tree-ledger.jsonl")
+    led._append({"type": "result", "intent_id": "i", "key": child(C, (A, B)).key, "kind": "add-child-parents",
+                 "env": "beta", "status": "created", "reason": "", "created": {"child_parents_id": "P1",
+                 "derived_couple_id": "D1"}, "params": child(C, (A, B)).params})
+    with RunLock(arch):
+        rb = rollback_tree(led, TreeServices(fs, fs, arch, "beta"), [], True)
+    assert [o.status for o in rb.outcomes] == ["rolled-back", "rolled-back"]
+    assert [c[0] for c in fs.writes()] == ["delete_cap", "delete_couple"]
+
+
+def test_dry_run_only_ignores_children_linked_to_exactly_this_pair(tmp_path):  # minor 4
+    fs = FakeFS()
+    _, led = run(tmp_path, fs, [couple()])
+    led._append({"type": "result", "intent_id": "x", "key": "child-parents:" + E, "kind": "add-child-parents",
+                 "env": "beta", "status": "created", "reason": "", "created": {"child_parents_id": "PX"},
+                 "params": {"child": E, "parents": [A, D]}})
+    fs.cap["PX"] = (E, (A, D))
+    fs.cap["THEIRS"] = (E, (A, B))  # E also has A and B as parents, by someone else
+    arch = tmp_path / "arch"
+    dry = rollback_tree(led, TreeServices(fs, fs, arch, "beta"), [couple().key], False)
+    assert dry.outcomes[-1].status == "rollback-failed" and "names both people" in dry.outcomes[-1].reason
+
+
+def test_guarded_writer_environment_must_match_the_services(tmp_path):  # minor 5
+    fs = FakeFS()
+    arch, pf, _ = pf_for(tmp_path, [couple()])
+    svc = TreeServices(fs, GuardedTreeWriter(fs, Environment.PRODUCTION, True), arch, "beta")
+    with RunLock(arch):
+        with pytest.raises(GateError, match="different environment"):
+            run_tree_plan(pf, svc, Ledger(arch / "_import" / "tree-ledger.jsonl"), execute=True)
+    assert fs.calls == []
+
+
+def test_cli_confirm_gone_flag(tmp_path, monkeypatch):
+    from familysearch_import import __main__ as cli
+    from familysearch_import import treeexec as te
+    fs = FakeFS()
+    fs.apply = False
+    _, _, plan = make(tmp_path, [couple()])
+    monkeypatch.setattr(te, "build_tree_services",
+                        lambda a, e, ap: TreeServices(reader=fs, writer=fs, archive=a, env=e))
+    arch = str(tmp_path / "arch")
+    assert cli.main(["tree-execute", "--archive", arch, "--env", "beta", "--plan", "TreePlan.json",
+                     "--confirm-hash", plan.plan_hash, "--execute"]) == 3
+    base = ["--archive", arch, "--env", "beta", "--key", couple().key]
+    assert cli.main(["tree-resolve", *base, "--execute"]) == 3
+    assert cli.main(["tree-resolve", *base, "--confirm-gone", couple().key, "--execute"]) == 0
+
+
 # ---------------------------------------------------------------- guarded writer (M9)
 
 

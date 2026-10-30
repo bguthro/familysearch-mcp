@@ -362,7 +362,8 @@ class ReadOnlyFS:
         if not (isinstance(users, list) and users and isinstance(users[0], dict)):
             raise ReadFailed("read failed for current user: unexpected shape")
         u = users[0]
-        ids = frozenset(str(u[k]) for k in ("id", "contributorId", "personId") if u.get(k))
+        # the signed-in user's OWN ids only (CIS id, tree-person id, tree/agent id); never matched by name
+        ids = frozenset(str(u[k]) for k in ("id", "personId", "treeUserId", "cisUserId") if u.get(k))
         if not ids:
             raise ReadFailed("read failed for current user: no id")
         return ids

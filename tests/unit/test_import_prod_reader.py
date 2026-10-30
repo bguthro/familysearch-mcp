@@ -575,14 +575,19 @@ def test_search_duplicates_queries_every_alternative_surname():
 
 
 def test_current_user_ids_and_couple_extras():
-    fs, _, _ = make({_url("/platform/users/current"): [Resp(200, {"users": [{"id": "U-1", "contributorId": "C-1"}]})]})
-    assert fs.current_user_ids() == frozenset(("U-1", "C-1"))
+    # realistic shape: the CIS id, the tree person and the tree/agent id are three different values
+    user = {"id": "cis.user.MZZZ-USR1", "personId": "PZZZ-001", "treeUserId": "AZZZ-AGT1",
+            "contributorId": "C-1", "displayName": "Pat Example"}
+    fs, _, _ = make({_url("/platform/users/current"): [Resp(200, {"users": [user]})]})
+    ids = fs.current_user_ids()
+    assert ids == frozenset(("cis.user.MZZZ-USR1", "PZZZ-001", "AZZZ-AGT1"))
+    assert "C-1" not in ids and "Pat Example" not in ids  # invented field and names never count
     couple = Resp(200, {"relationships": [{"facts": [{}], "links": {"change-history": {"href": "/c/hist"}}}]})
     routes = {_url(COUPLE): [couple], "/c/hist": [Resp(200, {"entries": [
-        {"title": "Create", "contributors": [{"resourceId": "C-1"}]}]})]}
+        {"title": "Create", "contributors": [{"resourceId": "AZZZ-AGT1"}]}]})]}
     fs, _, _ = make(routes)
     ex = fs.get_couple_extras("R-1")
-    assert ex["facts"] == 1 and ex["sources"] == 0 and ex["changes"][0][0] == "C-1"
+    assert ex["facts"] == 1 and ex["sources"] == 0 and ex["changes"][0][0] == "AZZZ-AGT1"
     fs, _, _ = make({_url(COUPLE): [Resp(200, {"relationships": [{"links": {}}]})]})
     with pytest.raises(prod_reader.ReadFailed):
         fs.get_couple_extras("R-1")

@@ -419,8 +419,20 @@ class Drill:
                     + str(bool(rels) and all(r.get("id") and r.get("person1") and r.get("person2") for r in rels)))
                 obs(f"get_couple(id) names the pair: {self.reader.get_couple(cid) == frozenset((i['p1'], i['p2']))}; "
                     f"get_couple_ids == [id]: {self.reader.get_couple_ids(i['p1'], i['p2']) == [cid]}")
+                from familysearch.tree import couple_url
+
+                raw = self.reader._get_json(couple_url(self.client.base_url, cid), "couple") or {}
+                rel0 = (raw.get("relationships") or [{}])[0]
+                obs(f"couple GET top-level keys: {sorted(raw)}; relationship keys: {sorted(rel0)}")
                 ex = self.reader.get_couple_extras(cid)
                 me = self.reader.current_user_ids()
+                user = (self.reader._get_json(self.client.base_url + "/platform/users/current", "user") or {}) \
+                    .get("users", [{}])[0]
+                contributors = {w for w, _ in ex["changes"]}
+                obs("which /users/current fields appear as change-history contributor resourceIds: "
+                    + ", ".join(f"{f}={bool(user.get(f)) and str(user.get(f)) in contributors}"
+                                for f in ("id", "personId", "treeUserId", "cisUserId", "contributorId"))
+                    + f"; user-record keys present: {sorted(user)}")
                 who = [w for w, _ in ex["changes"]]
                 obs(f"couple change history: entries={len(who)}; contributor populated={bool(who) and all(who)}; "
                     f"all contributors are the current user={bool(who) and all(w in me for w in who)}; "

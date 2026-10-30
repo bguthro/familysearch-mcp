@@ -511,7 +511,7 @@ def _tree_resolve(args, repo: Path) -> int:
             services = te.build_tree_services(args.archive, args.env, args.allow_production)
             summary = te.resolve_tree(ledger, services, args.key, args.execute,
                                       only=args.only, allow_production=args.allow_production,
-                                      confirm_absent=args.confirm_absent)
+                                      confirm_absent=args.confirm_absent, confirm_gone=args.confirm_gone)
             print(("RESOLVED" if args.execute else "DRY RUN (nothing recorded; pass --execute)")
                   + f" env={args.env}")
             _print_outcomes(summary, True)
@@ -606,6 +606,8 @@ def main(argv: list[str] | None = None) -> int:
     tr_.add_argument("--env", required=True, choices=("production", "beta"))
     tr_.add_argument("--key", action="append", required=True)
     tr_.add_argument("--only", action="append", default=[], metavar="ACTION_KEY")
+    tr_.add_argument("--confirm-gone", action="append", default=[], metavar="KEY",
+                     help="lift a block when EVERY id recorded on the key reads as absent by id from the API")
     tr_.add_argument("--confirm-absent", action="append", default=[], metavar="KEY",
                      help="a create-person key you have CHECKED BY HAND is not on FamilySearch "
                           "(search alone never lifts a create-person block)")
