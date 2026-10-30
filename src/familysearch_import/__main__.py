@@ -289,6 +289,29 @@ def _plan(args, repo: Path) -> int:
     return 0
 
 
+def _tree_plan(args, repo: Path) -> int:
+    import json
+
+    from .planreport import load_links
+    from .treeplan import build_tree_plan, load_tree_approvals, write_tree_plan
+
+    import_dir = args.archive / "_import"
+    if is_inside(import_dir, repo):
+        return _err(f"refusing to write inside the repo: {import_dir}")
+    try:
+        links = load_links(import_dir / "links.json")
+        relationships = json.loads((import_dir / "relationships.json").read_text(encoding="utf-8"))
+        approvals = load_tree_approvals(import_dir / "approvals.json")
+    except FileNotFoundError as e:
+        return _err(f"{Path(e.filename).name} not found in {import_dir}; run the earlier commands first")
+    except ValueError as e:
+        return _err(str(e))
+    plan = build_tree_plan(relationships, approvals, links, args.env)
+    path = write_tree_plan(args.archive, plan)
+    print(f"wrote {path} and its report (plan hash {plan.plan_hash})")
+    return 0
+
+
 def _print_outcomes(summary) -> None:
     for o in summary.outcomes:
         print(f"{o.status}: {o.kind} {o.person} [{o.key[:8]}] {o.reason}")
@@ -418,6 +441,9 @@ def main(argv: list[str] | None = None) -> int:
     pl.add_argument("--archive", required=True, type=Path)
     pl.add_argument("--env", required=True, choices=("production", "beta"))
     pl.add_argument("--limit", type=int)
+    tp = sub.add_parser("tree-plan", help="plan approved couples, parent links and new people (read-only)")
+    tp.add_argument("--archive", required=True, type=Path)
+    tp.add_argument("--env", default="production", choices=("production", "beta"))
     rl = sub.add_parser("relatives", help="find candidates for unlinked people through relatives of linked "
                         "people (read-only)")
     rl.add_argument("--archive", required=True, type=Path)
@@ -485,6 +511,8 @@ def main(argv: list[str] | None = None) -> int:
         return _links(args, repo)
     if args.cmd == "plan":
         return _plan(args, repo)
+    if args.cmd == "tree-plan":
+        return _tree_plan(args, repo)
     if args.cmd == "relatives":
         return _relatives(args, repo)
     if args.cmd == "relationships":
