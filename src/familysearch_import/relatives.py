@@ -108,7 +108,7 @@ def resolve_through_relatives(
                     continue
                 for r in rels:
                     rid = r.fs.id
-                    if r.fs.living is True:
+                    if r.fs.living is not False:  # unknown counts as living: never named
                         living_ids.add(rid)
                         continue
                     if rid in st["seen"]:
