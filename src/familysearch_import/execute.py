@@ -38,8 +38,24 @@ class GateError(Exception):
     """A safety gate refused the run. Nothing was written."""
 
 
+MIN_SETTLE_SECONDS = 15 * 60  # eventual consistency: an intent must be this old to call "absent"
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def utc_now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return _utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def intent_age_seconds(rec: dict) -> float:
+    """Age of an intent line; unparsable or missing timestamps count as brand new (fail closed)."""
+    try:
+        ts = datetime.strptime(rec["ts"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except (KeyError, TypeError, ValueError):
+        return 0.0
+    return (_utcnow() - ts).total_seconds()
 
 
 def _forbid_repo(path: Path, what: str) -> None:
@@ -278,9 +294,28 @@ class Ledger:
                 if st in ("failed", "failed-readback", "partial", "ambiguous") or (
                         has_id and st != "created"):
                     blocked[key] = st
-            elif r.get("type") == "rollback" and r.get("status") == "rolled-back":
-                blocked.pop(key, None)
+                elif st == "created" and r.get("env") == env:
+                    blocked.pop(key, None)  # e.g. found on FamilySearch by resolve/reconcile
+            elif (r.get("type") == "rollback" and r.get("status") == "rolled-back") or \
+                    r.get("type") == "resolved":
+                # lifting a block needs an exact env match: a line without env never lifts
+                if r.get("env") == env:
+                    blocked.pop(key, None)
         return blocked
+
+    def progress(self, *, key: str, env: str, intent_id: str, source_description_id: str) -> None:
+        """Crash-window marker: the description exists but is not attached yet."""
+        self._append({"type": "progress", "intent_id": intent_id, "ts": utc_now(), "key": key,
+                      "env": env, "source_description_id": source_description_id})
+
+    def progress_for(self, intent_id: str) -> str | None:
+        for r in self.records():
+            if r.get("type") == "progress" and r.get("intent_id") == intent_id:
+                return r.get("source_description_id")
+        return None
+
+    def resolved(self, *, key: str, env: str, reason: str) -> None:
+        self._append({"type": "resolved", "ts": utc_now(), "key": key, "env": env, "reason": reason})
 
     def intent(self, *, action: Action, env: str, plan_hash: str, before: int | None = None) -> str:
         """Append an intent line (flushed to disk) BEFORE the write; returns its intent id."""
@@ -483,18 +518,31 @@ def _reconcile(services: ExecServices, ledger: Ledger, execute: bool, out: list[
         if not (isinstance(key, str) and _ID_RE.match(fs_id or "")) \
                 or probe.kind not in ("upload-document", "add-source"):
             raise _Stop("an unresolved ledger intent is malformed; resolve it manually")
-        present, count = _present_in(services.reader, probe)  # ReadFailed -> stop in caller
         who = f"{probe.kind}"
         common = dict(intent_id=rec["intent_id"], key=key, kind=probe.kind, fs_id=fs_id,
                       person=rec.get("person"), env=services.env, title=probe.title, url=probe.url)
         held.add(key)  # a reconciled item never becomes eligible again within this run
+        sd = ledger.progress_for(rec["intent_id"])
+        if sd is not None:  # crashed between create_description and attach: a partial, with its id
+            if not valid_object_id(sd):
+                raise _Stop("an unresolved ledger intent has an invalid progress id; resolve manually")
+            if execute:
+                ledger.result(status="partial", reconciled=True, source_description_id=sd,
+                              reason="interrupted after the description was created, before attach",
+                              **common)
+            blocked[key] = "partial"
+            out.append(Outcome(key, who, rec.get("person") or "", "partial",
+                               "interrupted run: description created but not attached (rollback --key)"))
+            continue
+        present, count = _present_in(services.reader, probe)  # ReadFailed -> stop in caller
         if present:
             if execute:
                 ledger.result(status="created", reason="created (reconciled)", reconciled=True, **common)
             executed.add(key)
             out.append(Outcome(key, who, rec.get("person") or "", "reconciled-created",
                                "interrupted run: object found on FamilySearch (no id recorded)"))
-        elif isinstance(rec.get("before"), int) and count == rec["before"]:
+        elif isinstance(rec.get("before"), int) and count == rec["before"] \
+                and intent_age_seconds(rec) >= MIN_SETTLE_SECONDS:
             if execute:
                 ledger.result(status="skipped", reconciled=True,
                               reason="interrupted before write; absent and count unchanged", **common)
@@ -503,7 +551,7 @@ def _reconcile(services: ExecServices, ledger: Ledger, execute: bool, out: list[
         else:
             if execute:
                 ledger.result(status="ambiguous", reconciled=True,
-                              reason=f"interrupted; absent but count changed (before {rec.get('before')}, now {count})",
+                              reason=f"interrupted; absent but unsettled or count changed (before {rec.get('before')}, now {count})",
                               **common)
             blocked[key] = "ambiguous"
             out.append(Outcome(key, who, rec.get("person") or "", "ambiguous",
@@ -525,26 +573,25 @@ def _current_links(archive: Path) -> tuple[dict, dict]:
         approvals = load_approvals(imp / "approvals.json")
     except (OSError, ValueError) as e:
         raise GateError(f"approvals.json unreadable: {type(e).__name__}") from e
-    links: dict = {}
-    if (imp / "links.json").is_file():
-        try:
-            links = load_links(imp / "links.json")
-        except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
-            raise GateError(f"links.json unreadable: {type(e).__name__}") from e
+    if not (imp / "links.json").is_file():
+        raise GateError("links.json not found; the link re-check needs it (as the planner does)")
+    try:
+        links = load_links(imp / "links.json")
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        raise GateError(f"links.json unreadable: {type(e).__name__}") from e
     return approvals, links
 
 
-def _current_link(person, approvals: dict, links: dict) -> str | None:
-    from .record import RECORD_FILE, load_record
+def _link_problem(person, expected: str, approvals: dict, links: dict) -> str | None:
+    """None when the person's CURRENT link (the planner's rule) equals the planned id."""
+    from .planner import current_link
     pkey = f"{person.line}/{person.folder}"
-    link = approvals.get(pkey) or links.get(pkey)
-    if link:
-        return link
-    try:
-        rec = load_record(person.path / RECORD_FILE)
-    except Exception:
+    link = current_link(pkey, approvals, links)
+    if link == expected:
         return None
-    return rec.get("familysearch_id") if rec.get("reviewed") is True else None
+    if not link and pkey in links and pkey not in approvals:
+        return "link revoked since planning; re-plan"
+    return "link changed since planning; re-plan"
 
 
 def run_plan(plan: PlanFile, services: ExecServices, ledger: Ledger, *, only: Sequence[str] = (),
@@ -581,7 +628,8 @@ def run_plan(plan: PlanFile, services: ExecServices, ledger: Ledger, *, only: Se
         def check_blocked() -> None:
             for a in planned:
                 if (not scope or f"{a.person_line}/{a.person_folder}" in scope) and a.key in blocked:
-                    raise _Stop(f"resolve key {a.key} first ({blocked[a.key]}; use rollback --key)")
+                    raise _Stop(f"resolve key {a.key} first ({blocked[a.key]}); run `resolve --key K`, or "
+                                 "`rollback --key K` if it carries an object id")
 
         check_blocked()  # before any read or write
         try:
@@ -615,8 +663,9 @@ def run_plan(plan: PlanFile, services: ExecServices, ledger: Ledger, *, only: Se
             if status != "deceased":
                 skip(a, "archive status is no longer deceased")
                 continue
-            if _current_link(person, approvals, links) != a.fs_id:
-                skip(a, "link changed since planning; re-plan")
+            problem = _link_problem(person, a.fs_id, approvals, links)
+            if problem:
+                skip(a, problem)
                 continue
             data = b""
             if a.kind == "upload-document":
@@ -698,38 +747,52 @@ def _write_one(a: Action, who: str, data: bytes, ctype: str, before: int, plan: 
         raise _Stop(reason)
 
     try:
-        if a.kind == "upload-document":
-            mem_id = services.memories.upload_to_person(
-                a.fs_id, data, filename=Path(a.file or "").name, content_type=ctype,
-                title=a.title, reason=REASON)
-            if not valid_object_id(mem_id):
-                mem_id = None  # never record an id we would not trust for a later DELETE
-                fail("failed-readback", "upload returned a missing or invalid memory id")
-        else:
-            sd_id = services.sources.create_description(a.url, a.title, a.title, reason=REASON)
-            if not valid_object_id(sd_id):
-                sd_id = None
-                fail("failed-readback", "create returned a missing or invalid source description id")
+        try:
+            if a.kind == "upload-document":
+                mem_id = services.memories.upload_to_person(
+                    a.fs_id, data, filename=Path(a.file or "").name, content_type=ctype,
+                    title=a.title, reason=REASON)
+                if not valid_object_id(mem_id):
+                    mem_id = None  # never record an id we would not trust for a later DELETE
+                    fail("failed-readback", "upload returned a missing or invalid memory id")
+            else:
+                sd_id = services.sources.create_description(a.url, a.title, a.title, reason=REASON)
+                if not valid_object_id(sd_id):
+                    sd_id = None
+                    fail("failed-readback", "create returned a missing or invalid source description id")
+                # crash window: record the id durably BEFORE attach, so a hard crash is recoverable
+                ledger.progress(key=a.key, env=services.env, intent_id=intent_id,
+                                source_description_id=sd_id)
+        except _Stop:
+            raise
+        except Exception as e:  # any write error: record and stop; never retry blindly
+            fail("partial" if sd_id else "failed", f"write error: {_http_status(e)}")
+
+        if a.kind == "add-source":
+            try:
+                services.sources.attach_to_person(a.fs_id, sd_id, reason=REASON)
+            except Exception as e:  # description exists but is not attached: partial, blocks the key
+                fail("partial", f"description created but attach failed: {_http_status(e)}")
+
+        try:
+            present, after = _present_in(services.reader, a)
+        except Exception as e:  # incl. expired token: the created id must still reach the ledger
+            fail("failed-readback", f"read-back failed: {_http_status(e)}")
+        if not present or after != before + 1:
+            fail("failed-readback", f"read-back mismatch (before {before}, after {after}, present {present})")
+        ledger.result(status="created", reason="created", memory_id=mem_id,
+                      source_description_id=sd_id, **common)
+        out.append(Outcome(a.key, a.kind, who, "created", "created"))
     except _Stop:
         raise
-    except Exception as e:  # any write error: record and stop; never retry blindly
-        fail("failed", f"write error: {_http_status(e)}")
-
-    if a.kind == "add-source":
+    except BaseException as e:  # KeyboardInterrupt etc.: keep every id known so far, then re-raise
+        status = "partial" if (mem_id or sd_id) else "ambiguous"
         try:
-            services.sources.attach_to_person(a.fs_id, sd_id, reason=REASON)
-        except Exception as e:  # description exists but is not attached: partial, blocks the key
-            fail("partial", f"description created but attach failed: {_http_status(e)}")
-
-    try:
-        present, after = _present_in(services.reader, a)
-    except Exception as e:  # incl. expired token: the created id must still reach the ledger
-        fail("failed-readback", f"read-back failed: {_http_status(e)}")
-    if not present or after != before + 1:
-        fail("failed-readback", f"read-back mismatch (before {before}, after {after}, present {present})")
-    ledger.result(status="created", reason="created", memory_id=mem_id,
-                  source_description_id=sd_id, **common)
-    out.append(Outcome(a.key, a.kind, who, "created", "created"))
+            ledger.result(status=status, reason=f"interrupted: {type(e).__name__}", memory_id=mem_id,
+                          source_description_id=sd_id, **common)
+        except Exception:
+            pass
+        raise
 
 
 # ------------------------------------------------------------------------ rollback
@@ -754,7 +817,8 @@ def _rollback_targets(ledger: Ledger, env: str, keys: Sequence[str]) -> list[dic
     """
     recs = ledger.records()
     rolled = {(r.get("key"), r.get("memory_id"), r.get("source_description_id"))
-              for r in recs if r.get("type") == "rollback" and r.get("status") == "rolled-back"}
+              for r in recs if r.get("type") == "rollback" and r.get("status") == "rolled-back"
+              and r.get("env") == env}
     wanted = set(keys)
     known = {r.get("key") for r in recs if r.get("type") == "result" and r.get("env") == env}
     missing = wanted - known
@@ -855,6 +919,81 @@ def _warn(summary, ledger: Ledger) -> None:
     ledger.records()  # refreshes corrupt_lines
     if ledger.corrupt_lines:
         summary.warnings.append(f"{ledger.corrupt_lines} unreadable ledger line(s) ignored; inspect the ledger")
+
+
+# ------------------------------------------------------------------------ resolve
+
+def resolve(ledger: Ledger, services: ExecServices, keys: Sequence[str], execute: bool = False,
+            *, only: Sequence[str] = (), allow_production: bool = False) -> RunSummary:
+    """Operator path out of a blocked key that has no object id.
+
+    Title present -> record ``created (reconciled)``. Absent AND count unchanged since the key's
+    last intent AND that intent is at least 15 minutes old -> record ``resolved``. Anything else
+    stays blocked ("check FamilySearch by hand").
+    """
+    check_run_gates(services.env, allow_production, only, 1)
+    if execute and not (ledger.path.parent / "execute.lock").is_file():
+        raise GateError("execute requires the run lock to be held")
+    keys = list(dict.fromkeys(keys))
+    if not keys:
+        raise GateError("resolve needs at least one --key")
+    scope = parse_only(only)
+    if services.env == "production" and len(keys) > PRODUCTION_HARD_CAP:
+        raise GateError(f"refusing to resolve more than {PRODUCTION_HARD_CAP} keys in production")
+    blocked = ledger.blocked_keys(services.env)
+    for k in keys:
+        if k not in blocked:
+            raise GateError(f"key is not blocked in {services.env}: {k[:12]}")
+    recs = ledger.records()
+    out: list[Outcome] = []
+    summary = RunSummary(execute, out)
+    from .prod_reader import ReadFailed
+    for k in keys:
+        intents = [r for r in recs if r.get("type") == "intent" and r.get("key") == k
+                   and r.get("env") == services.env]
+        if not intents:
+            out.append(Outcome(k, "", "", "still-blocked", "no intent recorded; check FamilySearch by hand"))
+            continue
+        rec = intents[-1]
+        who = rec.get("person") or ""
+        if scope and who not in scope:
+            out.append(Outcome(k, rec.get("kind") or "", who, "skipped", "outside --only"))
+            continue
+        has_id = ledger.progress_for(rec["intent_id"]) or any(
+            r.get("type") == "result" and r.get("key") == k and r.get("env") == services.env
+            and (r.get("memory_id") or r.get("source_description_id")) for r in recs)
+        if has_id:
+            out.append(Outcome(k, rec.get("kind") or "", who, "still-blocked",
+                               "carries an object id; use rollback --key"))
+            continue
+        probe = Action(k, rec.get("kind") or "", "", "", rec.get("fs_id") or "", rec.get("file"),
+                       rec.get("title"), rec.get("url"), "planned", "", rec.get("sha256"))
+        if probe.kind not in ("upload-document", "add-source") or not _ID_RE.match(probe.fs_id):
+            out.append(Outcome(k, probe.kind, who, "still-blocked", "malformed intent; check FamilySearch by hand"))
+            continue
+        try:
+            present, count = _present_in(services.reader, probe)
+        except Exception as e:
+            summary.stopped, summary.stop_reason = True, f"read failed: {_http_status(e)}"
+            break
+        common = dict(intent_id=rec["intent_id"], key=k, kind=probe.kind, fs_id=probe.fs_id, person=who,
+                      env=services.env, title=probe.title, url=probe.url)
+        if present:
+            if execute:
+                ledger.result(status="created", reason="created (reconciled)", reconciled=True, **common)
+            out.append(Outcome(k, probe.kind, who, "resolved-created" if execute else "would-resolve-created",
+                               "found on FamilySearch; recorded as created (no id)"))
+        elif isinstance(rec.get("before"), int) and count == rec["before"] \
+                and intent_age_seconds(rec) >= MIN_SETTLE_SECONDS:
+            if execute:
+                ledger.resolved(key=k, env=services.env, reason="absent, count unchanged, intent settled")
+            out.append(Outcome(k, probe.kind, who, "resolved" if execute else "would-resolve",
+                               "absent on FamilySearch; block lifted"))
+        else:
+            out.append(Outcome(k, probe.kind, who, "still-blocked",
+                               "check FamilySearch by hand (absent but count changed or intent too recent)"))
+    _warn(summary, ledger)
+    return summary
 
 
 # ---------------------------------------------------------------- real services

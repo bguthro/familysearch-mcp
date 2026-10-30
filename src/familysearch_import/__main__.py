@@ -184,6 +184,38 @@ def _rollback(args, repo: Path) -> int:
         return _err(f"FamilySearch session/environment check failed: {ex._http_status(e)}")
 
 
+def _resolve(args, repo: Path) -> int:
+    import requests
+    from familysearch.errors import FSError
+    from . import execute as ex
+
+    ledger_path = args.archive / "_import" / "ledger.jsonl"
+    try:
+        ex.check_run_gates(args.env, args.allow_production, args.only, 1)
+        if not ledger_path.is_file():
+            raise ex.GateError(f"no ledger at {ledger_path}")
+        ledger = ex.Ledger(ledger_path)
+
+        def go() -> int:
+            services = ex.build_services(args.archive, args.env, args.allow_production)
+            summary = ex.resolve(ledger, services, args.key, args.execute,
+                                  only=args.only, allow_production=args.allow_production)
+            print(("RESOLVED" if args.execute else "DRY RUN (nothing recorded; pass --execute)")
+                  + f" env={args.env}")
+            _print_outcomes(summary)
+            return 3 if summary.stopped or any(o.status == "still-blocked" for o in summary.outcomes) else 0
+
+        if args.execute:
+            with ex.RunLock(args.archive, break_lock=getattr(args, "break_lock", False)):
+                return go()
+        return go()
+    except ex.GateError as e:
+        return _err(str(e))
+    except (FSError, requests.RequestException) as e:
+        # type and HTTP status only: never str(e), which can carry response text
+        return _err(f"FamilySearch session/environment check failed: {ex._http_status(e)}")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="familysearch_import")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -212,7 +244,18 @@ def main(argv: list[str] | None = None) -> int:
     ex.add_argument("--execute", action="store_true", help="actually write (default: dry run)")
     ex.add_argument("--allow-production", action="store_true")
     ex.add_argument("--break-lock", action="store_true")
-    rb = sub.add_parser("rollback", help="delete objects this tool created (dry run by default)")
+    rs = sub.add_parser("resolve", help="lift the block on a failed/ambiguous key that has no object id "
+                        "(checks FamilySearch; dry run by default)")
+    rs.add_argument("--archive", required=True, type=Path)
+    rs.add_argument("--env", required=True, choices=("production", "beta"))
+    rs.add_argument("--key", action="append", required=True)
+    rs.add_argument("--only", action="append", default=[], metavar="LINE/FOLDER")
+    rs.add_argument("--execute", action="store_true")
+    rs.add_argument("--allow-production", action="store_true")
+    rs.add_argument("--break-lock", action="store_true")
+    rb = sub.add_parser("rollback", help="delete objects this tool created (dry run by default). "
+                        "A rolled-back key still counts as executed in the ledger and cannot be "
+                        "re-imported without a fresh ledger decision.")
     rb.add_argument("--archive", required=True, type=Path)
     rb.add_argument("--env", required=True, choices=("production", "beta"))
     rb.add_argument("--key", action="append", default=[])
@@ -232,6 +275,8 @@ def main(argv: list[str] | None = None) -> int:
         return _execute(args, repo)
     if args.cmd == "rollback":
         return _rollback(args, repo)
+    if args.cmd == "resolve":
+        return _resolve(args, repo)
 
     if args.cmd == "links":
         return _links(args, repo)

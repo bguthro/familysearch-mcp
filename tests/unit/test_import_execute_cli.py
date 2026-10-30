@@ -452,3 +452,38 @@ def test_ledger_symlink_refused(tmp_path):
     with pytest.raises(GateError):
         led.intent(action=up(), env="beta", plan_hash="h")
     assert (tmp_path / "real").read_text() == ""
+
+
+def vargs(tmp_path, key, *extra, env="beta"):
+    return ["resolve", "--archive", str(tmp_path / "arch"), "--env", env, "--key", key, *extra]
+
+
+def test_resolve_cli_flow(tmp_path, harness, monkeypatch, capsys):
+    from datetime import datetime, timedelta, timezone
+    fs, built = harness
+    fs.upload_error = 500
+    mkfile(tmp_path)
+    pf = make_plan(tmp_path, [up()])
+    assert cli.main(args(tmp_path, pf, "--execute")) == 3
+    key = up().key
+    assert cli.main(args(tmp_path, pf, "--execute")) == 3  # blocked; message points at resolve
+    assert "resolve --key" in capsys.readouterr().out
+    assert cli.main(vargs(tmp_path, "f" * 64, "--execute")) == 2  # not blocked
+    assert cli.main(vargs(tmp_path, key, "--execute")) == 3  # too recent
+    monkeypatch.setattr(ex, "_utcnow", lambda: datetime.now(timezone.utc) + timedelta(minutes=20))
+    assert cli.main(vargs(tmp_path, key)) == 0  # dry run by default
+    assert key in Ledger(ledger_path(tmp_path)).blocked_keys("beta")
+    assert cli.main(vargs(tmp_path, key, "--execute")) == 0
+    assert Ledger(ledger_path(tmp_path)).blocked_keys("beta") == {}
+    # production gates apply to resolve too
+    assert cli.main(vargs(tmp_path, key, "--execute", env="production")) == 2
+
+
+def test_rollback_dedup_is_env_filtered(tmp_path, harness):
+    fs, pf = populated(tmp_path, harness, [up("A.pdf")])
+    led = Ledger(ledger_path(tmp_path))
+    key = [r["key"] for r in led.records() if r["type"] == "result"][0]
+    led.rollback_result(key=key, status="rolled-back", reason="other env", env="production",
+                        memory_id="M1")
+    assert cli.main(rargs(tmp_path, "--execute")) == 0
+    assert [c[1] for c in fs.calls if c[0] == "delete-memory"] == ["M1"]

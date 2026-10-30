@@ -57,6 +57,11 @@ class Plan:
     env: str = ""
 
 
+def current_link(pkey: str, approved: Mapping[str, str], links: Mapping[str, str | None]) -> str | None:
+    """The one rule for which FamilySearch id a person folder is linked to (planner and executor)."""
+    return approved.get(pkey) or links.get(pkey)
+
+
 def _norm(s: str | None) -> str:
     return " ".join(nfc(s or "").lower().split())
 
@@ -114,7 +119,7 @@ def _plan_person(person, links, approved, reader, ledger_keys, max_bytes, force_
         return _skipped(person, "living", None)
     if status != "deceased":
         return _skipped(person, "unknown status", None)
-    fs_id = approved.get(pkey) or links.get(pkey)
+    fs_id = current_link(pkey, approved, links)
     if not fs_id:
         return _skipped(person, "no confirmed link", None)
 

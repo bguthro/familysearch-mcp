@@ -4,8 +4,9 @@ import json
 import pytest
 
 from familysearch.errors import FSHTTPError
+from familysearch_import import execute
 from familysearch_import.execute import (
-    ExecServices, GateError, Ledger, PlanFile, RunLock, run_plan, verify_plan_for_execution,
+    ExecServices, GateError, Ledger, PlanFile, RunLock, resolve, run_plan, verify_plan_for_execution,
 )
 from familysearch_import.linking import FsPerson
 from familysearch_import.planner import Action, Plan, PersonPlan, action_key, compute_plan_hash
@@ -28,6 +29,7 @@ class FakeFS:
         self.calls = []
         self.upload_appears = True
         self.upload_error = None
+        self.error_after_effect = False
         self.read_fail = None
         self.next = 0
 
@@ -52,10 +54,12 @@ class FakeFS:
     # memories
     def upload_to_person(self, pid, data, *, filename, content_type, title, reason):
         self.calls.append(("upload", pid, filename, content_type, title, reason, data))
-        if self.upload_error:
-            raise FSHTTPError(self.upload_error, "dup")
         self.next += 1
         mid = f"M{self.next}"
+        if self.upload_error:
+            if self.error_after_effect:  # the server acted, then the response was lost
+                self.mem[pid].append((mid, title))
+            raise FSHTTPError(self.upload_error, "dup")
         if self.upload_appears:
             self.mem[pid].append((mid, title))
         return mid
@@ -121,6 +125,8 @@ def make_plan(tmp_path, actions, env="beta"):
     plan = Plan(tuple(people), compute_plan_hash(people, env), env)
     (imp / "Plan.json").write_text(json.dumps(plan_json(plan)))
     links = {f"{LINE}/{p.folder}": FS_ID for p in people}
+    (imp / "links.json").write_text(json.dumps({"people": [
+        {"line": LINE, "folder": p.folder, "verdict": "confirmed", "chosen_id": FS_ID} for p in people]}))
     (imp / "approvals.json").write_text(json.dumps({"approved_links": links, "approved_plan_hash": plan.plan_hash}))
     return verify_plan_for_execution(arch, imp / "Plan.json", plan.plan_hash, env)
 
@@ -186,13 +192,30 @@ def test_interrupted_run_title_present_is_reconciled_not_reuploaded(tmp_path):
     assert led.records()[-1]["reason"] == "created (reconciled)"
 
 
-def test_interrupted_run_title_absent_is_eligible_again(tmp_path):
+def later(monkeypatch, minutes):
+    from datetime import datetime, timedelta, timezone
+    monkeypatch.setattr(execute, "_utcnow", lambda: datetime.now(timezone.utc) + timedelta(minutes=minutes))
+
+
+def test_interrupted_run_recent_intent_is_ambiguous_even_if_absent(tmp_path):
+    mkfile(tmp_path)
+    a = up()
+    pf = make_plan(tmp_path, [a])
+    fs = FakeFS()
+    Ledger(tmp_path / "arch" / "_import" / "ledger.jsonl").intent(
+        action=a, env="beta", plan_hash=pf.plan_hash, before=0)
+    s, led = run(tmp_path, fs, pf)  # intent is seconds old: eventual consistency
+    assert s.stopped and led.records()[-1]["status"] == "ambiguous" and fs.writes() == []
+
+
+def test_interrupted_run_title_absent_is_eligible_again(tmp_path, monkeypatch):
     mkfile(tmp_path)
     a = up()
     pf = make_plan(tmp_path, [a])
     fs = FakeFS()
     led = Ledger(tmp_path / "arch" / "_import" / "ledger.jsonl")
     led.intent(action=a, env="beta", plan_hash=pf.plan_hash, before=0)
+    later(monkeypatch, 20)
     s, led = run(tmp_path, fs, pf)
     # never eligible again within the same run ...
     assert [o.status for o in s.outcomes] == ["reconciled-absent", "skipped"]
@@ -268,21 +291,58 @@ def test_link_changed_since_planning_is_skipped(tmp_path):
     assert s.outcomes[0].reason == "link changed since planning; re-plan" and fs.calls == []
 
 
-def test_no_current_link_is_skipped_but_reviewed_record_link_counts(tmp_path):
+def set_links(tmp_path, approved=None, confirmed="keep"):
+    imp = tmp_path / "arch" / "_import"
+    d = json.loads((imp / "approvals.json").read_text())
+    d["approved_links"] = approved or {}
+    (imp / "approvals.json").write_text(json.dumps(d))
+    if confirmed != "keep":
+        (imp / "links.json").write_text(json.dumps({"people": [
+            {"line": LINE, "folder": FOLDER, "verdict": "confirmed" if confirmed else "unconfirmed",
+             "chosen_id": confirmed}]}))
+
+
+def test_link_rule_is_the_planners_not_the_record(tmp_path):
+    from familysearch_import.planner import current_link
+    assert current_link("k", {"k": "A"}, {"k": "B"}) == "A"
+    assert current_link("k", {}, {"k": "B"}) == "B"
+    assert current_link("k", {}, {"k": None}) is None
     f = mkfile(tmp_path)
     pf = make_plan(tmp_path, [up()])
-    appr = tmp_path / "arch" / "_import" / "approvals.json"
-    d = json.loads(appr.read_text())
-    d["approved_links"] = {}
-    appr.write_text(json.dumps(d))
-    fs = FakeFS()
-    s, _ = run(tmp_path, fs, pf)
-    assert "link changed" in s.outcomes[0].reason and fs.calls == []
+    set_links(tmp_path, approved={}, confirmed=None)  # revoked
     rec = {"version": 1, "status": "deceased", "familysearch_id": FS_ID, "names": [], "gender": None,
            "facts": [], "relationships": [], "sources": [], "reviewed": True}
-    (f.parent / "ImportRecord.json").write_text(json.dumps(rec))
+    (f.parent / "ImportRecord.json").write_text(json.dumps(rec))  # no longer a fallback
+    fs = FakeFS()
     s, _ = run(tmp_path, fs, pf)
+    assert s.outcomes[0].reason == "link revoked since planning; re-plan" and fs.calls == []
+
+
+def test_links_fall_back_to_links_json_when_not_approved(tmp_path):
+    mkfile(tmp_path)
+    pf = make_plan(tmp_path, [up()])
+    set_links(tmp_path, approved={})  # links.json still confirms FS_ID
+    s, _ = run(tmp_path, FakeFS(), pf)
     assert s.outcomes[0].status == "created"
+
+
+def test_link_to_other_id_in_links_json_is_skipped(tmp_path):
+    mkfile(tmp_path)
+    pf = make_plan(tmp_path, [up()])
+    set_links(tmp_path, approved={}, confirmed="ZZ88-YYY")
+    fs = FakeFS()
+    s, _ = run(tmp_path, fs, pf)
+    assert s.outcomes[0].reason == "link changed since planning; re-plan" and fs.calls == []
+
+
+def test_missing_links_json_refuses_the_run(tmp_path):
+    mkfile(tmp_path)
+    pf = make_plan(tmp_path, [up()])
+    (tmp_path / "arch" / "_import" / "links.json").unlink()
+    fs = FakeFS()
+    with pytest.raises(GateError, match="links.json"):
+        run(tmp_path, fs, pf)
+    assert fs.calls == []
 
 
 def test_plan_env_must_match_services(tmp_path):
@@ -636,3 +696,164 @@ def test_ledger_never_contains_file_bytes_or_token(tmp_path):
     s, led = run(tmp_path, FakeFS(), pf)
     text = led.path.read_text()
     assert "PDF-census" not in text and "token" not in text.lower()
+
+
+# ---- resolve, crash windows (states produced by the real code paths)
+
+def do_resolve(tmp_path, fs, pf, key, env="beta", **kw):
+    arch = tmp_path / "arch"
+    led = Ledger(arch / "_import" / "ledger.jsonl")
+    kw.setdefault("execute", True)
+    with RunLock(arch):
+        return resolve(led, services(fs, arch, env), [key], **kw), led
+
+
+def test_upload_error_after_server_acted_then_resolve_records_created(tmp_path):
+    mkfile(tmp_path)
+    a = up()
+    pf = make_plan(tmp_path, [a])
+    fs = FakeFS()
+    fs.upload_error, fs.error_after_effect = 500, True
+    s, led = run(tmp_path, fs, pf)
+    assert s.stopped and led.records()[-1]["status"] == "failed" and led.records()[-1]["memory_id"] is None
+    s, _ = run(tmp_path, fs, pf)  # blocked, nothing written
+    assert s.stopped and "resolve key" in s.stop_reason and len(fs.writes()) == 1
+    r, led = do_resolve(tmp_path, fs, pf, a.key)
+    assert r.outcomes[0].status == "resolved-created" and not r.stopped
+    assert a.key in led.executed_keys("beta") and a.key not in led.blocked_keys("beta")
+    s, _ = run(tmp_path, fs, pf)  # and a later run neither blocks nor re-uploads
+    assert not s.stopped and len(fs.writes()) == 1
+
+
+def test_upload_error_without_effect_resolves_only_after_settling(tmp_path, monkeypatch):
+    mkfile(tmp_path)
+    a = up()
+    pf = make_plan(tmp_path, [a])
+    fs = FakeFS()
+    fs.upload_error = 500
+    run(tmp_path, fs, pf)
+    r, led = do_resolve(tmp_path, fs, pf, a.key)  # too recent
+    assert r.outcomes[0].status == "still-blocked" and "by hand" in r.outcomes[0].reason
+    assert a.key in led.blocked_keys("beta")
+    later(monkeypatch, 20)
+    r, led = do_resolve(tmp_path, fs, pf, a.key, execute=False)
+    assert r.outcomes[0].status == "would-resolve" and a.key in led.blocked_keys("beta")
+    r, led = do_resolve(tmp_path, fs, pf, a.key)
+    assert r.outcomes[0].status == "resolved" and led.blocked_keys("beta") == {}
+    assert led.records()[-1]["type"] == "resolved" and led.records()[-1]["env"] == "beta"
+    fs.upload_error = None
+    s, _ = run(tmp_path, fs, pf)
+    assert s.outcomes[0].status == "created"
+
+
+def test_resolve_stays_blocked_if_count_changed(tmp_path, monkeypatch):
+    mkfile(tmp_path)
+    a = up()
+    pf = make_plan(tmp_path, [a])
+    fs = FakeFS()
+    fs.upload_error = 500
+    run(tmp_path, fs, pf)
+    fs.mem[FS_ID].append(("M50", "Someone else's, different title"))
+    later(monkeypatch, 20)
+    r, led = do_resolve(tmp_path, fs, pf, a.key)
+    assert r.outcomes[0].status == "still-blocked" and a.key in led.blocked_keys("beta")
+
+
+def test_resolve_gates_and_unblocked_key(tmp_path):
+    mkfile(tmp_path)
+    a = up()
+    pf = make_plan(tmp_path, [a])
+    fs = FakeFS()
+    with pytest.raises(GateError, match="not blocked"):
+        do_resolve(tmp_path, fs, pf, a.key)
+    fs.upload_error = 500
+    run(tmp_path, fs, pf)
+    for kw in (dict(env="production"), dict(env="production", allow_production=True),
+               dict(env="production", allow_production=True, only=[f"{LINE}/{FOLDER}"])):
+        with pytest.raises(GateError):  # production gates / key not blocked in production
+            do_resolve(tmp_path, fs, pf, a.key, **kw)
+    with pytest.raises(GateError, match="lock"):
+        resolve(Ledger(tmp_path / "arch" / "_import" / "ledger.jsonl"), services(fs, tmp_path / "arch"),
+                [a.key], True)
+
+
+def test_resolve_does_not_handle_keys_with_ids(tmp_path):
+    mkfile(tmp_path)
+    pf = make_plan(tmp_path, [up()])
+    fs = FakeFS()
+    fs.upload_appears = False
+    run(tmp_path, fs, pf)
+    key = up().key
+    r, led = do_resolve(tmp_path, fs, pf, key)
+    assert r.outcomes[0].status == "still-blocked" and "rollback" in r.outcomes[0].reason
+
+
+def test_missing_env_line_never_lifts_a_block(tmp_path):
+    mkfile(tmp_path)
+    a = up()
+    pf = make_plan(tmp_path, [a])
+    fs = FakeFS()
+    fs.upload_error = 500
+    run(tmp_path, fs, pf)
+    led = Ledger(tmp_path / "arch" / "_import" / "ledger.jsonl")
+    led._append({"type": "resolved", "key": a.key})
+    led._append({"type": "rollback", "status": "rolled-back", "key": a.key})
+    led._append({"type": "resolved", "key": a.key, "env": "production"})
+    assert a.key in led.blocked_keys("beta")
+
+
+def test_source_crash_between_create_and_attach_is_recoverable(tmp_path, monkeypatch):
+    mkfile(tmp_path)
+    a = src()
+    pf = make_plan(tmp_path, [a])
+    fs = FakeFS()
+
+    def die(*args, **kw):
+        raise KeyboardInterrupt()
+    fs.attach_to_person = die
+    monkeypatch.setattr(Ledger, "result", lambda self, **kw: (_ for _ in ()).throw(OSError("disk")))
+    with pytest.raises(KeyboardInterrupt):
+        run(tmp_path, fs, pf)
+    monkeypatch.undo()  # "restart": the result line never made it, only intent + progress
+    led = Ledger(tmp_path / "arch" / "_import" / "ledger.jsonl")
+    types = [r["type"] for r in led.records()]
+    assert types == ["intent", "progress"] and led.records()[1]["source_description_id"] == "S1"
+    s, led = run(tmp_path, fs, pf)
+    assert s.stopped and len(fs.writes()) == 1
+    last = led.records()[-1]
+    assert last["status"] == "partial" and last["source_description_id"] == "S1"
+    assert led.blocked_keys("beta") == {a.key: "partial"}
+
+
+def test_keyboard_interrupt_records_known_ids_and_reraises(tmp_path):
+    mkfile(tmp_path)
+    a = src()
+    pf = make_plan(tmp_path, [a])
+    fs = FakeFS()
+
+    def die(*args, **kw):
+        raise KeyboardInterrupt()
+    fs.attach_to_person = die
+    with pytest.raises(KeyboardInterrupt):
+        run(tmp_path, fs, pf)
+    led = Ledger(tmp_path / "arch" / "_import" / "ledger.jsonl")
+    assert led.records()[-1]["status"] == "partial" and led.records()[-1]["source_description_id"] == "S1"
+    assert not (tmp_path / "arch" / "_import" / "execute.lock").exists()  # lock released
+
+
+def test_keyboard_interrupt_during_upload_is_ambiguous_and_resolvable(tmp_path, monkeypatch):
+    mkfile(tmp_path)
+    a = up()
+    pf = make_plan(tmp_path, [a])
+    fs = FakeFS()
+
+    def die(*args, **kw):
+        raise KeyboardInterrupt()
+    fs.upload_to_person = die
+    with pytest.raises(KeyboardInterrupt):
+        run(tmp_path, fs, pf)
+    led = Ledger(tmp_path / "arch" / "_import" / "ledger.jsonl")
+    assert led.records()[-1]["status"] == "ambiguous" and led.records()[-1]["memory_id"] is None
+    later(monkeypatch, 20)
+    r, led = do_resolve(tmp_path, fs, pf, a.key)
+    assert r.outcomes[0].status == "resolved"
