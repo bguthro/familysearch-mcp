@@ -80,7 +80,11 @@ def _pkey(p: Person) -> str:
 
 def _node_state(node: Node) -> tuple[bool, bool]:
     """(living, unknown). Unknown (no dates and no death marker) is held back like living."""
-    if node.death is not None or node.deceased:
+    if node.status == "living":
+        return True, False
+    if node.status == "unknown":
+        return True, True
+    if node.death is not None or node.deceased or node.status == "deceased":
         return False, False
     if node.birth is None:
         return True, True
@@ -100,11 +104,20 @@ def map_nodes(
     record_status: Callable[[Person], tuple[str, str]] = record_state_and_status,
 ) -> dict[tuple[str, int], MappedNode]:
     out: dict[tuple[str, int], MappedNode] = {}
+    by_key = {_pkey(p): p for p in people}
     for line, tree in parsed_by_line.items():
         same = [p for p in people if p.line == line]
         other = [p for p in people if p.line != line]
         for node in tree.nodes:
             key = (line, node.index)
+            if node.folder:  # explicit, reviewed mapping: no name matching
+                p = by_key.get(node.folder)
+                if p is not None:
+                    # the file may only add caution: an explicit "living" status wins
+                    out[key] = MappedNode(p, "mapped", record_status(p)[0] != "deceased" or node.status == "living")
+                    continue
+                out[key] = MappedNode(None, "unmapped", *_node_state(node))
+                continue
             if node.birth is None and node.death is None:
                 living, unknown = _node_state(node)  # nothing to corroborate the name
                 out[key] = MappedNode(None, "unmapped", living, unknown)

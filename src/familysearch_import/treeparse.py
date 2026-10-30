@@ -24,6 +24,8 @@ class Node:
     approx: bool
     deceased: bool = False  # death year, d. / "the late" / "deceased" marker
     notes: tuple[str, ...] = ()
+    folder: str | None = None  # "<line>/<folder>" from a reviewed relations file: skips name matching
+    status: str | None = None  # explicit "deceased" | "living" | "unknown" from a reviewed relations file
 
 
 @dataclass(frozen=True)
