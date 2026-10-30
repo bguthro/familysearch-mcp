@@ -98,6 +98,50 @@ def _relatives(args, repo: Path) -> int:
     return 0
 
 
+def _relationships(args, repo: Path) -> int:
+    import json
+
+    from familysearch.errors import FSError
+    from .planreport import load_approvals, load_links
+    from .relgap import evaluate_edges
+    from .relgapreport import relgap_json, render_relgap_report
+    from .treeparse import parse_family_tree
+
+    import_dir = args.archive / "_import"
+    if is_inside(import_dir, repo):
+        return _err(f"refusing to write inside the repo: {import_dir}")
+    if args.max_reads is not None and args.max_reads < 0:
+        return _err("--max-reads must not be negative")
+    try:
+        links = load_links(import_dir / "links.json")
+        approvals = load_approvals(import_dir / "approvals.json")
+    except FileNotFoundError:
+        return _err(f"links.json not found in {import_dir}; run the links command first")
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
+        return _err(f"bad input file: {e}")
+    people = scan_archive(args.archive)
+    parsed = {}
+    for line_dir in sorted({p.path.parent for p in people}, key=lambda d: nfc(d.name)):
+        tree_file = line_dir / "FamilyTree.md"
+        try:
+            parsed[nfc(line_dir.name)] = parse_family_tree(nfc(line_dir.name), tree_file.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            print(f"note: no FamilyTree.md for line {nfc(line_dir.name)}")
+        except (OSError, UnicodeDecodeError):
+            print(f"note: could not read FamilyTree.md for line {nfc(line_dir.name)}")
+    kw = {} if args.max_reads is None else {"max_reads": args.max_reads}
+    try:
+        result = evaluate_edges(parsed, people, links, approvals, _make_reader(args.env), **kw)
+    except FSError as e:
+        return _err(str(e))
+    import_dir.mkdir(parents=True, exist_ok=True)
+    report_path, json_path = import_dir / "RelationshipReport.md", import_dir / "relationships.json"
+    report_path.write_text(render_relgap_report(result), encoding="utf-8")
+    json_path.write_text(json.dumps(relgap_json(result), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(f"wrote {report_path} and {json_path}" + (" (PARTIAL)" if result.partial else ""))
+    return 0
+
+
 def _plan(args, repo: Path) -> int:
     import json
 
@@ -273,6 +317,11 @@ def main(argv: list[str] | None = None) -> int:
     rl.add_argument("--archive", required=True, type=Path)
     rl.add_argument("--env", required=True, choices=("production", "beta"))
     rl.add_argument("--max-reads", type=int, default=None)
+    rg = sub.add_parser("relationships", help="compare FamilyTree diagram relationships with FamilySearch "
+                        "(read-only)")
+    rg.add_argument("--archive", required=True, type=Path)
+    rg.add_argument("--env", required=True, choices=("production", "beta"))
+    rg.add_argument("--max-reads", type=int, default=None)
     ex = sub.add_parser("execute", help="WRITE approved documents/sources to FamilySearch (dry run by default)")
     ex.add_argument("--archive", required=True, type=Path)
     ex.add_argument("--env", required=True, choices=("production", "beta"))
@@ -323,6 +372,8 @@ def main(argv: list[str] | None = None) -> int:
         return _plan(args, repo)
     if args.cmd == "relatives":
         return _relatives(args, repo)
+    if args.cmd == "relationships":
+        return _relationships(args, repo)
 
     if args.cmd == "report":
         import_dir = args.archive / "_import"
