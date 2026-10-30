@@ -212,6 +212,14 @@ class ReadOnlyFS:
         items = self._read_list(person_id, lambda: self._tree.get_memories(person_id))
         return [t for t in (_title(i) for i in items) if t]
 
+    def get_memory_ids(self, person_id: str) -> list[str]:
+        items = self._read_list(person_id, lambda: self._tree.get_memories(person_id))
+        return [str(i["id"]) for i in items if isinstance(i, dict) and i.get("id")]
+
+    def get_source_ids(self, person_id: str) -> list[str]:
+        items = self._read_list(person_id, lambda: self._tree.get_sources(person_id))
+        return [str(i["id"]) for i in items if isinstance(i, dict) and i.get("id")]
+
     def get_source_refs(self, person_id: str) -> list[SourceRef]:
         items = self._read_list(person_id, lambda: self._tree.get_sources(person_id))
         out = []

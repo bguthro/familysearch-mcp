@@ -78,6 +78,12 @@ class FakeFS:
         title, url = self.sd[sid]
         self.src[pid].append((sid, title, url))
 
+    def get_memory_ids(self, pid):
+        return [i for i, _ in self.mem[pid]]
+
+    def get_source_ids(self, pid):
+        return [i for i, _, _ in self.src[pid]]
+
     def writes(self):
         return [c for c in self.calls if c[0] in ("upload", "create-sd", "attach", "delete-memory")]
 
@@ -104,7 +110,7 @@ def src(url="https://example.org/r/1", folder=FOLDER):
                   "Cite one", url, "planned", "r", None)
 
 
-def make_plan(tmp_path, actions):
+def make_plan(tmp_path, actions, env="beta"):
     arch = tmp_path / "arch"
     imp = arch / "_import"
     imp.mkdir(parents=True, exist_ok=True)
@@ -112,10 +118,11 @@ def make_plan(tmp_path, actions):
     for folder in dict.fromkeys(a.person_folder for a in actions):
         people.append(PersonPlan(LINE, folder, FS_ID, "planned",
                                  tuple(a for a in actions if a.person_folder == folder), ""))
-    plan = Plan(tuple(people), compute_plan_hash(people))
+    plan = Plan(tuple(people), compute_plan_hash(people, env), env)
     (imp / "Plan.json").write_text(json.dumps(plan_json(plan)))
-    (imp / "approvals.json").write_text(json.dumps({"approved_links": {}, "approved_plan_hash": plan.plan_hash}))
-    return verify_plan_for_execution(arch, imp / "Plan.json", plan.plan_hash)
+    links = {f"{LINE}/{p.folder}": FS_ID for p in people}
+    (imp / "approvals.json").write_text(json.dumps({"approved_links": links, "approved_plan_hash": plan.plan_hash}))
+    return verify_plan_for_execution(arch, imp / "Plan.json", plan.plan_hash, env)
 
 
 def run(tmp_path, fs, pf, **kw):
@@ -171,7 +178,7 @@ def test_interrupted_run_title_present_is_reconciled_not_reuploaded(tmp_path):
     fs = FakeFS()
     fs.mem[FS_ID].append(("M9", "Census 1900"))
     led = Ledger(tmp_path / "arch" / "_import" / "ledger.jsonl")
-    led.intent(action=a, env="beta", plan_hash=pf.plan_hash)  # crash before result
+    led.intent(action=a, env="beta", plan_hash=pf.plan_hash, before=0)  # crash before result
     s, led = run(tmp_path, fs, pf)
     assert fs.writes() == []
     assert s.outcomes[0].status == "reconciled-created"
@@ -185,10 +192,139 @@ def test_interrupted_run_title_absent_is_eligible_again(tmp_path):
     pf = make_plan(tmp_path, [a])
     fs = FakeFS()
     led = Ledger(tmp_path / "arch" / "_import" / "ledger.jsonl")
-    led.intent(action=a, env="beta", plan_hash=pf.plan_hash)
+    led.intent(action=a, env="beta", plan_hash=pf.plan_hash, before=0)
     s, led = run(tmp_path, fs, pf)
-    assert [o.status for o in s.outcomes] == ["reconciled-absent", "created"]
-    assert len(fs.writes()) == 1 and led.unresolved_intents() == []
+    # never eligible again within the same run ...
+    assert [o.status for o in s.outcomes] == ["reconciled-absent", "skipped"]
+    assert fs.writes() == [] and led.unresolved_intents() == []
+    # ... but eligible on the next one
+    s, led = run(tmp_path, fs, pf)
+    assert [o.status for o in s.outcomes] == ["created"] and len(fs.writes()) == 1
+
+
+def test_interrupted_run_count_changed_is_ambiguous_and_blocks(tmp_path):
+    mkfile(tmp_path)
+    a = up()
+    pf = make_plan(tmp_path, [a])
+    fs = FakeFS()
+    fs.mem[FS_ID].append(("M7", "Something else"))  # count moved since the intent, title absent
+    led = Ledger(tmp_path / "arch" / "_import" / "ledger.jsonl")
+    led.intent(action=a, env="beta", plan_hash=pf.plan_hash, before=0)
+    s, led = run(tmp_path, fs, pf)
+    assert s.stopped and "resolve key" in s.stop_reason and fs.writes() == []
+    assert led.records()[-1]["status"] == "ambiguous"
+    s, led = run(tmp_path, fs, pf)  # and it stays blocked on the next run
+    assert s.stopped and fs.writes() == [] and fs.calls.count(("memories", FS_ID)) == 1
+
+
+def test_intent_without_before_count_is_ambiguous(tmp_path):
+    mkfile(tmp_path)
+    a = up()
+    pf = make_plan(tmp_path, [a])
+    fs = FakeFS()
+    Ledger(tmp_path / "arch" / "_import" / "ledger.jsonl").intent(action=a, env="beta", plan_hash="h")
+    s, _ = run(tmp_path, fs, pf)
+    assert s.stopped and fs.writes() == []
+
+
+@pytest.mark.parametrize("how", ["failed", "failed-readback", "partial", "id-only"])
+def test_failed_key_blocks_rerun_until_rolled_back(tmp_path, how):
+    mkfile(tmp_path)
+    a = up()
+    pf = make_plan(tmp_path, [a])
+    fs = FakeFS()
+    led = Ledger(tmp_path / "arch" / "_import" / "ledger.jsonl")
+    i = led.intent(action=a, env="beta", plan_hash="h", before=0)
+    led.result(intent_id=i, key=a.key, status="skipped" if how == "id-only" else how, reason="x",
+               env="beta", memory_id="M5" if how != "failed" else None)
+    s, _ = run(tmp_path, fs, pf)
+    assert s.stopped and f"resolve key {a.key}" in s.stop_reason
+    assert fs.calls == [] and fs.writes() == []  # no reads, no writes
+    led.rollback_result(key=a.key, status="rolled-back", reason="x", env="beta")
+    s, _ = run(tmp_path, fs, pf)
+    assert not s.stopped and len(fs.writes()) == 1
+
+
+def test_block_is_per_env(tmp_path):
+    mkfile(tmp_path)
+    a = up()
+    pf = make_plan(tmp_path, [a])
+    led = Ledger(tmp_path / "arch" / "_import" / "ledger.jsonl")
+    i = led.intent(action=a, env="production", plan_hash="h", before=0)
+    led.result(intent_id=i, key=a.key, status="failed", reason="x", env="production")
+    s, _ = run(tmp_path, FakeFS(), pf)
+    assert not s.stopped and s.outcomes[0].status == "created"
+
+
+def test_link_changed_since_planning_is_skipped(tmp_path):
+    mkfile(tmp_path)
+    pf = make_plan(tmp_path, [up()])
+    appr = tmp_path / "arch" / "_import" / "approvals.json"
+    d = json.loads(appr.read_text())
+    d["approved_links"][f"{LINE}/{FOLDER}"] = "ZZ99-ZZZ"
+    appr.write_text(json.dumps(d))
+    fs = FakeFS()
+    s, _ = run(tmp_path, fs, pf)
+    assert s.outcomes[0].reason == "link changed since planning; re-plan" and fs.calls == []
+
+
+def test_no_current_link_is_skipped_but_reviewed_record_link_counts(tmp_path):
+    f = mkfile(tmp_path)
+    pf = make_plan(tmp_path, [up()])
+    appr = tmp_path / "arch" / "_import" / "approvals.json"
+    d = json.loads(appr.read_text())
+    d["approved_links"] = {}
+    appr.write_text(json.dumps(d))
+    fs = FakeFS()
+    s, _ = run(tmp_path, fs, pf)
+    assert "link changed" in s.outcomes[0].reason and fs.calls == []
+    rec = {"version": 1, "status": "deceased", "familysearch_id": FS_ID, "names": [], "gender": None,
+           "facts": [], "relationships": [], "sources": [], "reviewed": True}
+    (f.parent / "ImportRecord.json").write_text(json.dumps(rec))
+    s, _ = run(tmp_path, fs, pf)
+    assert s.outcomes[0].status == "created"
+
+
+def test_plan_env_must_match_services(tmp_path):
+    mkfile(tmp_path)
+    pf = make_plan(tmp_path, [up()], env="production")
+    fs = FakeFS()
+    with pytest.raises(GateError, match="built against"):
+        run(tmp_path, fs, pf)  # beta services
+    assert fs.calls == []
+
+
+def test_attach_failure_is_partial_blocks_and_never_creates_second(tmp_path):
+    mkfile(tmp_path)
+    pf = make_plan(tmp_path, [src()])
+    fs = FakeFS()
+    fs.attach_to_person = lambda *a, **k: (_ for _ in ()).throw(FSHTTPError(500, "secret body"))
+    s, led = run(tmp_path, fs, pf)
+    last = led.records()[-1]
+    assert s.stopped and last["status"] == "partial" and last["source_description_id"] == "S1"
+    assert "secret" not in json.dumps(led.records())
+    s, _ = run(tmp_path, fs, pf)
+    assert s.stopped and [w[0] for w in fs.writes()].count("create-sd") == 1
+
+
+@pytest.mark.parametrize("bad", ["", "..", "a/b", "a b", "M1;x", None, 5, "-x", "a..b"])
+def test_invalid_returned_id_is_not_recorded(tmp_path, bad):
+    mkfile(tmp_path)
+    pf = make_plan(tmp_path, [up()])
+    fs = FakeFS()
+    fs.upload_to_person = lambda *a, **k: bad
+    s, led = run(tmp_path, fs, pf)
+    last = led.records()[-1]
+    assert s.stopped and last["status"] == "failed-readback" and last["memory_id"] is None
+
+
+def test_corrupt_ledger_lines_surface_as_warning(tmp_path):
+    mkfile(tmp_path)
+    pf = make_plan(tmp_path, [up()])
+    imp = tmp_path / "arch" / "_import"
+    (imp / "ledger.jsonl").write_text("garbage\n")
+    s, _ = run(tmp_path, FakeFS(), pf)
+    assert s.warnings and "unreadable ledger" in s.warnings[0]
 
 
 def test_interrupted_dry_run_does_not_touch_ledger(tmp_path):
@@ -417,7 +553,7 @@ def test_gates_inside_run_plan_precede_any_io(tmp_path):
 
 def test_production_allowed_with_all_gates(tmp_path):
     mkfile(tmp_path)
-    pf = make_plan(tmp_path, [up()])
+    pf = make_plan(tmp_path, [up()], env="production")
     fs = FakeFS()
     s, led = run(tmp_path, fs, pf, env="production", allow_production=True, only=[f"{LINE}/{FOLDER}"])
     assert len(fs.writes()) == 1 and led.records()[0]["env"] == "production"
@@ -430,6 +566,7 @@ def test_beta_ledger_does_not_block_production_but_unresolved_prod_only(tmp_path
     fs = FakeFS()
     run(tmp_path, fs, pf)  # beta
     fs.mem[FS_ID].clear()
+    pf = make_plan(tmp_path, [a], env="production")
     s, led = run(tmp_path, fs, pf, env="production", allow_production=True, only=[f"{LINE}/{FOLDER}"])
     assert [o.status for o in s.outcomes] == ["created"]
 

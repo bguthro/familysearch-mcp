@@ -4,7 +4,7 @@ import pytest
 
 from familysearch.api import FamilySearchApi, OperationLockedError
 from familysearch.auth import Environment
-from familysearch.errors import FSError
+from familysearch.errors import FSError, FSHTTPError
 from familysearch_import import __main__ as cli
 from familysearch_import import execute as ex
 from familysearch_import.execute import ExecServices, Ledger, _SourcesAdapter
@@ -118,7 +118,7 @@ def test_production_gates_exit_2_no_write(tmp_path, harness, extra):
 def test_production_with_all_gates_runs(tmp_path, harness):
     fs, built = harness
     mkfile(tmp_path)
-    pf = make_plan(tmp_path, [up()])
+    pf = make_plan(tmp_path, [up()], env="production")
     rc = cli.main(args(tmp_path, pf, "--execute", "--allow-production", "--only", f"{LINE}/{FOLDER}",
                        env="production"))
     assert rc == 0 and built == [("production", True)] and len(fs.writes()) == 1
@@ -337,9 +337,9 @@ def test_unexpected_error_before_write_exits_3_with_no_write(tmp_path, harness):
     assert fs.writes() == [] and not ledger_path(tmp_path).exists()
 
 
-def test_rollback_retitled_object_is_not_claimed_rolled_back(tmp_path, harness):
+def test_rollback_id_gone_from_person_is_not_claimed_rolled_back(tmp_path, harness):
     fs, pf = populated(tmp_path, harness, [up("A.pdf")])
-    fs.mem[FS_ID] = [(mid, "Renamed by someone") for mid, _ in fs.mem[FS_ID]]
+    fs.mem[FS_ID] = []
     assert cli.main(rargs(tmp_path, "--execute")) == 3
     assert [c for c in fs.calls if c[0] == "delete-memory"] == []
     assert Ledger(ledger_path(tmp_path)).records()[-1]["status"] == "rollback-failed"
@@ -349,3 +349,106 @@ def test_adapter_attach_builds_clean_url():
     lib = FakeSourcesLib()
     _SourcesAdapter(lib, FakeDiscovery(), None, False).attach_to_person("ZZ11-AAA", "SD9", reason="r")
     assert lib.attached == [("ZZ11-AAA", "https://beta.familysearch.org/platform/sources/descriptions/SD9", "r")]
+
+
+def test_rollback_key_from_other_env_is_an_error(tmp_path, harness):
+    fs, pf = populated(tmp_path, harness, [up("A.pdf")])
+    key = [r["key"] for r in Ledger(ledger_path(tmp_path)).records() if r["type"] == "result"][0]
+    rc = cli.main(rargs(tmp_path, "--key", key, "--execute", "--allow-production", "--only",
+                        f"{LINE}/{FOLDER}", env="production"))
+    assert rc == 2 and len(fs.mem[FS_ID]) == 1
+
+
+def test_rollback_reports_rows_without_ids(tmp_path, harness, capsys):
+    fs, _ = harness
+    (tmp_path / "arch" / "_import").mkdir(parents=True)
+    led = Ledger(ledger_path(tmp_path))
+    led.result(intent_id="i", key="a" * 64, status="created", reason="created (reconciled)",
+               kind="upload-document", fs_id=FS_ID, env="beta", reconciled=True, person=f"{LINE}/{FOLDER}")
+    assert cli.main(rargs(tmp_path, "--execute")) == 3
+    out = capsys.readouterr().out
+    assert "cannot roll back: no id recorded" in out and "1 cannot-rollback" in out
+    assert fs.calls == []
+
+
+def test_rollback_invalid_ledger_id_never_reaches_delete(tmp_path, harness):
+    fs, _ = harness
+    (tmp_path / "arch" / "_import").mkdir(parents=True)
+    led = Ledger(ledger_path(tmp_path))
+    led.result(intent_id="i", key="a" * 64, status="created", reason="x", kind="upload-document",
+               fs_id=FS_ID, env="beta", memory_id="../../x", person=f"{LINE}/{FOLDER}")
+    assert cli.main(rargs(tmp_path, "--execute")) == 3
+    assert [c for c in fs.calls if c[0].startswith("delete")] == []
+
+
+def test_rollback_partial_only_by_key_and_deletes_description(tmp_path, harness):
+    fs, _ = harness
+    mkfile(tmp_path)
+    pf = make_plan(tmp_path, [src()])
+    fs.attach_to_person = lambda *a, **k: (_ for _ in ()).throw(FSHTTPError(500, "x"))
+    assert cli.main(args(tmp_path, pf, "--execute")) == 3
+    key = src().key
+    assert cli.main(args(tmp_path, pf, "--execute")) == 3  # blocked
+    assert len(fs.sd) == 1
+    assert cli.main(rargs(tmp_path, "--execute")) == 0  # bulk ignores partial
+    assert [c for c in fs.calls if c[0] == "delete-sd"] == []
+    assert cli.main(rargs(tmp_path, "--key", key, "--execute")) == 0
+    assert [c[1] for c in fs.calls if c[0] == "delete-sd"] == ["S1"]
+    fs.attach_to_person = FakeFS.attach_to_person.__get__(fs)
+    assert cli.main(args(tmp_path, pf, "--execute")) == 0  # unblocked by the rollback
+
+
+def test_rollback_wrong_id_deleted_is_a_failure(tmp_path, harness):
+    fs, pf = populated(tmp_path, harness, [up("A.pdf")])
+    fs.mem[FS_ID].append(("M99", "Other"))
+
+    def wrong(mid, *, reason):
+        fs.calls.append(("delete-memory", mid, reason))
+        fs.mem[FS_ID] = [m for m in fs.mem[FS_ID] if m[0] != "M99"]  # removes a different id
+    fs.delete = wrong
+    assert cli.main(rargs(tmp_path, "--execute")) == 3
+    assert Ledger(ledger_path(tmp_path)).records()[-1]["status"] == "rollback-failed"
+
+
+def test_errors_print_type_only(tmp_path, harness, capsys, monkeypatch):
+    import requests
+    mkfile(tmp_path)
+    pf = make_plan(tmp_path, [up()])
+
+    def leaky(*a, **k):
+        raise FSError("TOP-SECRET response body")
+    monkeypatch.setattr(ex, "build_services", leaky)
+    assert cli.main(args(tmp_path, pf, "--execute")) == 2
+    err = capsys.readouterr().err
+    assert "FSError" in err and "SECRET" not in err
+
+    def net(*a, **k):
+        raise requests.ConnectionError("host=secret.example")
+    monkeypatch.setattr(ex, "build_services", net)
+    assert cli.main(args(tmp_path, pf, "--execute")) == 2
+    err = capsys.readouterr().err
+    assert "ConnectionError" in err and "secret" not in err
+    assert cli.main(rargs(tmp_path)) == 2  # no ledger yet: gate
+
+
+def test_corrupt_ledger_warning_printed(tmp_path, harness, capsys):
+    mkfile(tmp_path)
+    pf = make_plan(tmp_path, [up()])
+    ledger_path(tmp_path).write_text("not json\n")
+    assert cli.main(args(tmp_path, pf, "--execute")) == 0
+    assert "unreadable ledger" in capsys.readouterr().err
+
+
+def test_ledger_symlink_refused(tmp_path):
+    import os
+    from familysearch_import.execute import GateError
+    (tmp_path / "real").write_text("")
+    link = tmp_path / "ledger.jsonl"
+    os.symlink(tmp_path / "real", link)
+    with pytest.raises(GateError, match="symlink"):
+        Ledger(link)
+    led = Ledger(tmp_path / "later.jsonl")
+    os.symlink(tmp_path / "real", led.path)  # swapped in after construction
+    with pytest.raises(GateError):
+        led.intent(action=up(), env="beta", plan_hash="h")
+    assert (tmp_path / "real").read_text() == ""

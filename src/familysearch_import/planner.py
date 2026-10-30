@@ -54,6 +54,7 @@ class PersonPlan:
 class Plan:
     people: tuple[PersonPlan, ...]
     plan_hash: str
+    env: str = ""
 
 
 def _norm(s: str | None) -> str:
@@ -64,12 +65,12 @@ def action_key(fs_id: str, kind: str, discriminator: str) -> str:
     return hashlib.sha256(f"{fs_id}\0{kind}\0{discriminator}".encode("utf-8")).hexdigest()
 
 
-def compute_plan_hash(people: Sequence[PersonPlan]) -> str:
+def compute_plan_hash(people: Sequence[PersonPlan], env: str = "") -> str:
     planned = sorted(
         (asdict(a) for p in people for a in p.actions if a.state in ("planned", "likely-covered")),
         key=lambda d: d["key"],
     )
-    blob = json.dumps(planned, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    blob = json.dumps({"env": env, "actions": planned}, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
@@ -100,9 +101,10 @@ def build_plan(
     ledger_keys: frozenset[str] = frozenset(),
     max_bytes: int = MAX_BYTES,
     force_upload: frozenset[str] = frozenset(),
+    env: str = "",
 ) -> Plan:
     out = [_plan_person(p, links, approved, reader, ledger_keys, max_bytes, force_upload) for p in people]
-    return Plan(tuple(out), compute_plan_hash(out))
+    return Plan(tuple(out), compute_plan_hash(out, env), env)
 
 
 def _plan_person(person, links, approved, reader, ledger_keys, max_bytes, force_upload=frozenset()) -> PersonPlan:

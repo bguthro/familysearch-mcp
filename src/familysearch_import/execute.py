@@ -14,7 +14,7 @@ import re
 import socket
 import uuid
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -56,6 +56,7 @@ class PlanFile:
     actions: tuple[Action, ...]  # every action in the file, any state
     path: Path
     verified: bool = False  # set only by verify_plan_for_execution
+    env: str = ""
 
     def planned(self) -> tuple[Action, ...]:
         return tuple(a for a in self.actions if a.state == "planned")
@@ -108,7 +109,7 @@ def _validate_runnable(a: Action) -> None:
         raise GateError(f"planned action {a.key[:8]} key does not match its content")
 
 
-def verify_plan_for_execution(archive: Path, plan_path: Path, confirm_hash: str) -> PlanFile:
+def verify_plan_for_execution(archive: Path, plan_path: Path, confirm_hash: str, env: str) -> PlanFile:
     """Check every plan-level gate. Raises GateError; does no network I/O and writes nothing."""
     archive, plan_path = Path(archive), Path(plan_path)
     _forbid_repo(archive, "archive")
@@ -127,6 +128,13 @@ def verify_plan_for_execution(archive: Path, plan_path: Path, confirm_hash: str)
             or not isinstance(data.get("people"), list):
         raise GateError("Plan.json is malformed")
     stored = data["plan_hash"]
+    plan_env = data.get("env")
+    if env not in ENVS:
+        raise GateError(f"--env must be beta or production, got {env!r}")
+    if plan_env not in ENVS:
+        raise GateError("Plan.json has no environment (old plan file); re-plan")
+    if plan_env != env:
+        raise GateError(f"plan was built against {plan_env}, but --env is {env}")
 
     people: list[PersonPlan] = []
     for p in data["people"]:
@@ -138,7 +146,7 @@ def verify_plan_for_execution(archive: Path, plan_path: Path, confirm_hash: str)
                                      p.get("note", "")))
         except KeyError as e:
             raise GateError("Plan.json is malformed (person fields)") from e
-    recomputed = compute_plan_hash(people)
+    recomputed = compute_plan_hash(people, plan_env)
 
     approvals_path = import_dir / "approvals.json"
     if not approvals_path.is_file():
@@ -160,7 +168,7 @@ def verify_plan_for_execution(archive: Path, plan_path: Path, confirm_hash: str)
     for a in actions:
         if a.state == "planned":
             _validate_runnable(a)
-    return PlanFile(stored, actions, plan_path, verified=True)
+    return PlanFile(stored, actions, plan_path, verified=True, env=plan_env)
 
 
 # ---------------------------------------------------------------------- run gates
@@ -202,28 +210,39 @@ class Ledger:
     def __init__(self, path: Path):
         self.path = Path(path)
         _forbid_repo(self.path, "ledger")
+        if self.path.is_symlink():
+            raise GateError(f"ledger must not be a symlink: {self.path}")
         self.corrupt_lines = 0
+
+    def _open(self, flags: int):
+        """Open without following a symlink at the final component."""
+        try:
+            return os.open(self.path, flags | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        except OSError as e:
+            raise GateError(f"cannot open ledger safely: {type(e).__name__}") from e
 
     def _append(self, rec: dict) -> None:
         line = json.dumps(rec, ensure_ascii=False, sort_keys=True) + "\n"
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        prefix = ""
-        if self.path.exists() and self.path.stat().st_size:
-            with open(self.path, "rb") as f:
+        fd = self._open(os.O_RDWR | os.O_APPEND | os.O_CREAT)
+        with os.fdopen(fd, "r+b") as f:
+            prefix = b""
+            if os.fstat(f.fileno()).st_size:
                 f.seek(-1, os.SEEK_END)
                 if f.read(1) != b"\n":  # torn last line from a crash: start a fresh one
-                    prefix = "\n"
-        with open(self.path, "a", encoding="utf-8") as f:
-            f.write(prefix + line)
+                    prefix = b"\n"
+            f.write(prefix + line.encode("utf-8"))  # O_APPEND: always lands at the end
             f.flush()
             os.fsync(f.fileno())
 
     def records(self) -> list[dict]:
         self.corrupt_lines = 0
-        if not self.path.exists():
+        if not self.path.exists() and not self.path.is_symlink():
             return []
+        with os.fdopen(self._open(os.O_RDONLY), "rb") as fh:
+            text = fh.read().decode("utf-8", errors="replace")
         out = []
-        for raw in self.path.read_text(encoding="utf-8").splitlines():
+        for raw in text.splitlines():
             if not raw.strip():
                 continue
             try:
@@ -245,11 +264,30 @@ class Ledger:
                          if r.get("type") == "result" and r.get("status") == "created"
                          and isinstance(r.get("key"), str) and self._env_ok(r, env))
 
-    def intent(self, *, action: Action, env: str, plan_hash: str) -> str:
+    def blocked_keys(self, env: str | None = None) -> dict[str, str]:
+        """Keys needing manual resolution: a failed/failed-readback/partial/ambiguous result, or
+        a non-created result carrying an object id, with no LATER rolled-back line."""
+        blocked: dict[str, str] = {}
+        for r in self.records():
+            key = r.get("key")
+            if not isinstance(key, str) or not self._env_ok(r, env):
+                continue
+            if r.get("type") == "result":
+                st = r.get("status")
+                has_id = bool(r.get("memory_id") or r.get("source_description_id"))
+                if st in ("failed", "failed-readback", "partial", "ambiguous") or (
+                        has_id and st != "created"):
+                    blocked[key] = st
+            elif r.get("type") == "rollback" and r.get("status") == "rolled-back":
+                blocked.pop(key, None)
+        return blocked
+
+    def intent(self, *, action: Action, env: str, plan_hash: str, before: int | None = None) -> str:
         """Append an intent line (flushed to disk) BEFORE the write; returns its intent id."""
         intent_id = uuid.uuid4().hex
         self._append({
             "type": "intent", "intent_id": intent_id, "ts": utc_now(), "key": action.key,
+            "before": before,
             "kind": action.kind, "fs_id": action.fs_id, "env": env, "plan_hash": plan_hash,
             "person": f"{action.person_line}/{action.person_folder}",
             "file": action.file, "title": action.title, "url": action.url, "sha256": action.sha256,
@@ -261,7 +299,7 @@ class Ledger:
                title: str | None = None, url: str | None = None, person: str | None = None,
                memory_id: str | None = None,
                source_description_id: str | None = None, reconciled: bool = False) -> None:
-        if status not in ("created", "skipped", "failed", "failed-readback"):
+        if status not in ("created", "skipped", "failed", "failed-readback", "partial", "ambiguous"):
             raise ValueError(f"bad result status {status!r}")
         self._append({
             "type": "result", "intent_id": intent_id, "ts": utc_now(), "key": key,
@@ -377,6 +415,7 @@ class RunSummary:
     stopped: bool = False
     stop_reason: str = ""
     truncated: bool = False  # --max-actions reached; not a failure
+    warnings: list = field(default_factory=list)
 
     def count(self, status: str) -> int:
         return sum(1 for o in self.outcomes if o.status == status)
@@ -430,9 +469,13 @@ def _present_in(reader, a: Action) -> tuple[bool, int]:
     return hit, len(refs)
 
 
-def _reconcile(plan_actions: dict[str, Action], services: ExecServices, ledger: Ledger,
-               execute: bool, out: list[Outcome], executed: set[str]) -> None:
-    """Resolve intents with no result: read FamilySearch; never re-upload blindly."""
+def _reconcile(services: ExecServices, ledger: Ledger, execute: bool, out: list[Outcome],
+               executed: set[str], held: set[str], blocked: dict[str, str]) -> None:
+    """Resolve intents with no result: read FamilySearch; never re-upload blindly.
+
+    Present -> created (reconciled). Absent AND count unchanged since the intent -> recorded
+    skipped, eligible on the NEXT run only. Anything else -> ambiguous, which blocks the key.
+    """
     for rec in ledger.unresolved_intents(services.env):
         key, fs_id = rec.get("key"), rec.get("fs_id")
         probe = Action(key or "", rec.get("kind") or "", "", "", fs_id or "", rec.get("file"),
@@ -440,24 +483,68 @@ def _reconcile(plan_actions: dict[str, Action], services: ExecServices, ledger: 
         if not (isinstance(key, str) and _ID_RE.match(fs_id or "")) \
                 or probe.kind not in ("upload-document", "add-source"):
             raise _Stop("an unresolved ledger intent is malformed; resolve it manually")
-        present, _ = _present_in(services.reader, probe)  # ReadFailed -> stop in caller
+        present, count = _present_in(services.reader, probe)  # ReadFailed -> stop in caller
         who = f"{probe.kind}"
+        common = dict(intent_id=rec["intent_id"], key=key, kind=probe.kind, fs_id=fs_id,
+                      person=rec.get("person"), env=services.env, title=probe.title, url=probe.url)
+        held.add(key)  # a reconciled item never becomes eligible again within this run
         if present:
             if execute:
-                ledger.result(intent_id=rec["intent_id"], key=key, status="created",
-                              reason="created (reconciled)", kind=probe.kind, fs_id=fs_id, person=rec.get("person"),
-                              env=services.env, title=probe.title, url=probe.url, reconciled=True)
+                ledger.result(status="created", reason="created (reconciled)", reconciled=True, **common)
             executed.add(key)
-            out.append(Outcome(key, who, "", "reconciled-created",
-                               "interrupted run: object found on FamilySearch"))
+            out.append(Outcome(key, who, rec.get("person") or "", "reconciled-created",
+                               "interrupted run: object found on FamilySearch (no id recorded)"))
+        elif isinstance(rec.get("before"), int) and count == rec["before"]:
+            if execute:
+                ledger.result(status="skipped", reconciled=True,
+                              reason="interrupted before write; absent and count unchanged", **common)
+            out.append(Outcome(key, who, rec.get("person") or "", "reconciled-absent",
+                               "interrupted run: object absent, eligible on the next run"))
         else:
             if execute:
-                ledger.result(intent_id=rec["intent_id"], key=key, status="skipped",
-                              reason="interrupted before write; absent on FamilySearch",
-                              kind=probe.kind, fs_id=fs_id, person=rec.get("person"), env=services.env,
-                              title=probe.title, url=probe.url)
-            out.append(Outcome(key, who, "", "reconciled-absent",
-                               "interrupted run: object absent, eligible again"))
+                ledger.result(status="ambiguous", reconciled=True,
+                              reason=f"interrupted; absent but count changed (before {rec.get('before')}, now {count})",
+                              **common)
+            blocked[key] = "ambiguous"
+            out.append(Outcome(key, who, rec.get("person") or "", "ambiguous",
+                               "interrupted run: cannot tell whether the write happened"))
+
+
+_OBJ_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def valid_object_id(v) -> bool:
+    return isinstance(v, str) and bool(_OBJ_ID.match(v)) and ".." not in v and len(v) <= 128
+
+
+def _current_links(archive: Path) -> tuple[dict, dict]:
+    """(approved_links, confirmed links) as of now. Malformed inputs are a gate failure."""
+    from .planreport import load_links
+    imp = Path(archive) / "_import"
+    try:
+        approvals = load_approvals(imp / "approvals.json")
+    except (OSError, ValueError) as e:
+        raise GateError(f"approvals.json unreadable: {type(e).__name__}") from e
+    links: dict = {}
+    if (imp / "links.json").is_file():
+        try:
+            links = load_links(imp / "links.json")
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+            raise GateError(f"links.json unreadable: {type(e).__name__}") from e
+    return approvals, links
+
+
+def _current_link(person, approvals: dict, links: dict) -> str | None:
+    from .record import RECORD_FILE, load_record
+    pkey = f"{person.line}/{person.folder}"
+    link = approvals.get(pkey) or links.get(pkey)
+    if link:
+        return link
+    try:
+        rec = load_record(person.path / RECORD_FILE)
+    except Exception:
+        return None
+    return rec.get("familysearch_id") if rec.get("reviewed") is True else None
 
 
 def run_plan(plan: PlanFile, services: ExecServices, ledger: Ledger, *, only: Sequence[str] = (),
@@ -469,14 +556,19 @@ def run_plan(plan: PlanFile, services: ExecServices, ledger: Ledger, *, only: Se
         raise GateError("plan was not verified by verify_plan_for_execution")
     if execute and not (ledger.path.parent / "execute.lock").is_file():
         raise GateError("execute requires the run lock to be held")
+    if plan.env != services.env:
+        raise GateError(f"plan was built against {plan.env!r}, services are {services.env!r}")
     scope = parse_only(only)
     planned = plan.planned()
     for a in planned:
         _validate_runnable(a)
+    approvals, links = _current_links(services.archive)
 
     out: list[Outcome] = []
     summary = RunSummary(execute, out)
     executed = set(ledger.executed_keys(services.env))
+    blocked = ledger.blocked_keys(services.env)
+    held: set[str] = set()
     seen_titles: set[tuple[str, str, str]] = set()
     archive = _Archive(Path(services.archive))
     writes = 0
@@ -486,10 +578,17 @@ def run_plan(plan: PlanFile, services: ExecServices, ledger: Ledger, *, only: Se
 
     try:
         from .prod_reader import ReadFailed
+        def check_blocked() -> None:
+            for a in planned:
+                if (not scope or f"{a.person_line}/{a.person_folder}" in scope) and a.key in blocked:
+                    raise _Stop(f"resolve key {a.key} first ({blocked[a.key]}; use rollback --key)")
+
+        check_blocked()  # before any read or write
         try:
-            _reconcile({a.key: a for a in planned}, services, ledger, execute, out, executed)
+            _reconcile(services, ledger, execute, out, executed, held, blocked)
         except ReadFailed as e:
             raise _Stop(f"cannot reconcile interrupted run: {type(e).__name__}") from e
+        check_blocked()
 
         for a in planned:
             who = f"{a.person_line}/{a.person_folder}"
@@ -497,6 +596,9 @@ def run_plan(plan: PlanFile, services: ExecServices, ledger: Ledger, *, only: Se
                 continue
             if a.key in executed:
                 skip(a, "already executed (ledger or this run)")
+                continue
+            if a.key in held:
+                skip(a, "interrupted earlier; reconciled this run, eligible on the next run")
                 continue
             if writes >= max_actions:
                 summary.truncated = True
@@ -512,6 +614,9 @@ def run_plan(plan: PlanFile, services: ExecServices, ledger: Ledger, *, only: Se
                 continue
             if status != "deceased":
                 skip(a, "archive status is no longer deceased")
+                continue
+            if _current_link(person, approvals, links) != a.fs_id:
+                skip(a, "link changed since planning; re-plan")
                 continue
             data = b""
             if a.kind == "upload-document":
@@ -570,7 +675,8 @@ def run_plan(plan: PlanFile, services: ExecServices, ledger: Ledger, *, only: Se
         summary.stopped, summary.stop_reason = True, str(e)
     except Exception as e:  # unexpected (e.g. expired token mid-run): stop, never crash past the ledger
         summary.stopped, summary.stop_reason = True, f"unexpected error: {_http_status(e)}"
-    if out and out[-1].status in ("failed", "failed-readback"):
+    _warn(summary, ledger)
+    if out and out[-1].status in ("failed", "failed-readback", "partial"):
         summary.stopped = True
         summary.stop_reason = summary.stop_reason or out[-1].reason
     return summary
@@ -580,7 +686,7 @@ def _write_one(a: Action, who: str, data: bytes, ctype: str, before: int, plan: 
                services: ExecServices, ledger: Ledger, out: list[Outcome]) -> None:
     """One write: intent, write, read-back, result. Any failure records it and stops the run."""
     from .prod_reader import ReadFailed
-    intent_id = ledger.intent(action=a, env=services.env, plan_hash=plan.plan_hash)
+    intent_id = ledger.intent(action=a, env=services.env, plan_hash=plan.plan_hash, before=before)
     common = dict(intent_id=intent_id, key=a.key, kind=a.kind, fs_id=a.fs_id, env=services.env,
                   title=a.title, url=a.url, person=who)
     mem_id = sd_id = None
@@ -596,19 +702,24 @@ def _write_one(a: Action, who: str, data: bytes, ctype: str, before: int, plan: 
             mem_id = services.memories.upload_to_person(
                 a.fs_id, data, filename=Path(a.file or "").name, content_type=ctype,
                 title=a.title, reason=REASON)
-            if not isinstance(mem_id, str) or not mem_id:
-                mem_id = None
-                fail("failed-readback", "upload returned no memory id")
+            if not valid_object_id(mem_id):
+                mem_id = None  # never record an id we would not trust for a later DELETE
+                fail("failed-readback", "upload returned a missing or invalid memory id")
         else:
             sd_id = services.sources.create_description(a.url, a.title, a.title, reason=REASON)
-            if not isinstance(sd_id, str) or not sd_id:
+            if not valid_object_id(sd_id):
                 sd_id = None
-                fail("failed-readback", "create returned no source description id")
-            services.sources.attach_to_person(a.fs_id, sd_id, reason=REASON)
+                fail("failed-readback", "create returned a missing or invalid source description id")
     except _Stop:
         raise
     except Exception as e:  # any write error: record and stop; never retry blindly
         fail("failed", f"write error: {_http_status(e)}")
+
+    if a.kind == "add-source":
+        try:
+            services.sources.attach_to_person(a.fs_id, sd_id, reason=REASON)
+        except Exception as e:  # description exists but is not attached: partial, blocks the key
+            fail("partial", f"description created but attach failed: {_http_status(e)}")
 
     try:
         present, after = _present_in(services.reader, a)
@@ -632,41 +743,49 @@ class RollbackSummary:
     outcomes: list[Outcome]
     stopped: bool = False
     stop_reason: str = ""
+    warnings: list = field(default_factory=list)
 
 
 def _rollback_targets(ledger: Ledger, env: str, keys: Sequence[str]) -> list[dict]:
-    """Ledger result lines this tool created, in this env, not yet rolled back."""
+    """Ledger result lines in this env that may be rolled back and are not already.
+
+    Bulk (no keys): status created only. Named keys: any result carrying an object id
+    (created, partial, failed-readback), plus created rows (reported if they lack an id).
+    """
     recs = ledger.records()
     rolled = {(r.get("key"), r.get("memory_id"), r.get("source_description_id"))
               for r in recs if r.get("type") == "rollback" and r.get("status") == "rolled-back"}
     wanted = set(keys)
-    known = {r.get("key") for r in recs if r.get("type") == "result"}
+    known = {r.get("key") for r in recs if r.get("type") == "result" and r.get("env") == env}
     missing = wanted - known
     if missing:
-        raise GateError(f"key not in the ledger: {sorted(missing)[0][:12]}")
+        raise GateError(f"key not in the ledger for {env}: {sorted(missing)[0][:12]}")
     out, seen = [], set()
     for r in recs:
         if r.get("type") != "result" or r.get("env") != env:
             continue
         status = r.get("status")
-        # failed-readback objects exist but are unconfirmed: only on explicit request by key
-        if not (status == "created" or (status == "failed-readback" and r.get("key") in wanted)):
-            continue
-        if wanted and r.get("key") not in wanted:
+        has_id = bool(r.get("memory_id") or r.get("source_description_id"))
+        if wanted:
+            if r.get("key") not in wanted or not (has_id or status == "created"):
+                continue
+        elif status != "created":
             continue
         ident = (r.get("key"), r.get("memory_id"), r.get("source_description_id"))
-        if ident in rolled or ident in seen or not (ident[1] or ident[2]):
-            continue
-        if not (isinstance(r.get("fs_id"), str) and _ID_RE.match(r["fs_id"])):
+        if ident in rolled or ident in seen:
             continue
         seen.add(ident)
         out.append(r)
     return out
 
 
+def _ids(reader, is_mem: bool, fs_id: str) -> list[str]:
+    return reader.get_memory_ids(fs_id) if is_mem else reader.get_source_ids(fs_id)
+
+
 def rollback(ledger: Ledger, services: ExecServices, keys: Sequence[str] = (), execute: bool = False,
              *, only: Sequence[str] = (), allow_production: bool = False) -> RollbackSummary:
-    """Delete only objects whose ids this tool recorded as created, then read back absence."""
+    """Delete only objects whose ids this tool recorded, then read back that the id is gone."""
     check_run_gates(services.env, allow_production, only, 1)
     if execute and not (ledger.path.parent / "execute.lock").is_file():
         raise GateError("execute requires the run lock to be held")
@@ -677,30 +796,35 @@ def rollback(ledger: Ledger, services: ExecServices, keys: Sequence[str] = (), e
         raise GateError(f"refusing to roll back more than {PRODUCTION_HARD_CAP} objects in production")
     out: list[Outcome] = []
     summary = RollbackSummary(execute, out)
-    from .prod_reader import ReadFailed
     for t in targets:
         is_mem = bool(t.get("memory_id"))
-        oid = t["memory_id"] if is_mem else t["source_description_id"]
-        a = Action(t["key"], "upload-document" if is_mem else "add-source", "", "", t["fs_id"],
-                   None, t.get("title"), t.get("url"), "planned", "", None)
+        oid = t.get("memory_id") if is_mem else t.get("source_description_id")
         who = t.get("person") or ""
         kind = "memory" if is_mem else "source"
+        key = t.get("key") or ""
 
         def done(status: str, reason: str) -> None:
-            out.append(Outcome(t["key"], kind, who, status, reason))
+            out.append(Outcome(key, kind, who, status, reason))
             if execute:
                 ledger.rollback_result(
-                    key=t["key"], status="rolled-back" if status == "rolled-back" else "rollback-failed",
+                    key=key, status="rolled-back" if status == "rolled-back" else "rollback-failed",
                     reason=reason, env=services.env,
                     memory_id=t.get("memory_id"), source_description_id=t.get("source_description_id"))
 
+        if not oid:
+            out.append(Outcome(key, kind, who, "cannot-rollback", "cannot roll back: no id recorded"))
+            continue
+        if not valid_object_id(oid) or not _ID_RE.match(t.get("fs_id") or ""):
+            out.append(Outcome(key, kind, who, "cannot-rollback", "cannot roll back: invalid id in ledger"))
+            continue
+        unattached = t.get("status") == "partial"
         try:
-            present, before = _present_in(services.reader, a)
-            if not present:  # retitled/removed by someone else: never claim success without a delete
-                done("rollback-failed", "not found by title on FamilySearch; verify by id manually")
+            before = [] if unattached else _ids(services.reader, is_mem, t["fs_id"])
+            if not unattached and oid not in before:
+                done("rollback-failed", "recorded id not found on the person; verify by id manually")
                 continue
             if not execute:
-                out.append(Outcome(t["key"], kind, who, "would-rollback", "dry run"))
+                out.append(Outcome(key, kind, who, "would-rollback", "dry run"))
                 continue
             try:
                 if is_mem:
@@ -710,9 +834,9 @@ def rollback(ledger: Ledger, services: ExecServices, keys: Sequence[str] = (), e
             except Exception as e:
                 done("rollback-failed", f"delete error: {_http_status(e)}")
                 raise _Stop("delete failed") from e
-            present2, after = _present_in(services.reader, a)
-            if after != before - 1:
-                done("rollback-failed", f"absence read-back mismatch (before {before}, after {after})")
+            after = _ids(services.reader, is_mem, t["fs_id"])
+            if oid in after or (not unattached and len(after) != len(before) - 1):
+                done("rollback-failed", f"absence read-back mismatch (before {len(before)}, after {len(after)})")
                 raise _Stop("read-back mismatch")
             done("rolled-back", "deleted")
         except _Stop as e:
@@ -723,7 +847,14 @@ def rollback(ledger: Ledger, services: ExecServices, keys: Sequence[str] = (), e
             if execute:
                 done("rollback-failed", f"unexpected error: {_http_status(e)}; verify by id manually")
             break
+    _warn(summary, ledger)
     return summary
+
+
+def _warn(summary, ledger: Ledger) -> None:
+    ledger.records()  # refreshes corrupt_lines
+    if ledger.corrupt_lines:
+        summary.warnings.append(f"{ledger.corrupt_lines} unreadable ledger line(s) ignored; inspect the ledger")
 
 
 # ---------------------------------------------------------------- real services

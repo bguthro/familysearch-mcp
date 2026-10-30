@@ -31,7 +31,7 @@ def write_plan(tmp_path, actions, approve=True, mutate=None, approved_hash=None)
     imp = arch / "_import"
     imp.mkdir(parents=True, exist_ok=True)
     person = PersonPlan("Example Line", "1844 Pat Example", "ZZ11-AAA", "planned", tuple(actions), "")
-    plan = Plan((person,), compute_plan_hash([person]))
+    plan = Plan((person,), compute_plan_hash([person], "beta"), "beta")
     data = plan_json(plan)
     if mutate:
         mutate(data)
@@ -45,18 +45,18 @@ def write_plan(tmp_path, actions, approve=True, mutate=None, approved_hash=None)
 
 def test_good_plan_verifies(tmp_path):
     arch, pp, h = write_plan(tmp_path, [upload(), cite()])
-    pf = verify_plan_for_execution(arch, pp, h)
+    pf = verify_plan_for_execution(arch, pp, h, "beta")
     assert pf.plan_hash == h and len(pf.planned()) == 2
 
 
 def test_wrong_confirm_hash(tmp_path):
     arch, pp, h = write_plan(tmp_path, [upload()])
     with pytest.raises(GateError, match="confirm-hash"):
-        verify_plan_for_execution(arch, pp, "b" * 64)
+        verify_plan_for_execution(arch, pp, "b" * 64, "beta")
     with pytest.raises(GateError):
-        verify_plan_for_execution(arch, pp, "")
+        verify_plan_for_execution(arch, pp, "", "beta")
     with pytest.raises(GateError):
-        verify_plan_for_execution(arch, pp, h.upper())
+        verify_plan_for_execution(arch, pp, h.upper(), "beta")
 
 
 def test_edited_plan_json_fails_recompute(tmp_path):
@@ -65,7 +65,7 @@ def test_edited_plan_json_fails_recompute(tmp_path):
         d["people"][0]["actions"][0]["fs_id"] = "ZZ22-BBB"
     arch, pp, h = write_plan(tmp_path, [upload()], mutate=edit)
     with pytest.raises(GateError, match="recomputed"):
-        verify_plan_for_execution(arch, pp, h)
+        verify_plan_for_execution(arch, pp, h, "beta")
 
 
 def test_edited_plan_json_with_rewritten_hash_fails_approval(tmp_path):
@@ -74,11 +74,11 @@ def test_edited_plan_json_with_rewritten_hash_fails_approval(tmp_path):
     data["people"][0]["actions"][0]["title"] = "Other"
     person = PersonPlan("Example Line", "1844 Pat Example", "ZZ11-AAA", "planned",
                         (Action(**data["people"][0]["actions"][0]),), "")
-    new = compute_plan_hash([person])
+    new = compute_plan_hash([person], "beta")
     data["plan_hash"] = new
     pp.write_text(json.dumps(data))
     with pytest.raises(GateError, match="approved_plan_hash"):
-        verify_plan_for_execution(arch, pp, new)
+        verify_plan_for_execution(arch, pp, new, "beta")
 
 
 def test_state_flip_to_planned_is_caught(tmp_path):
@@ -87,35 +87,35 @@ def test_state_flip_to_planned_is_caught(tmp_path):
     data["people"][0]["actions"][0]["state"] = "planned"
     pp.write_text(json.dumps(data))
     with pytest.raises(GateError):
-        verify_plan_for_execution(arch, pp, h)
+        verify_plan_for_execution(arch, pp, h, "beta")
 
 
 def test_edited_approvals_hash(tmp_path):
     arch, pp, h = write_plan(tmp_path, [upload()], approved_hash="c" * 64)
     with pytest.raises(GateError, match="approved_plan_hash"):
-        verify_plan_for_execution(arch, pp, h)
+        verify_plan_for_execution(arch, pp, h, "beta")
 
 
 def test_missing_or_malformed_approvals(tmp_path):
     arch, pp, h = write_plan(tmp_path, [upload()], approve=False)
     with pytest.raises(GateError, match="approvals.json"):
-        verify_plan_for_execution(arch, pp, h)
+        verify_plan_for_execution(arch, pp, h, "beta")
     (arch / "_import" / "approvals.json").write_text(json.dumps({"approved_links": {}}))
     with pytest.raises(GateError, match="approved_plan_hash"):
-        verify_plan_for_execution(arch, pp, h)
+        verify_plan_for_execution(arch, pp, h, "beta")
     (arch / "_import" / "approvals.json").write_text("not json")
     with pytest.raises(GateError):
-        verify_plan_for_execution(arch, pp, h)
+        verify_plan_for_execution(arch, pp, h, "beta")
 
 
 def test_malformed_plan(tmp_path):
     arch, pp, h = write_plan(tmp_path, [upload()])
     pp.write_text("{")
     with pytest.raises(GateError):
-        verify_plan_for_execution(arch, pp, h)
+        verify_plan_for_execution(arch, pp, h, "beta")
     pp.write_text(json.dumps({"plan_hash": h}))
     with pytest.raises(GateError):
-        verify_plan_for_execution(arch, pp, h)
+        verify_plan_for_execution(arch, pp, h, "beta")
 
 
 def test_extra_action_field_rejected(tmp_path):
@@ -123,7 +123,7 @@ def test_extra_action_field_rejected(tmp_path):
         d["people"][0]["actions"][0]["extra"] = 1
     arch, pp, h = write_plan(tmp_path, [upload()], mutate=edit)
     with pytest.raises(GateError, match="unexpected fields"):
-        verify_plan_for_execution(arch, pp, h)
+        verify_plan_for_execution(arch, pp, h, "beta")
 
 
 @pytest.mark.parametrize("bad", [
@@ -135,20 +135,20 @@ def test_unsafe_planned_action_rejected(tmp_path, bad):
     a = upload(**bad) if "sha256" not in bad else upload(**bad)
     arch, pp, h = write_plan(tmp_path, [a])
     with pytest.raises(GateError):
-        verify_plan_for_execution(arch, pp, h)
+        verify_plan_for_execution(arch, pp, h, "beta")
 
 
 def test_key_must_match_content(tmp_path):
     arch, pp, h = write_plan(tmp_path, [upload(key="f" * 64)])
     with pytest.raises(GateError, match="key"):
-        verify_plan_for_execution(arch, pp, h)
+        verify_plan_for_execution(arch, pp, h, "beta")
 
 
 def test_source_needs_url(tmp_path):
     a = cite(url="ftp://x")
     arch, pp, h = write_plan(tmp_path, [a])
     with pytest.raises(GateError, match="url"):
-        verify_plan_for_execution(arch, pp, h)
+        verify_plan_for_execution(arch, pp, h, "beta")
 
 
 def test_plan_must_live_in_import_dir(tmp_path):
@@ -156,13 +156,37 @@ def test_plan_must_live_in_import_dir(tmp_path):
     other = tmp_path / "Plan.json"
     other.write_text(pp.read_text())
     with pytest.raises(GateError, match="inside"):
-        verify_plan_for_execution(arch, other, h)
+        verify_plan_for_execution(arch, other, h, "beta")
+
+
+def test_plan_env_must_match_cli_env(tmp_path):
+    arch, pp, h = write_plan(tmp_path, [upload()])
+    with pytest.raises(GateError, match="built against beta"):
+        verify_plan_for_execution(arch, pp, h, "production")
+    with pytest.raises(GateError, match="--env"):
+        verify_plan_for_execution(arch, pp, h, "mars")
+
+
+def test_old_plan_without_env_refused(tmp_path):
+    def drop(d):
+        d.pop("env")
+    arch, pp, h = write_plan(tmp_path, [upload()], mutate=drop)
+    with pytest.raises(GateError, match="no environment"):
+        verify_plan_for_execution(arch, pp, h, "beta")
+
+
+def test_env_edit_breaks_the_hash(tmp_path):
+    def flip(d):
+        d["env"] = "production"
+    arch, pp, h = write_plan(tmp_path, [upload()], mutate=flip)
+    with pytest.raises(GateError, match="recomputed"):
+        verify_plan_for_execution(arch, pp, h, "production")
 
 
 def test_archive_and_plan_inside_repo_refused():
     repo = repo_root()
     with pytest.raises(GateError, match="repo"):
-        verify_plan_for_execution(repo, repo / "_import" / "Plan.json", "a" * 64)
+        verify_plan_for_execution(repo, repo / "_import" / "Plan.json", "a" * 64, "beta")
 
 
 # ---- run gates
@@ -235,8 +259,11 @@ def test_only_created_counts_as_executed(tmp_path):
 def test_planner_still_reads_keys(tmp_path):
     led = Ledger(tmp_path / "ledger.jsonl")
     a = upload()
-    led.intent(action=a, env="beta", plan_hash="h")
-    assert a.key in load_ledger_keys(led.path)
+    i = led.intent(action=a, env="beta", plan_hash="h")
+    assert load_ledger_keys(led.path, "beta") == frozenset()  # intent alone is not "executed"
+    led.result(intent_id=i, key=a.key, status="created", reason="ok", env="beta", memory_id="M1")
+    assert load_ledger_keys(led.path, "beta") == frozenset({a.key})
+    assert load_ledger_keys(led.path, "production") == frozenset()
 
 
 def test_torn_line_tolerated_and_not_executed(tmp_path):

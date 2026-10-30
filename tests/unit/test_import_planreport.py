@@ -84,7 +84,13 @@ def test_load_approvals(tmp_path):
 def test_load_ledger_keys(tmp_path):
     p = tmp_path / "ledger.jsonl"
     assert load_ledger_keys(p) == frozenset()
-    p.write_text('{"key": "k1"}\n\nbroken\n{"key": "k2", "x": 1}\n')
+    p.write_text('{"type": "result", "status": "created", "env": "beta", "key": "k1"}\n\nbroken\n'
+                 '{"type": "result", "status": "created", "env": "production", "key": "k2"}\n'
+                 '{"type": "intent", "env": "beta", "key": "k3"}\n'
+                 '{"type": "result", "status": "failed", "env": "beta", "key": "k4"}\n'
+                 '{"key": "k5"}\n')
+    assert load_ledger_keys(p, "beta") == frozenset({"k1"})
+    assert load_ledger_keys(p, "production") == frozenset({"k2"})
     assert load_ledger_keys(p) == frozenset({"k1", "k2"})
 
 
@@ -116,6 +122,7 @@ def test_cli_writes_plan_files(tmp_path, monkeypatch, capsys):
     assert run(root) == 0
     data = json.loads((root / "_import" / "Plan.json").read_text())
     assert (root / "_import" / "PlanReport.md").exists()
+    assert data["env"] == "production"
     assert data["plan_hash"] in (root / "_import" / "PlanReport.md").read_text()
     assert run(root) == 0  # no approvals: overwrite is fine
 

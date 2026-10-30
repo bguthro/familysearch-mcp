@@ -49,7 +49,8 @@ def load_force_upload(path: Path) -> frozenset[str]:
     return frozenset(json.loads(path.read_text(encoding="utf-8")).get("force_upload", []))
 
 
-def load_ledger_keys(path: Path) -> frozenset[str]:
+def load_ledger_keys(path: Path, env: str | None = None) -> frozenset[str]:
+    """Keys of executor results with status created in this env (env None: any env)."""
     path = Path(path)
     if not path.exists():
         return frozenset()
@@ -62,7 +63,9 @@ def load_ledger_keys(path: Path) -> frozenset[str]:
             rec = json.loads(line)
         except ValueError:
             continue
-        if isinstance(rec, dict) and isinstance(rec.get("key"), str):
+        if (isinstance(rec, dict) and isinstance(rec.get("key"), str)
+                and rec.get("type") == "result" and rec.get("status") == "created"
+                and (env is None or rec.get("env") == env)):
             keys.add(rec["key"])
     return frozenset(keys)
 
@@ -70,6 +73,7 @@ def load_ledger_keys(path: Path) -> frozenset[str]:
 def plan_json(plan: Plan) -> dict:
     return {
         "plan_hash": plan.plan_hash,
+        "env": plan.env,
         "people": [asdict(p) for p in plan.people],
     }
 

@@ -83,13 +83,13 @@ def _plan(args, repo: Path) -> int:
         return _err(f"links.json not found in {import_dir}; run the links command first")
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         return _err(f"bad input file: {e}")
-    ledger = load_ledger_keys(import_dir / "ledger.jsonl")
+    ledger = load_ledger_keys(import_dir / "ledger.jsonl", args.env)
     people = scan_archive(args.archive)
     if args.limit is not None:
         people = people[: max(args.limit, 0)]
     try:
         force = load_force_upload(import_dir / "approvals.json")
-        plan = build_plan(people, links, approvals, _make_reader(args.env), ledger, force_upload=force)
+        plan = build_plan(people, links, approvals, _make_reader(args.env), ledger, force_upload=force, env=args.env)
     except FSError as e:
         return _err(str(e))
     import_dir.mkdir(parents=True, exist_ok=True)
@@ -114,11 +114,14 @@ def _print_outcomes(summary) -> None:
     print("summary: " + (", ".join(f"{n} {s}" for s, n in sorted(stats.items())) or "nothing to do"))
     if getattr(summary, "truncated", False):
         print("note: --max-actions reached; more actions remain")
+    for w in getattr(summary, "warnings", []):
+        print(f"warning: {w}", file=sys.stderr)
     if summary.stopped:
         print(f"STOPPED: {summary.stop_reason}")
 
 
 def _execute(args, repo: Path) -> int:
+    import requests
     from familysearch.errors import FSError
     from . import execute as ex
 
@@ -126,7 +129,7 @@ def _execute(args, repo: Path) -> int:
     plan_path = args.archive / "_import" / plan_arg if len(plan_arg.parts) == 1 else plan_arg
     try:
         ex.check_run_gates(args.env, args.allow_production, args.only, args.max_actions)
-        plan = ex.verify_plan_for_execution(args.archive, plan_path, args.confirm_hash)
+        plan = ex.verify_plan_for_execution(args.archive, plan_path, args.confirm_hash, args.env)
         ledger = ex.Ledger(args.archive / "_import" / "ledger.jsonl")
 
         def go() -> int:
@@ -144,11 +147,13 @@ def _execute(args, repo: Path) -> int:
         return go()
     except ex.GateError as e:
         return _err(str(e))
-    except FSError as e:
-        return _err(f"FamilySearch session/environment check failed: {type(e).__name__}: {e}")
+    except (FSError, requests.RequestException) as e:
+        # type and HTTP status only: never str(e), which can carry response text
+        return _err(f"FamilySearch session/environment check failed: {ex._http_status(e)}")
 
 
 def _rollback(args, repo: Path) -> int:
+    import requests
     from familysearch.errors import FSError
     from . import execute as ex
 
@@ -166,7 +171,7 @@ def _rollback(args, repo: Path) -> int:
             print(("ROLLED BACK" if args.execute else "DRY RUN (nothing deleted; pass --execute)")
                   + f" env={args.env}")
             _print_outcomes(summary)
-            return 3 if summary.stopped or any(o.status == "rollback-failed" for o in summary.outcomes) else 0
+            return 3 if summary.stopped or any(o.status in ("rollback-failed", "cannot-rollback") for o in summary.outcomes) else 0
 
         if args.execute:
             with ex.RunLock(args.archive, break_lock=getattr(args, "break_lock", False)):
@@ -174,8 +179,9 @@ def _rollback(args, repo: Path) -> int:
         return go()
     except ex.GateError as e:
         return _err(str(e))
-    except FSError as e:
-        return _err(f"FamilySearch session/environment check failed: {type(e).__name__}: {e}")
+    except (FSError, requests.RequestException) as e:
+        # type and HTTP status only: never str(e), which can carry response text
+        return _err(f"FamilySearch session/environment check failed: {ex._http_status(e)}")
 
 
 def main(argv: list[str] | None = None) -> int:
