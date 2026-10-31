@@ -69,6 +69,51 @@ class FSClient:
             "DELETE", path_or_url, write=True, reason=reason, timeout=timeout
         )
 
+    def get_image(
+        self, url: str, *, timeout=DEFAULT_TIMEOUT
+    ) -> tuple[bytes, str]:
+        """GET a validated FamilySearch record-image URL (production only).
+
+        The one place credentials go to a host other than base_url. Never
+        follows redirects; caps the body; errors never carry the token.
+        """
+        from familysearch.images import MAX_IMAGE_BYTES, validate_image_url
+
+        if self.base_url != Environment.PRODUCTION.base_url:
+            raise FSError("record images are only available on production")
+        validate_image_url(url)
+        resp = self._session.request(
+            "GET", url,
+            headers={
+                "Authorization": f"Bearer {self._token}",
+                "User-Agent": self._user_agent,
+                "Accept": "image/*",
+            },
+            timeout=timeout, allow_redirects=False, stream=True,
+        )
+        try:
+            if resp.status_code == 401:
+                raise TokenExpiredError("FamilySearch rejected the token (401).")
+            if 300 <= resp.status_code < 400:
+                raise FSError(
+                    f"image request was redirected (HTTP {resp.status_code}); "
+                    "redirects are not followed"
+                )
+            if resp.status_code != 200:
+                raise FSError(f"image request failed (HTTP {resp.status_code})")
+            ctype = resp.headers.get("Content-Type", "")
+            if not ctype.lower().startswith("image/"):
+                raise FSError("image response was not an image content type")
+            chunks, total = [], 0
+            for chunk in resp.iter_content(chunk_size=65536):
+                total += len(chunk)
+                if total > MAX_IMAGE_BYTES:
+                    raise FSError("image exceeds the 25 MB limit")
+                chunks.append(chunk)
+            return b"".join(chunks), ctype
+        finally:
+            resp.close()
+
     def _throttle(self) -> None:
         if self._last_write is not None:
             remaining = self._min_write_interval - (time.monotonic() - self._last_write)

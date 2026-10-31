@@ -8,6 +8,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from mcp.server.fastmcp import Image
+
+from familysearch.images import SIZES, ImageReader, parse_ark
+
+from familysearch.errors import FSError
+
 from .projections import (
     project_memory,
     project_person,
@@ -24,6 +30,13 @@ def _user_whitelist(body: Any) -> dict:
     user = users[0] if isinstance(users, list) and users else None
     user = user if isinstance(user, dict) else {}
     return {k: user.get(k) for k in ("id", "displayName", "personId")}
+
+
+def _ark(value: str) -> str:
+    try:
+        return parse_ark(value)
+    except ValueError as exc:
+        raise FSError(str(exc)) from None
 
 
 def _env_name(env: Any) -> str:
@@ -126,6 +139,24 @@ def register_read_tools(mcp: Any, ctx: Any) -> None:
         person (id, title, description, link)."""
         pid = validate_person_id(person_id)
         return ctx.call(lambda s: [project_memory(m) for m in s.tree.get_memories(pid)])
+
+    @mcp.tool()
+    def get_record_image_info(ark: str) -> dict:
+        """Describe a FamilySearch historical record image by ark (URL or
+        '/ark:/61903/3:1:ID'): name, apid and available sizes. Production only."""
+        a = _ark(ark)
+        return ctx.call(lambda s: ImageReader(s.client).get_image_info(a))
+
+    @mcp.tool()
+    def get_record_image(ark: str, size: str = "dist") -> Any:
+        """Fetch a FamilySearch historical record image by ark (URL or
+        '/ark:/61903/3:1:ID'). size is 'dist' (full) or 'thumb_p200'. Returns the
+        image. Production only, read-only."""
+        a = _ark(ark)
+        if size not in SIZES:
+            raise ValueError(f"size must be one of {sorted(SIZES)}")
+        data, ctype = ctx.call(lambda s: ImageReader(s.client).fetch_image(a, size))
+        return Image(data=data, format=ctype.split(";")[0].split("/", 1)[1].strip())
 
     @mcp.tool()
     def get_matches(person_id: str) -> list[dict]:

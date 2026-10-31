@@ -109,6 +109,7 @@ def test_registers_eight_tools_with_docstrings(setup):
     assert set(tools) == {
         "auth_status", "search_tree", "search_records", "get_person",
         "get_relatives", "get_person_sources", "get_person_memories", "get_matches",
+        "get_record_image", "get_record_image_info",
     }
     for name, fn in tools.items():
         assert fn.__doc__ and fn.__doc__.strip(), name
@@ -269,3 +270,21 @@ def test_errors_propagate(setup):
         tools["search_tree"](surname="x")
     with pytest.raises(FSError):
         tools["auth_status"]()
+
+
+def test_get_record_image_tool(setup):
+    from mcp.server.fastmcp import Image
+    tools, svc, _ = setup
+    svc.client = Obj()
+    svc.client.base_url = "https://www.familysearch.org"
+    svc.client.get = lambda url, accept=None: Resp({"link": [{
+        "rel": "stream-image-dist",
+        "href": "https://sg30p0.familysearch.org/service/records/storage/"
+                "dascloud/das/v2/AP-1/dist.jpg"}]})
+    svc.client.get_image = lambda url: (b"IMG", "image/jpeg")
+    out = tools["get_record_image"]("ark:/61903/3:1:ABCD-123")
+    assert isinstance(out, Image) and out.data == b"IMG"
+    with pytest.raises(FSError):
+        tools["get_record_image"]("not an ark")
+    with pytest.raises(ValueError):
+        tools["get_record_image"]("ark:/61903/3:1:ABCD-123", size="deepzoom")

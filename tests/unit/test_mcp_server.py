@@ -25,7 +25,8 @@ PERSON = json.loads((FIX / "person_named.json").read_text())["persons"][0]
 HIT = json.loads((FIX / "search_entry.json").read_text())
 
 READ = {"auth_status", "search_tree", "search_records", "get_person", "get_relatives",
-        "get_person_sources", "get_person_memories", "get_matches"}
+        "get_person_sources", "get_person_memories", "get_matches",
+        "get_record_image", "get_record_image_info"}
 WRITE = {"create_person", "add_fact", "create_couple", "create_parent_child",
          "upload_memory", "link_memory", "create_source", "attach_source"}
 OPS = {"list_operations", "describe_operation", "call_operation"}
@@ -40,6 +41,8 @@ REQUIRED = {
     "get_person_sources": ["person_id"],
     "get_person_memories": ["person_id"],
     "get_matches": ["person_id"],
+    "get_record_image": ["ark"],
+    "get_record_image_info": ["ark"],
     "create_person": ["given", "surname", "gender", "reason"],
     "add_fact": ["person_id", "fact_type", "reason"],
     "create_couple": ["person1_id", "person2_id", "reason"],
@@ -108,7 +111,7 @@ def tools_of(server):
 
 def test_exact_tool_names_and_no_delete_merge():
     names = set(tools_of(build_server(FakeCtx(Obj()))))
-    assert names == ALL and len(names) == 19
+    assert names == ALL and len(names) == 21
     assert not [n for n in names if "delete" in n or "merge" in n]
 
 
@@ -163,6 +166,8 @@ EXPECTED_TYPES = {
     "get_person_sources": {"person_id": {S}},
     "get_person_memories": {"person_id": {S}},
     "get_matches": {"person_id": {S}},
+    "get_record_image": {"ark": {S}, "size": {S}},
+    "get_record_image_info": {"ark": {S}},
     "create_person": {"given": {S}, "surname": {S}, "gender": {S}, "reason": {S},
                       "birth_date": {S, N}, "birth_place": {S, N}, "death_date": {S, N},
                       "living": {"boolean", N}, "create_despite_matches": {"boolean"},

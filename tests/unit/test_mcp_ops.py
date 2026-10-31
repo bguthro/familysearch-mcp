@@ -444,7 +444,7 @@ def test_tools_registered():
     import asyncio
     names = {t.name for t in asyncio.run(build_server(FakeCtx()).list_tools())}
     assert {"list_operations", "describe_operation", "call_operation"} <= names
-    assert len(names) == 19
+    assert len(names) == 21
 
 
 # ---- instructions and docs ----
