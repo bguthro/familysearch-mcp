@@ -137,16 +137,6 @@ def test_evil_href_never_requested():
 
 
 @responses.activate
-def test_redirect_refused():
-    responses.add(responses.GET, GOOD, status=302,
-                  headers={"Location": "https://evil.example/x"})
-    with pytest.raises(FSError, match="redirect") as ei:
-        prod().get_image(GOOD)
-    assert TOKEN not in str(ei.value)
-    assert len(responses.calls) == 1
-
-
-@responses.activate
 def test_non_image_refused():
     responses.add(responses.GET, GOOD, body=b"<html>", content_type="text/html")
     with pytest.raises(FSError, match="image") as ei:
@@ -253,3 +243,101 @@ def test_deadline(monkeypatch):
     monkeypatch.setattr(t, "monotonic", lambda: next(clock))
     with pytest.raises(FSError, match="time limit"):
         prod().get_image(GOOD)
+
+
+S3HOST = "ps-services-us-east-1-914248642252-pipe-storage-das-cloud.s3.amazonaws.com"
+S3PATH = "/s3/pipe-storage-das-cloud-prod-dasS3/APID-123/dist.jpg"
+S3URL = f"https://{S3HOST}{S3PATH}?X-Amz-Signature=abc123&X-Amz-Expires=300"
+
+
+def add_hop1(location=S3URL, status=302):
+    responses.add(responses.GET, GOOD, status=status, headers={"Location": location})
+
+
+@responses.activate
+@pytest.mark.parametrize("status", [301, 302, 303, 307])
+def test_s3_redirect_followed_without_credentials(status):
+    add_hop1(status=status)
+    responses.add(responses.GET, S3URL, body=JPEG, content_type="image/jpeg")
+    assert prod().get_image(GOOD) == (JPEG, "image/jpeg")
+    first, second = (c.request for c in responses.calls)
+    assert first.headers["Authorization"] == f"Bearer {TOKEN}"
+    assert second.url == S3URL
+    assert "Authorization" not in second.headers and "Cookie" not in second.headers
+    assert TOKEN not in str(dict(second.headers))
+
+
+@responses.activate
+def test_s3_thumb_same_filename():
+    t = S3URL.replace("dist.jpg", "thumb_p200.jpg")
+    responses.add(responses.GET, THUMB, status=302, headers={"Location": t})
+    responses.add(responses.GET, t, body=JPEG, content_type="image/jpeg")
+    assert prod().get_image(THUMB)[0] == JPEG
+
+
+BAD_LOC = [
+    S3URL.replace("https", "http"),
+    S3URL.replace(S3HOST, "ps-services-x.s3.amazonaws.com.evil.com"),
+    S3URL.replace(S3HOST, "evil.example"),
+    S3URL.replace(S3HOST, "s3.amazonaws.com"),
+    S3URL.replace("pipe-storage-das-cloud-prod-dasS3", "other-bucket"),
+    S3URL.replace("APID-123", "APID-999"),
+    S3URL.replace("dist.jpg", "thumb_p200.jpg"),
+    S3URL.replace(S3HOST, "user:pw@" + S3HOST),
+    S3URL.replace(S3HOST, S3HOST + ":8443"),
+    S3URL.replace(S3HOST, S3HOST + ":443"),
+    S3URL.split("?")[0],
+    S3URL.split("?")[0] + "?",
+    S3URL + "#frag",
+    S3URL + " x",
+    S3URL + "\n",
+    S3URL.replace("abc123", "ab\tc"),
+    " " + S3URL,
+    S3URL + "&p=" + "a" * 4100,
+    "",
+]
+
+
+@responses.activate
+@pytest.mark.parametrize("loc", BAD_LOC)
+def test_bad_redirects_refused(loc):
+    add_hop1(loc)
+    with pytest.raises(FSError) as ei:
+        prod().get_image(GOOD)
+    msg = str(ei.value)
+    assert TOKEN not in msg and "amazonaws" not in msg and "evil" not in msg
+    assert len(responses.calls) == 1
+
+
+@responses.activate
+def test_second_redirect_refused():
+    add_hop1()
+    responses.add(responses.GET, S3URL, status=302,
+                  headers={"Location": "https://evil.example/x"})
+    with pytest.raises(FSError, match="redirect") as ei:
+        prod().get_image(GOOD)
+    assert TOKEN not in str(ei.value) and len(responses.calls) == 2
+
+
+@responses.activate
+def test_s3_hop_still_checks_type_magic_status():
+    add_hop1()
+    responses.add(responses.GET, S3URL, body=b"<html>", content_type="text/html")
+    with pytest.raises(FSError):
+        prod().get_image(GOOD)
+    responses.replace(responses.GET, S3URL, body=b"<html>", content_type="image/jpeg")
+    with pytest.raises(FSError, match="match"):
+        prod().get_image(GOOD)
+    responses.replace(responses.GET, S3URL, status=403, body="denied")
+    with pytest.raises(FSError, match="403") as ei:
+        prod().get_image(GOOD)
+    assert TOKEN not in str(ei.value)
+
+
+def test_s3_validator_unicode_and_good():
+    from familysearch.images import validate_s3_location
+    assert validate_s3_location(S3URL, GOOD) == S3URL
+    with pytest.raises(FSError):
+        validate_s3_location(S3URL.replace("ps-services", "ps-s\uff13rvices"), GOOD)
+    with pytest.raises(FSError):
+        validate_s3_location(S3URL.replace("APID", "AP\u0661D"), GOOD)

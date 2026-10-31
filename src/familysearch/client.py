@@ -90,8 +90,7 @@ class FSClient:
     ) -> tuple[bytes, str]:
         """GET a validated FamilySearch record-image URL (production only).
 
-        The one place credentials go to a host other than base_url. Never
-        follows redirects; caps size and total time; errors never carry the token.
+        The one place credentials go to a host other than base_url. Follows only one validated S3 redirect (sent without credentials); caps size and total time; errors never carry the token.
         Returns (bytes, normalized content type).
         """
         from familysearch import images
@@ -109,13 +108,39 @@ class FSClient:
             },
             timeout=timeout, allow_redirects=False, stream=True,
         )
+        # The image host answers an authorized request with ONE redirect to a
+        # pre-signed S3 URL. Follow exactly that, validated, and without any
+        # credentials: a fresh cookie-less, env-less session carries nothing.
+        if resp.status_code in (301, 302, 303, 307):
+            location = resp.headers.get("Location")
+            resp.close()
+            target = images.validate_s3_location(location, url)
+            plain = requests.Session()
+            plain.trust_env = False
+            plain.auth = None
+            try:
+                resp = plain.request(
+                    "GET", target,
+                    headers={"User-Agent": self._user_agent,
+                             "Accept": ", ".join(images.ALLOWED_TYPES)},
+                    timeout=timeout, allow_redirects=False, stream=True,
+                )
+                return self._read_image(resp, deadline)
+            finally:
+                plain.close()
+        return self._read_image(resp, deadline)
+
+    @staticmethod
+    def _read_image(resp, deadline) -> tuple[bytes, str]:
+        from familysearch import images
+
         try:
             if resp.status_code == 401:
                 raise TokenExpiredError("FamilySearch rejected the token (401).")
             if 300 <= resp.status_code < 400:
                 raise FSError(
                     f"image request was redirected (HTTP {resp.status_code}); "
-                    "redirects are not followed"
+                    "further redirects are not followed"
                 )
             if resp.status_code != 200:
                 raise FSError(f"image request failed (HTTP {resp.status_code})")

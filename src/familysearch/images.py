@@ -61,6 +61,39 @@ def validate_image_url(url: str) -> str:
     return url
 
 
+_S3_RE = re.compile(
+    r"https://ps-services-[a-z0-9-]+\.s3\.amazonaws\.com"
+    r"/s3/pipe-storage-das-cloud-prod-dasS3/([A-Za-z0-9-]+)/(dist|thumb_p200)\.jpg"
+    r"\?[A-Za-z0-9%._~!$&'()*+,;=:@/?-]+",
+    re.ASCII,
+)
+_SRC_RE = re.compile(
+    r"https://[^/]+/service/records/storage/dascloud/das/v2/([A-Za-z0-9-]+)/"
+    r"(dist|thumb_p200)\.jpg",
+    re.ASCII,
+)
+MAX_LOCATION = 4096
+
+
+def validate_s3_location(location, source_url: str) -> str:
+    """Validate the pre-signed S3 redirect target for an image URL we asked for.
+
+    It must be the same apid and filename in the das-cloud bucket, https, no
+    userinfo or port, with a signed query and no fragment. Errors carry no URL.
+    """
+    bad = FSError("refusing image redirect: not the expected FamilySearch image storage")
+    src = _SRC_RE.fullmatch(source_url)
+    if (
+        not src or not isinstance(location, str) or len(location) > MAX_LOCATION
+        or _CTRL_RE.search(location)
+    ):
+        raise bad
+    m = _S3_RE.fullmatch(location)
+    if not m or (m.group(1), m.group(2)) != src.groups():
+        raise bad
+    return location
+
+
 def sniff_matches(content_type: str, head: bytes) -> bool:
     if content_type == "image/jpeg":
         return head.startswith(b"\xff\xd8\xff")
