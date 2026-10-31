@@ -109,7 +109,7 @@ def test_registers_eight_tools_with_docstrings(setup):
     assert set(tools) == {
         "auth_status", "search_tree", "search_records", "get_person",
         "get_relatives", "get_person_sources", "get_person_memories", "get_matches",
-        "get_record_image", "get_record_image_info",
+        "get_record_image", "get_record_image_info", "get_film_info", "get_film_image",
     }
     for name, fn in tools.items():
         assert fn.__doc__ and fn.__doc__.strip(), name

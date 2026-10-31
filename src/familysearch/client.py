@@ -130,6 +130,56 @@ class FSClient:
                 plain.close()
         return self._read_image(resp, deadline)
 
+    def get_das_json(
+        self, url: str, *, max_bytes: int = 2_000_000, timeout=DEFAULT_TIMEOUT
+    ) -> dict:
+        """GET a validated das-cloud metadata URL (production only) as JSON.
+
+        No redirects are followed; errors never carry the token, URL or body.
+        """
+        from familysearch import images
+
+        if self.base_url != Environment.PRODUCTION.base_url:
+            raise FSError("film metadata is only available on production")
+        images.validate_das_url(url)
+        resp = self._session.request(
+            "GET", url,
+            headers={
+                "Authorization": f"Bearer {self._token}",
+                "User-Agent": self._user_agent,
+                "Accept": "application/json",
+            },
+            timeout=timeout, allow_redirects=False, stream=True,
+        )
+        try:
+            if resp.status_code == 401:
+                raise TokenExpiredError("FamilySearch rejected the token (401).")
+            if 300 <= resp.status_code < 400:
+                raise FSError(
+                    f"film metadata request was redirected (HTTP {resp.status_code}); "
+                    "redirects are not followed"
+                )
+            if resp.status_code != 200:
+                raise FSError(f"film metadata request failed (HTTP {resp.status_code})")
+            ctype = (resp.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+            if ctype != "application/json":
+                raise FSError("film metadata response is not JSON")
+            chunks, total = [], 0
+            for chunk in resp.iter_content(chunk_size=65536):
+                total += len(chunk)
+                if total > max_bytes:
+                    raise FSError("film metadata exceeds the size limit")
+                chunks.append(chunk)
+            try:
+                body = _json.loads(b"".join(chunks))
+            except ValueError:
+                raise FSError("film metadata response is not valid JSON") from None
+            if not isinstance(body, dict):
+                raise FSError("unexpected film metadata response")
+            return body
+        finally:
+            resp.close()
+
     @staticmethod
     def _read_image(resp, deadline) -> tuple[bytes, str]:
         from familysearch import images

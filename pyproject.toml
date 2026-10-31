@@ -15,6 +15,7 @@ familysearch-mcp = "familysearch_mcp.server:main"
 [project.optional-dependencies]
 dev = ["pytest", "responses"]
 import = ["pypdf", "pillow"]
+film = ["pillow"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
