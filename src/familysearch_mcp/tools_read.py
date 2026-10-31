@@ -156,7 +156,7 @@ def register_read_tools(mcp: Any, ctx: Any) -> None:
         if size not in SIZES:
             raise ValueError(f"size must be one of {sorted(SIZES)}")
         data, ctype = ctx.call(lambda s: ImageReader(s.client).fetch_image(a, size))
-        return Image(data=data, format=ctype.split(";")[0].split("/", 1)[1].strip())
+        return Image(data=data, format=ctype.split("/", 1)[1])
 
     @mcp.tool()
     def get_matches(person_id: str) -> list[dict]:

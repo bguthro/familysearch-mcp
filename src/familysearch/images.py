@@ -7,28 +7,34 @@ ever sent to a URL that passes validate_image_url.
 
 from __future__ import annotations
 
+import json
 import re
 from urllib.parse import urlsplit
 
 from familysearch.errors import FSError
 
-MAX_IMAGE_BYTES = 25 * 1024 * 1024
+MAX_IMAGE_BYTES = 15 * 1024 * 1024
+MAX_META_BYTES = 1024 * 1024
+IMAGE_DEADLINE_SECONDS = 60
+ALLOWED_TYPES = ("image/jpeg", "image/png", "image/gif", "image/webp")
 SIZES = {"dist": "stream-image-dist", "thumb_p200": "stream-image-thumb_p200"}
 
 _ARK_ID = r"[A-Z0-9]+(?:-[A-Z0-9]+)*"
-_ARK_RE = re.compile(rf"^/?ark:/61903/3:1:({_ARK_ID})$")
-_HOST_RE = re.compile(r"^sg\d{1,3}p\d{1,3}\.familysearch\.org$")
-_PATH_RE = re.compile(
-    r"^/service/records/storage/dascloud/das/v2/[A-Za-z0-9-]+/(dist|thumb_p200)\.jpg$"
+_ARK_RE = re.compile(rf"/?ark:/61903/3:1:({_ARK_ID})", re.ASCII)
+_URL_RE = re.compile(
+    r"https://(?:sg\d{1,3}p\d{1,3}|www)\.familysearch\.org"
+    r"/service/records/storage/dascloud/das/v2/[A-Za-z0-9-]+/(?:dist|thumb_p200)\.jpg",
+    re.ASCII,
 )
+_CTRL_RE = re.compile(r"[\s\x00-\x1f\x7f-\x9f]")
 _PROD_HOST = "www.familysearch.org"
 
 
 def parse_ark(value: str) -> str:
     """Return the canonical '/ark:/61903/3:1:<ID>' for an image ark, else ValueError."""
-    if not isinstance(value, str) or not value.strip():
+    if not isinstance(value, str) or not value:
         raise ValueError("an image ark is required")
-    v = value.strip()
+    v = value
     if "://" in v:
         parts = urlsplit(v)
         host = (parts.hostname or "").lower()
@@ -38,34 +44,40 @@ def parse_ark(value: str) -> str:
         v = parts.path
     else:
         v = v.split("?", 1)[0].split("#", 1)[0]
-    m = _ARK_RE.match(v)
+    m = _ARK_RE.fullmatch(v)
     if not m:
         raise ValueError("not a FamilySearch image ark (expected /ark:/61903/3:1:ID)")
     return f"/ark:/61903/3:1:{m.group(1)}"
 
 
 def validate_image_url(url: str) -> str:
-    """Strictly validate an image-storage URL; return it, or raise FSError."""
+    """Strictly validate an image-storage URL; return it, or raise FSError.
+
+    One ASCII fullmatch over the whole string; the exact string is what is sent.
+    """
     bad = FSError("refusing image URL: not an allowed FamilySearch image location")
-    if not isinstance(url, str):
-        raise bad
-    try:
-        parts = urlsplit(url)
-        port = parts.port
-    except ValueError:
-        raise bad from None
-    host = (parts.hostname or "")
-    if (
-        parts.scheme != "https"
-        or "@" in parts.netloc
-        or port is not None
-        or parts.netloc != host  # also rejects uppercase and stray characters
-        or not (_HOST_RE.match(host) or host == _PROD_HOST)
-        or parts.query or parts.fragment or "?" in url or "#" in url
-        or not _PATH_RE.match(parts.path)
-    ):
+    if not isinstance(url, str) or _CTRL_RE.search(url) or not _URL_RE.fullmatch(url):
         raise bad
     return url
+
+
+def sniff_matches(content_type: str, head: bytes) -> bool:
+    if content_type == "image/jpeg":
+        return head.startswith(b"\xff\xd8\xff")
+    if content_type == "image/png":
+        return head.startswith(b"\x89PNG")
+    if content_type == "image/gif":
+        return head.startswith(b"GIF8")
+    if content_type == "image/webp":
+        return head[:4] == b"RIFF" and head[8:12] == b"WEBP"
+    return False
+
+
+def normalize_content_type(value: str) -> str:
+    base = (value or "").split(";", 1)[0].strip().lower()
+    if base not in ALLOWED_TYPES:
+        raise FSError("image response has a disallowed content type")
+    return base
 
 
 class ImageReader:
@@ -79,9 +91,14 @@ class ImageReader:
     def _resolve(self, ark: str) -> tuple[str, dict]:
         self._require_production()
         canon = parse_ark(ark)
-        body = self._client.get(
-            "https://www.familysearch.org" + canon, accept="application/json"
-        ).json()
+        raw = self._client.get_capped(
+            "https://www.familysearch.org" + canon, accept="application/json",
+            max_bytes=MAX_META_BYTES,
+        )
+        try:
+            body = json.loads(raw)
+        except ValueError:
+            raise FSError("unexpected response resolving the image ark") from None
         if not isinstance(body, dict):
             raise FSError("unexpected response resolving the image ark")
         return canon, body

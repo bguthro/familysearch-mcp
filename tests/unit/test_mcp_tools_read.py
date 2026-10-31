@@ -277,10 +277,10 @@ def test_get_record_image_tool(setup):
     tools, svc, _ = setup
     svc.client = Obj()
     svc.client.base_url = "https://www.familysearch.org"
-    svc.client.get = lambda url, accept=None: Resp({"link": [{
+    svc.client.get_capped = lambda url, accept=None, max_bytes=0: json.dumps({"link": [{
         "rel": "stream-image-dist",
         "href": "https://sg30p0.familysearch.org/service/records/storage/"
-                "dascloud/das/v2/AP-1/dist.jpg"}]})
+                "dascloud/das/v2/AP-1/dist.jpg"}]}).encode()
     svc.client.get_image = lambda url: (b"IMG", "image/jpeg")
     out = tools["get_record_image"]("ark:/61903/3:1:ABCD-123")
     assert isinstance(out, Image) and out.data == b"IMG"

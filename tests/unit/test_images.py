@@ -19,6 +19,9 @@ INFO = {"name": "Fictional Record", "apid": "APID-123", "link": [
 ]}
 
 
+JPEG = b"\xff\xd8\xff\xe0" + b"0" * 20
+
+
 def prod():
     return FSClient(TOKEN, Environment.PRODUCTION, min_write_interval=0)
 
@@ -29,14 +32,13 @@ def prod():
     "https://www.familysearch.org/ark:/61903/3:1:ABCD-EF1-2G3?wc=xyz&cc=1",
     "/ark:/61903/3:1:ABCD-EF1-2G3",
     "ark:/61903/3:1:ABCD-EF1-2G3",
-    "  ark:/61903/3:1:ABCD-EF1-2G3 ",
 ])
 def test_parse_ark_ok(v):
     assert parse_ark(v) == ARK
 
 
 @pytest.mark.parametrize("v", [
-    "", "ark:/61903/1:1:ABCD-EF1", "ark:/61903/3:1:abcd", "ark:/61903/3:1:AB/../CD",
+    "", " ark:/61903/3:1:ABCD", "ark:/61903/1:1:ABCD-EF1", "ark:/61903/3:1:abcd", "ark:/61903/3:1:AB/../CD",
     "ark:/61903/3:1:", "ark:/61903/3:1:AB--", "https://evil.example/ark:/61903/3:1:ABCD",
     "http://www.familysearch.org/ark:/61903/3:1:ABCD",
     "https://user@www.familysearch.org/ark:/61903/3:1:ABCD",
@@ -70,6 +72,8 @@ def test_validator_accepts_good():
     GOOD.replace("dist.jpg", "thumb_p100.jpg"),
     GOOD.replace("APID-123", "A/../B"),
     GOOD.replace("sg30p0", "sgxp0"),
+    GOOD + "\n", GOOD.replace("/das/", "/das\t/"), " " + GOOD, GOOD + " ",
+    GOOD.replace("sg30p0", "sg\uff13p1"), GOOD.replace("APID", "AP\u0661D"),
     "", None,
 ])
 def test_validator_rejects(u):
@@ -98,9 +102,9 @@ def test_info_has_no_credentials_or_hrefs():
 @pytest.mark.parametrize("size,url", [("dist", GOOD), ("thumb_p200", THUMB)])
 def test_fetch_ok(size, url):
     add_info()
-    responses.add(responses.GET, url, body=b"JPEGDATA", content_type="image/jpeg")
+    responses.add(responses.GET, url, body=JPEG, content_type="image/jpeg; charset=binary")
     data, ctype = ImageReader(prod()).fetch_image(ARK, size)
-    assert (data, ctype) == (b"JPEGDATA", "image/jpeg")
+    assert (data, ctype) == (JPEG, "image/jpeg")
     sent = responses.calls[1].request
     assert sent.url == url and sent.headers["Authorization"] == f"Bearer {TOKEN}"
 
@@ -162,8 +166,8 @@ def test_non_200_refused():
 def test_oversize_refused(monkeypatch):
     import familysearch.images as im
     monkeypatch.setattr(im, "MAX_IMAGE_BYTES", 10)
-    responses.add(responses.GET, GOOD, body=b"x" * 100, content_type="image/jpeg")
-    with pytest.raises(FSError, match="25 MB") as ei:
+    responses.add(responses.GET, GOOD, body=JPEG + b"x" * 100, content_type="image/jpeg")
+    with pytest.raises(FSError, match="size limit") as ei:
         prod().get_image(GOOD)
     assert TOKEN not in str(ei.value)
 
@@ -182,3 +186,70 @@ def test_generic_request_guard_unchanged():
             c.get(u)
         assert TOKEN not in str(ei.value)
     assert not responses.calls
+
+
+@pytest.mark.parametrize("v", [
+    "ark:/61903/3:1:ABCD\n", "ark:/61903/3:1:AB\tCD", "ark:/61903/3:1:AB\uff11",
+    "ark:/61903/3:1:ABCD\n?x=1",
+])
+def test_parse_ark_whitespace_unicode(v):
+    with pytest.raises(ValueError):
+        parse_ark(v)
+
+
+@responses.activate
+@pytest.mark.parametrize("ctype", [
+    "image/svg+xml", "image/", "image", "text/html", "image/tiff", "",
+])
+def test_disallowed_types(ctype):
+    responses.add(responses.GET, GOOD, body=JPEG, content_type=ctype or None)
+    with pytest.raises(FSError):
+        prod().get_image(GOOD)
+
+
+@responses.activate
+@pytest.mark.parametrize("ctype,body", [
+    ("image/png", b"\x89PNG\r\n\x1a\n"), ("image/gif", b"GIF89a.."),
+    ("image/webp", b"RIFF\x00\x00\x00\x00WEBPVP8 "),
+])
+def test_other_types_ok(ctype, body):
+    responses.add(responses.GET, GOOD, body=body, content_type=ctype)
+    assert prod().get_image(GOOD) == (body, ctype)
+
+
+@responses.activate
+@pytest.mark.parametrize("ctype,body", [
+    ("image/jpeg", b"\x89PNG....."), ("image/png", JPEG), ("image/gif", b"<svg>"),
+    ("image/webp", b"RIFF\x00\x00\x00\x00WAVE"),
+])
+def test_magic_mismatch(ctype, body):
+    responses.add(responses.GET, GOOD, body=body, content_type=ctype)
+    with pytest.raises(FSError, match="match"):
+        prod().get_image(GOOD)
+
+
+@responses.activate
+def test_metadata_capped(monkeypatch):
+    import familysearch.images as im
+    monkeypatch.setattr(im, "MAX_META_BYTES", 50)
+    responses.add(responses.GET, WWW + ARK, body=b"{" + b" " * 200 + b"}",
+                  content_type="application/json")
+    with pytest.raises(FSError, match="size limit"):
+        ImageReader(prod()).get_image_info(ARK)
+
+
+def test_default_caps():
+    import familysearch.images as im
+    assert im.MAX_IMAGE_BYTES == 15 * 1024 * 1024
+    assert im.MAX_META_BYTES == 1024 * 1024
+    assert im.IMAGE_DEADLINE_SECONDS == 60
+
+
+@responses.activate
+def test_deadline(monkeypatch):
+    import time as t
+    responses.add(responses.GET, GOOD, body=JPEG, content_type="image/jpeg")
+    clock = iter([1000.0, 1000.0 + 61, 1000.0 + 62, 1000.0 + 63])
+    monkeypatch.setattr(t, "monotonic", lambda: next(clock))
+    with pytest.raises(FSError, match="time limit"):
+        prod().get_image(GOOD)
