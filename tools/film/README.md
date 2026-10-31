@@ -19,3 +19,7 @@ image-number labels.
   require a JSON content type and are size capped.
 - At most 40 images per run; output under the repository root is refused.
 - Output lists only counts and file names, never URLs or tokens.
+- Existing files are never overwritten unless `--overwrite` is given, which replaces
+  regular files only (never symlinks); files are created with O_EXCL and O_NOFOLLOW.
+- `--out` inside this repository (any case or symlink path) or inside any git work
+  tree is refused. Pillow is limited to 100 million pixels.

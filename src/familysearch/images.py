@@ -96,6 +96,7 @@ def validate_s3_location(location, source_url: str) -> str:
 
 MAX_DAS_COUNT = 2000
 MAX_FILM_RANGE = 40
+MAX_FILM_IMAGES = 20000
 _APID_RE = re.compile(r"[A-Za-z0-9-]+", re.ASCII)
 _DAS_HOST = r"sg\d{1,3}p\d{1,3}\.familysearch\.org"
 _DAS_PATH = r"/service/records/storage/dascloud/das/v2/"
@@ -158,6 +159,7 @@ def normalize_content_type(value: str) -> str:
 class ImageReader:
     def __init__(self, client):
         self._client = client
+        self._cache: dict = {}
 
     def _require_production(self) -> None:
         if self._client.base_url != "https://www.familysearch.org":
@@ -216,8 +218,12 @@ class ImageReader:
             raise FSError("unexpected film metadata response")
         return body
 
-    def _film_context(self, ark: str) -> tuple[str, dict]:
-        """Return (das base host, info dict) for the ark's film."""
+    def _film_context(self, ark: str) -> tuple[str, dict, tuple]:
+        """Return (das base host, info dict, rows) for the ark's film.
+
+        The image's position is where the ark's own apid appears in the film's
+        children list, never a number taken from a name.
+        """
         _, body = self._resolve(ark)
         apid = check_apid(body.get("apid"))
         href = self._links(body).get("parents")
@@ -225,44 +231,51 @@ class ImageReader:
             raise FSError("no film link for this ark")
         base = das_base_of(href)
         parents = self._das_node(base, apid, "/parents").get("parents")
-        if not isinstance(parents, list) or not parents \
-                or not isinstance(parents[0], dict):
-            raise FSError("no film found for this ark")
-        p = parents[0]
-        dgs = check_apid(p.get("parentApid"))
-        child = p.get("childName")
-        m = re.fullmatch(r"(.+)_(\d{1,6})", child, re.ASCII) \
-            if isinstance(child, str) else None
-        if not m:
-            raise FSError("unexpected image name in film metadata")
+        dgs_parents = [
+            p for p in (parents if isinstance(parents, list) else [])
+            if isinstance(p, dict) and p.get("nameSpace") == "dgs"
+        ]
+        if len(dgs_parents) != 1:
+            raise FSError("expected exactly one film for this ark")
+        dgs = check_apid(dgs_parents[0].get("parentApid"))
         node = self._das_node(base, dgs)
         total = node.get("childCount")
-        if not isinstance(total, int) or isinstance(total, bool) or total < 1:
+        if not isinstance(total, int) or isinstance(total, bool) \
+                or not 1 <= total <= MAX_FILM_IMAGES:
             raise FSError("unexpected image count in film metadata")
+        rows = self._children(base, dgs, total)
+        positions = [r[0] for r in rows if r[2] == apid]
+        if len(positions) != 1:
+            raise FSError("this image was not found exactly once in its film")
         film = node.get("name")
         return base, {
-            "film": film if isinstance(film, str) else m.group(1),
-            "image_number": int(m.group(2)),
+            "film": film if isinstance(film, str) else None,
+            "image_number": positions[0],
             "total_images": total,
             "dgs_apid": dgs,
-        }
+        }, rows
 
     def film_info(self, ark: str) -> dict:
         return self._film_context(ark)[1]
 
-    def _children(self, base: str, info: dict) -> list[dict]:
-        total, dgs = info["total_images"], info["dgs_apid"]
-        out: list[dict] = []
+    def _children(self, base: str, dgs: str, total: int) -> tuple:
+        """Validated rows (order, name, apid) sorted by order; cached per reader."""
+        cached = self._cache.get(dgs)
+        if cached is not None and len(cached) == total:
+            return cached
+        out: list = []
         start = 0
         while start < total:
             count = min(MAX_DAS_COUNT, total - start)
             body = self._client.get_das_json(
                 f"{base}{_DAS_PATH}{dgs}/children?start={start}&count={count}")
             kids = body.get("children") if isinstance(body, dict) else None
-            if not isinstance(kids, list) or not kids:
+            if not isinstance(kids, list) or len(kids) != count:
                 raise FSError("unexpected film children response")
             out.extend(kids)
             start += count
+        if len(out) != total:
+            raise FSError("film children count does not match the film")
         rows, seen_orders, seen_apids = [], set(), set()
         for k in out:
             if not isinstance(k, dict):
@@ -274,47 +287,55 @@ class ImageReader:
             seen_orders.add(order)
             seen_apids.add(apid)
             name = k.get("name")
-            rows.append({"order": order, "name": name if isinstance(name, str) else None,
-                         "apid": apid})
-        rows.sort(key=lambda r: r["order"])
-        if [r["order"] for r in rows] != list(range(1, len(rows) + 1)):
+            rows.append((order, name if isinstance(name, str) else None, apid))
+        rows.sort(key=lambda r: r[0])
+        if [r[0] for r in rows] != list(range(1, len(rows) + 1)):
             raise FSError("film children have missing orders")
-        return rows
+        result = tuple(rows)
+        self._cache[dgs] = result
+        return result
 
     def list_film_images(self, ark: str) -> list[dict]:
-        base, info = self._film_context(ark)
-        return self._children(base, info)
+        rows = self._film_context(ark)[2]
+        return [{"order": o, "name": n, "apid": a} for o, n, a in rows]
 
     def _fetch_apid(self, base: str, apid: str, size: str) -> tuple[bytes, str]:
-        if size not in SIZES:
-            raise ValueError(f"size must be one of {sorted(SIZES)}")
         name = "dist" if size == "dist" else "thumb_p200"
         url = f"{base}{_DAS_PATH}{check_apid(apid)}/{name}.jpg"
         validate_image_url(url)
         return self._client.get_image(url)
 
-    def fetch_film_image(self, ark: str, index: int, size: str = "dist") -> tuple[bytes, str]:
+    @staticmethod
+    def _check_size(size: str) -> None:
         if size not in SIZES:
             raise ValueError(f"size must be one of {sorted(SIZES)}")
-        base, info = self._film_context(ark)
+
+    def fetch_film_image(
+        self, ark: str, index: int | None = None, size: str = "dist", *, offset: int = 0
+    ) -> tuple[bytes, str]:
+        """Fetch image `index` (1-based) of the ark's film, or, when index is
+        None, the ark's own image number plus offset."""
+        self._check_size(size)
+        base, info, rows = self._film_context(ark)
+        if index is None:
+            if not isinstance(offset, int) or isinstance(offset, bool):
+                raise ValueError("offset must be an integer")
+            index = info["image_number"] + offset
         if not isinstance(index, int) or isinstance(index, bool) \
                 or not 1 <= index <= info["total_images"]:
             raise ValueError(f"index must be between 1 and {info['total_images']}")
-        rows = self._children(base, info)
-        return self._fetch_apid(base, rows[index - 1]["apid"], size)
+        return self._fetch_apid(base, rows[index - 1][2], size)
 
     def fetch_film_range(self, ark: str, first: int, last: int, size: str = "dist"):
         """Yield (index, bytes, content_type) for first..last (max 40 images)."""
-        if size not in SIZES:
-            raise ValueError(f"size must be one of {sorted(SIZES)}")
+        self._check_size(size)
         if not isinstance(first, int) or not isinstance(last, int) or first > last:
             raise ValueError("first and last must be integers with first <= last")
         if last - first + 1 > MAX_FILM_RANGE:
             raise ValueError(f"at most {MAX_FILM_RANGE} images per call")
-        base, info = self._film_context(ark)
+        base, info, rows = self._film_context(ark)
         if first < 1 or last > info["total_images"]:
             raise ValueError(f"range must be within 1..{info['total_images']}")
-        rows = self._children(base, info)
         for i in range(first, last + 1):
-            data, ctype = self._fetch_apid(base, rows[i - 1]["apid"], size)
+            data, ctype = self._fetch_apid(base, rows[i - 1][2], size)
             yield i, data, ctype

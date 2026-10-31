@@ -163,7 +163,10 @@ def register_read_tools(mcp: Any, ctx: Any) -> None:
         """Describe the microfilm a record image belongs to: film number, this
         image's number within the film, total images. Production only."""
         a = _ark(ark)
-        return ctx.call(lambda s: ImageReader(s.client).film_info(a))
+        info = dict(ctx.call(lambda s: ImageReader(s.client).film_info(a)))
+        if isinstance(info.get("film"), str):
+            info["film"] = info["film"][:40]
+        return info
 
     @mcp.tool()
     def get_film_image(
@@ -176,14 +179,8 @@ def register_read_tools(mcp: Any, ctx: Any) -> None:
         if size not in SIZES:
             raise ValueError(f"size must be one of {sorted(SIZES)}")
 
-        def run(s):
-            reader = ImageReader(s.client)
-            i = index
-            if i is None:
-                i = reader.film_info(a)["image_number"] + offset
-            return reader.fetch_film_image(a, i, size)
-
-        data, ctype = ctx.call(run)
+        data, ctype = ctx.call(lambda s: ImageReader(s.client).fetch_film_image(
+            a, index, size, offset=offset))
         return Image(data=data, format=ctype.split("/", 1)[1])
 
     @mcp.tool()

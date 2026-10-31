@@ -165,14 +165,17 @@ class FSClient:
             if ctype != "application/json":
                 raise FSError("film metadata response is not JSON")
             chunks, total = [], 0
+            deadline = time.monotonic() + images.IMAGE_DEADLINE_SECONDS
             for chunk in resp.iter_content(chunk_size=65536):
+                if time.monotonic() > deadline:
+                    raise FSError("film metadata download exceeded the time limit")
                 total += len(chunk)
                 if total > max_bytes:
                     raise FSError("film metadata exceeds the size limit")
                 chunks.append(chunk)
             try:
                 body = _json.loads(b"".join(chunks))
-            except ValueError:
+            except (ValueError, RecursionError, MemoryError):
                 raise FSError("film metadata response is not valid JSON") from None
             if not isinstance(body, dict):
                 raise FSError("unexpected film metadata response")
